@@ -1697,7 +1697,7 @@ function ControlApp({
               label={snapshot.shortcutsActive ? "Keys active" : "Keys off"}
               tone={snapshot.shortcutsActive ? "accent" : "warning"}
             />
-            <StatusChip label={saving ? "Syncing" : "Auto"} tone="muted" />
+            {saving ? <StatusChip label="Syncing" tone="muted" /> : null}
           </div>
         </header>
 
