@@ -62,6 +62,16 @@ const TRAY_SHOW_ID: &str = "tray-show";
 const TRAY_HIDE_ID: &str = "tray-hide";
 const TRAY_QUIT_ID: &str = "tray-quit";
 const MANAGED_MODELS_DIR: &str = "catalog-models";
+const PARAKEET_ENCODER_DOWNLOAD_URL: &str =
+    "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/encoder-model.int8.onnx";
+const PARAKEET_DECODER_DOWNLOAD_URL: &str =
+    "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/decoder_joint-model.int8.onnx";
+const PARAKEET_PREPROCESSOR_DOWNLOAD_URL: &str =
+    "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/nemo128.onnx";
+const PARAKEET_CONFIG_DOWNLOAD_URL: &str =
+    "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/config.json";
+const PARAKEET_VOCAB_DOWNLOAD_URL: &str =
+    "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/vocab.txt";
 const WHISPER_SMALL_DOWNLOAD_URL: &str =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
 const WHISPER_LARGE_V3_TURBO_DOWNLOAD_URL: &str =
@@ -420,29 +430,72 @@ struct PreviewStabilizer {
     divergence_count: usize,
 }
 
-struct CatalogDownloadSpec {
-    model_id: &'static str,
-    model_kind: TranscriptionModelKind,
-    display_name: &'static str,
+struct CatalogDownloadFile {
     file_name: &'static str,
     download_url: &'static str,
 }
 
+struct CatalogDownloadSpec {
+    model_id: &'static str,
+    model_kind: TranscriptionModelKind,
+    display_name: &'static str,
+    files: &'static [CatalogDownloadFile],
+    inspect_path: &'static str,
+}
+
 fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpec> {
+    const PARAKEET_FILES: &[CatalogDownloadFile] = &[
+        CatalogDownloadFile {
+            file_name: "encoder-model.int8.onnx",
+            download_url: PARAKEET_ENCODER_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "decoder_joint-model.int8.onnx",
+            download_url: PARAKEET_DECODER_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "nemo128.onnx",
+            download_url: PARAKEET_PREPROCESSOR_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "config.json",
+            download_url: PARAKEET_CONFIG_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "vocab.txt",
+            download_url: PARAKEET_VOCAB_DOWNLOAD_URL,
+        },
+    ];
+    const WHISPER_SMALL_FILES: &[CatalogDownloadFile] = &[CatalogDownloadFile {
+        file_name: "ggml-small.bin",
+        download_url: WHISPER_SMALL_DOWNLOAD_URL,
+    }];
+    const WHISPER_LARGE_FILES: &[CatalogDownloadFile] = &[CatalogDownloadFile {
+        file_name: "ggml-large-v3-turbo.bin",
+        download_url: WHISPER_LARGE_V3_TURBO_DOWNLOAD_URL,
+    }];
+
     match model_id {
+        "parakeet" => Some(CatalogDownloadSpec {
+            model_id: "parakeet",
+            model_kind: TranscriptionModelKind::Parakeet,
+            display_name: "Parakeet TDT",
+            files: PARAKEET_FILES,
+            inspect_path: ".",
+        }),
         "whisper-small" => Some(CatalogDownloadSpec {
             model_id: "whisper-small",
             model_kind: TranscriptionModelKind::Whisper,
             display_name: "Whisper Small",
-            file_name: "ggml-small.bin",
-            download_url: WHISPER_SMALL_DOWNLOAD_URL,
+            files: WHISPER_SMALL_FILES,
+            inspect_path: "ggml-small.bin",
         }),
         "whisper-large-v3-turbo" => Some(CatalogDownloadSpec {
             model_id: "whisper-large-v3-turbo",
             model_kind: TranscriptionModelKind::Whisper,
             display_name: "Whisper Large V3 Turbo",
-            file_name: "ggml-large-v3-turbo.bin",
-            download_url: WHISPER_LARGE_V3_TURBO_DOWNLOAD_URL,
+            files: WHISPER_LARGE_FILES,
+            inspect_path: "ggml-large-v3-turbo.bin",
         }),
         _ => None,
     }
@@ -702,13 +755,34 @@ fn parakeet_status_for_path(path: &Path) -> ModelStatus {
     }
 }
 
+fn path_matches_selected_model_kind(path: &Path, model_kind: TranscriptionModelKind) -> bool {
+    match model_kind {
+        TranscriptionModelKind::Parakeet => {
+            parakeet::model_ready_in_dir(path) || parakeet::model_ready_at(path)
+        }
+        TranscriptionModelKind::Whisper => whisper::model_ready_at(path),
+    }
+}
+
 fn resolved_selected_model_path(settings: &Settings) -> Option<String> {
-    settings.selected_model_path.clone().or_else(|| {
-        settings
-            .installed_model_paths
-            .get(&settings.selected_model_id)
-            .cloned()
-    })
+    settings
+        .selected_model_path
+        .clone()
+        .filter(|path| {
+            path_matches_selected_model_kind(Path::new(path), settings.selected_model_kind)
+        })
+        .or_else(|| {
+            settings
+                .installed_model_paths
+                .get(&settings.selected_model_id)
+                .filter(|path| {
+                    path_matches_selected_model_kind(
+                        Path::new(path.as_str()),
+                        settings.selected_model_kind,
+                    )
+                })
+                .cloned()
+        })
 }
 
 fn selected_model_cache_key(settings: &Settings) -> String {
@@ -2178,23 +2252,38 @@ fn download_catalog_model(
         .map_err(|error| error.to_string())?
         .join(spec.model_id);
     fs::create_dir_all(&model_dir).map_err(|error| error.to_string())?;
-    let destination = model_dir.join(spec.file_name);
-    let partial = destination.with_extension("part");
-    let _ = fs::remove_file(&partial);
+    let download_root = match spec.model_kind {
+        TranscriptionModelKind::Parakeet => model_dir.join(parakeet::MODEL_ID),
+        TranscriptionModelKind::Whisper => model_dir.clone(),
+    };
+    fs::create_dir_all(&download_root).map_err(|error| error.to_string())?;
 
-    if !whisper::model_ready_at(&destination) {
-        let client = Client::builder()
-            .build()
-            .map_err(|error| format!("Couldn't prepare download client: {error}"))?;
+    let client = Client::builder()
+        .build()
+        .map_err(|error| format!("Couldn't prepare download client: {error}"))?;
+
+    for file in spec.files {
+        let destination = download_root.join(file.file_name);
+        let partial = destination.with_extension("part");
+        let _ = fs::remove_file(&partial);
+
+        let already_ready = match spec.model_kind {
+            TranscriptionModelKind::Parakeet => destination.exists(),
+            TranscriptionModelKind::Whisper => whisper::model_ready_at(&destination),
+        };
+        if already_ready {
+            continue;
+        }
+
         let mut response = client
-            .get(spec.download_url)
+            .get(file.download_url)
             .send()
             .map_err(|error| format!("Couldn't download model: {error}"))?;
         if !response.status().is_success() {
             return Err(format!("Download failed with status {}", response.status()));
         }
 
-        let mut file =
+        let mut output =
             fs::File::create(&partial).map_err(|error| format!("Couldn't create file: {error}"))?;
         let mut buffer = [0u8; 64 * 1024];
         loop {
@@ -2204,16 +2293,23 @@ fn download_catalog_model(
             if read == 0 {
                 break;
             }
-            file.write_all(&buffer[..read])
+            output
+                .write_all(&buffer[..read])
                 .map_err(|error| format!("Couldn't write model file: {error}"))?;
         }
-        file.flush()
+        output
+            .flush()
             .map_err(|error| format!("Couldn't finalize model file: {error}"))?;
         fs::rename(&partial, &destination)
             .map_err(|error| format!("Couldn't move downloaded model into place: {error}"))?;
     }
 
-    let inspection = inspect_model_candidate(&destination.display().to_string())?;
+    let inspection_target = if spec.inspect_path == "." {
+        model_dir.clone()
+    } else {
+        model_dir.join(spec.inspect_path)
+    };
+    let inspection = inspect_model_candidate(&inspection_target.display().to_string())?;
     activate_catalog_model(
         &app,
         &shared,

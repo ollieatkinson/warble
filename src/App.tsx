@@ -564,9 +564,12 @@ const MODEL_CATALOG: Array<
       "Best fit today for English-heavy dictation",
     ],
     hfUrl: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2",
+    artifactUrl: "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8",
+    artifactLabel: "ONNX export bundle",
     tags: ["english", "nvidia", "available"],
-    supportsInstall: false,
-    supportsDownload: false,
+    supportsInstall: true,
+    supportsDownload: true,
+    downloadSizeBytes: 670_525_864,
     minimumMemoryBytes: 4 * 1024 ** 3,
     recommendedMemoryBytes: 8 * 1024 ** 3,
     minimumCores: 4,
@@ -672,24 +675,32 @@ function buildModelRows(snapshot: Snapshot): ModelRow[] {
   const activeModelId = snapshot.settings.selectedModelId;
   const rows = MODEL_CATALOG.map<ModelRow>((entry) => {
     if (entry.id === "parakeet") {
+      const installedPath = snapshot.settings.installedModelPaths.parakeet ?? null;
       const diskSizeBytes = snapshot.installedModelSizes.parakeet ?? 0;
+      const builtInReady = snapshot.parakeetModelStatus === "ready";
+      const isReady = builtInReady || Boolean(installedPath);
+      const active =
+        activeModelId === "parakeet" &&
+        snapshot.settings.selectedModelKind === "parakeet" &&
+        snapshot.modelStatus === "ready";
+
       return {
         ...entry,
-        state: snapshot.parakeetModelStatus === "ready" ? "ready" : "incomplete",
+        state: isReady ? "ready" : "downloadable",
         source: "built-in",
-        active:
-          activeModelId === "parakeet" &&
-          snapshot.settings.selectedModelKind === "parakeet" &&
-          !snapshot.settings.selectedModelPath,
-        selectable: snapshot.parakeetModelStatus === "ready",
+        active,
+        selectable: isReady,
         runtime:
-          snapshot.parakeetModelStatus === "ready"
+          builtInReady || installedPath
             ? "Ready in app"
-            : "Missing locally",
+            : "Download in app",
         note:
-          snapshot.parakeetModelStatus === "ready"
+          builtInReady
             ? entry.note
-            : "Built-in runtime is present in the catalog but missing local model files.",
+            : installedPath
+              ? "Downloaded into Transcribed and ready to use as the local Parakeet engine."
+              : "Parakeet isn't bundled on this machine right now, but you can download the compatible ONNX bundle directly in the app.",
+        path: installedPath,
         diskSizeBytes,
       };
     }
@@ -1910,7 +1921,7 @@ function ControlApp({
 
     try {
       const selected = await openDialog({
-        directory: false,
+        directory: row.modelKind === "parakeet",
         multiple: false,
         filters:
           row.modelKind === "whisper"
