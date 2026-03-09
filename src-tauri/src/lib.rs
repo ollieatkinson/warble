@@ -1172,14 +1172,14 @@ fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
 }
 
 fn indicator_window_size(settings: &Settings) -> (i32, i32) {
-    let content_height = if settings.show_live_transcription { 54 } else { 46 };
+    let content_height = if settings.show_live_transcription { 60 } else { 54 };
     let content_width = if settings.show_live_transcription {
-        228
+        238
     } else {
         match settings.overlay_animation_style {
-            OverlayAnimationStyle::Radial => 54,
-            OverlayAnimationStyle::Spectrum => 84,
-            OverlayAnimationStyle::Waveform => 90,
+            OverlayAnimationStyle::Radial => 66,
+            OverlayAnimationStyle::Spectrum => 98,
+            OverlayAnimationStyle::Waveform => 104,
         }
     } as i32;
 
