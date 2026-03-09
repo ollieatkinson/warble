@@ -1680,6 +1680,7 @@ fn create_indicator_window(app: &AppHandle) -> Result<()> {
     .title("Transcribed Indicator")
     .transparent(true)
     .decorations(false)
+    .shadow(false)
     .resizable(false)
     .skip_taskbar(true)
     .always_on_top(true)
@@ -1690,6 +1691,7 @@ fn create_indicator_window(app: &AppHandle) -> Result<()> {
 
     let _ = window.set_focusable(false);
     let _ = window.set_ignore_cursor_events(true);
+    let _ = window.set_shadow(false);
     Ok(())
 }
 
