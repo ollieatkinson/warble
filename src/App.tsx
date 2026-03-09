@@ -2303,6 +2303,25 @@ function ControlApp({
     }));
   const activeReadyModelId =
     activeModel?.selectable && activeModel ? activeModel.id : readyModelOptions[0]?.id ?? "";
+  const selectedModelMeta = selectedModel
+    ? [
+        ["Runtime", selectedModel.runtime],
+        [
+          "Download size",
+          selectedModel.downloadSizeBytes
+            ? formatBytes(selectedModel.downloadSizeBytes)
+            : "Included / n.a.",
+        ],
+        ["Size on disk", formatBytes(selectedModel.diskSizeBytes)],
+        ["Languages", selectedModel.languages],
+        ["Speed", selectedModel.speed],
+        ["Quality", selectedModel.quality],
+        ["Footprint", selectedModel.footprint],
+        ["License", selectedModel.license],
+        ["This Mac", selectedModelFit?.label ?? "Unknown"],
+        ["Hardware", snapshot ? formatSystemProfile(snapshot.systemProfile) : "Unknown"],
+      ]
+    : [];
 
   useEffect(() => {
     if (!selectedRowExists && modelRows[0]) {
@@ -2909,51 +2928,13 @@ function ControlApp({
                       </div>
 
                       <div className="model-focus-metrics">
-                        <div className="metric-grid model-focus-metric-grid">
-                          <div className="metric">
-                            <span>Runtime</span>
-                            <strong>{selectedModel.runtime}</strong>
-                          </div>
-                          <div className="metric">
-                            <span>Download size</span>
-                            <strong>
-                              {selectedModel.downloadSizeBytes
-                                ? formatBytes(selectedModel.downloadSizeBytes)
-                                : "Included / n.a."}
-                            </strong>
-                          </div>
-                          <div className="metric">
-                            <span>Size on disk</span>
-                            <strong>{formatBytes(selectedModel.diskSizeBytes)}</strong>
-                          </div>
-                          <div className="metric">
-                            <span>Languages</span>
-                            <strong>{selectedModel.languages}</strong>
-                          </div>
-                          <div className="metric">
-                            <span>Speed</span>
-                            <strong>{selectedModel.speed}</strong>
-                          </div>
-                          <div className="metric">
-                            <span>Quality</span>
-                            <strong>{selectedModel.quality}</strong>
-                          </div>
-                          <div className="metric">
-                            <span>Footprint</span>
-                            <strong>{selectedModel.footprint}</strong>
-                          </div>
-                          <div className="metric">
-                            <span>License</span>
-                            <strong>{selectedModel.license}</strong>
-                          </div>
-                          <div className="metric">
-                            <span>This PC</span>
-                            <strong>{selectedModelFit?.label ?? "Unknown"}</strong>
-                          </div>
-                          <div className="metric">
-                            <span>Hardware</span>
-                            <strong>{formatSystemProfile(snapshot.systemProfile)}</strong>
-                          </div>
+                        <div className="model-focus-meta-list">
+                          {selectedModelMeta.map(([label, value]) => (
+                            <div className="model-focus-meta-row" key={label}>
+                              <span>{label}</span>
+                              <strong>{value}</strong>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
