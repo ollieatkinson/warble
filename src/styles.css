@@ -1256,6 +1256,8 @@ input::placeholder {
 .signal-bars-bar,
 .signal-radial-ring,
 .signal-radial-spoke,
+.signal-radial-core,
+.signal-radial-core-halo,
 .signal-wave-fill,
 .signal-wave-line,
 .signal-wave-center {
@@ -1327,12 +1329,28 @@ input::placeholder {
   stroke-linecap: round;
 }
 
+.signal-radial-core-halo {
+  fill: rgba(255, 93, 110, 0.14);
+}
+
+.signal-radial-core {
+  fill: var(--danger);
+}
+
 .signal-radial-warm .signal-radial-ring {
   stroke: rgba(244, 190, 113, 0.2);
 }
 
 .signal-radial-warm .signal-radial-spoke {
   stroke: #f4be71;
+}
+
+.signal-radial-warm .signal-radial-core-halo {
+  fill: rgba(243, 180, 92, 0.14);
+}
+
+.signal-radial-warm .signal-radial-core {
+  fill: var(--warning);
 }
 
 .signal-radial-idle {
@@ -1345,6 +1363,10 @@ input::placeholder {
 
 .signal-radial-idle .signal-radial-spoke {
   stroke: #9aa7b8;
+}
+
+.signal-radial-idle .signal-radial-core-halo {
+  fill: rgba(255, 93, 110, 0.1);
 }
 
 .signal-wave {

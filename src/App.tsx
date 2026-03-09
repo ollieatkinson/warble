@@ -992,6 +992,18 @@ function SignalBars({
             />
           );
         })}
+        <circle
+          cx={cx}
+          cy={cy}
+          r={compact ? 5.8 : 7}
+          className="signal-radial-core-halo"
+        />
+        <circle
+          cx={cx}
+          cy={cy}
+          r={compact ? 3.8 : 4.8}
+          className="signal-radial-core"
+        />
       </svg>
     );
   }
@@ -1139,6 +1151,7 @@ function TranscriptionPill({
   showLiveTranscription: boolean;
 }) {
   const copy = detail.trim() || title;
+  const usesRadialCore = animationStyle === "radial";
 
   return (
     <div
@@ -1150,7 +1163,7 @@ function TranscriptionPill({
       ].join(" ")}
     >
       <div className="indicator-mark">
-        <div className="indicator-dot" />
+        {usesRadialCore ? null : <div className="indicator-dot" />}
         <SignalBars
           phase={phase}
           levels={levels}
