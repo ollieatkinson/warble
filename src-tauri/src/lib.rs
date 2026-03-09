@@ -15,8 +15,8 @@ use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, Position, WebviewUrl, WebviewWindowBuilder,
-    WindowEvent,
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl,
+    WebviewWindowBuilder, WindowEvent,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -31,8 +31,6 @@ const DEFAULT_HOLD_SHORTCUT: &str = "F8";
 const DEFAULT_TOGGLE_SHORTCUT: &str = "F9";
 const LEGACY_HOLD_SHORTCUT: &str = "Ctrl+Alt+Space";
 const LEGACY_TOGGLE_SHORTCUT: &str = "Ctrl+Alt+Shift+Space";
-const INDICATOR_WIDTH: i32 = 320;
-const INDICATOR_HEIGHT: i32 = 76;
 const INDICATOR_MARGIN: i32 = 24;
 const LIVE_PREVIEW_INTERVAL_MS: u64 = 1_500;
 const LIVE_PREVIEW_MIN_MS: u64 = 900;
@@ -756,6 +754,21 @@ fn measure_overlay_levels(samples: &[f32]) -> Vec<f32> {
     levels
 }
 
+fn indicator_window_size(settings: &Settings) -> (i32, i32) {
+    let height = if settings.show_live_transcription { 64 } else { 56 };
+    let width = if settings.show_live_transcription {
+        276
+    } else {
+        match settings.overlay_animation_style {
+            OverlayAnimationStyle::Radial => 100,
+            OverlayAnimationStyle::Spectrum => 132,
+            OverlayAnimationStyle::Waveform => 138,
+        }
+    };
+
+    (width, height)
+}
+
 fn show_main_window(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
@@ -825,7 +838,13 @@ fn create_tray_icon(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
-fn indicator_origin(app: &AppHandle, overlay: &OverlaySnapshot, position: OverlayPosition) -> Option<PhysicalPosition<i32>> {
+fn indicator_origin(
+    app: &AppHandle,
+    overlay: &OverlaySnapshot,
+    position: OverlayPosition,
+    indicator_width: i32,
+    indicator_height: i32,
+) -> Option<PhysicalPosition<i32>> {
     let window = app.get_webview_window("indicator")?;
     let monitor = window
         .current_monitor()
@@ -841,9 +860,9 @@ fn indicator_origin(app: &AppHandle, overlay: &OverlaySnapshot, position: Overla
     if matches!(position, OverlayPosition::Caret) {
         if let Some(anchor) = overlay.anchor {
             let min_x = left + INDICATOR_MARGIN;
-            let max_x = left + width - INDICATOR_WIDTH - INDICATOR_MARGIN;
+            let max_x = left + width - indicator_width - INDICATOR_MARGIN;
             let min_y = top + INDICATOR_MARGIN;
-            let max_y = top + height - INDICATOR_HEIGHT - INDICATOR_MARGIN;
+            let max_y = top + height - indicator_height - INDICATOR_MARGIN;
 
             return Some(PhysicalPosition::new(
                 anchor.x.clamp(min_x, max_x.max(min_x)),
@@ -854,12 +873,12 @@ fn indicator_origin(app: &AppHandle, overlay: &OverlaySnapshot, position: Overla
 
     let x = match position {
         OverlayPosition::BottomLeft => left + INDICATOR_MARGIN,
-        OverlayPosition::BottomRight => left + width - INDICATOR_WIDTH - INDICATOR_MARGIN,
+        OverlayPosition::BottomRight => left + width - indicator_width - INDICATOR_MARGIN,
         OverlayPosition::BottomCenter | OverlayPosition::Caret => {
-            left + (width - INDICATOR_WIDTH) / 2
+            left + (width - indicator_width) / 2
         }
     };
-    let y = top + height - INDICATOR_HEIGHT - INDICATOR_MARGIN;
+    let y = top + height - indicator_height - INDICATOR_MARGIN;
 
     Some(PhysicalPosition::new(x.max(left), y.max(top)))
 }
@@ -892,17 +911,29 @@ fn register_shortcuts(app: &AppHandle, shared: &SharedState) -> Result<()> {
 }
 
 fn update_indicator_window(app: &AppHandle, shared: &SharedState) {
-    let (overlay, overlay_position) = {
+    let (overlay, settings) = {
         let core = shared.lock();
-        (core.overlay.clone(), core.settings.overlay_position)
+        (core.overlay.clone(), core.settings.clone())
     };
 
     let Some(window) = app.get_webview_window("indicator") else {
         return;
     };
 
+    let (indicator_width, indicator_height) = indicator_window_size(&settings);
+    let _ = window.set_size(Size::Physical(PhysicalSize::new(
+        indicator_width.max(1) as u32,
+        indicator_height.max(1) as u32,
+    )));
+
     if overlay.visible {
-        if let Some(position) = indicator_origin(app, &overlay, overlay_position) {
+        if let Some(position) = indicator_origin(
+            app,
+            &overlay,
+            settings.overlay_position,
+            indicator_width,
+            indicator_height,
+        ) {
             let _ = window.set_position(Position::Physical(position));
         }
         let _ = window.show();
@@ -1189,6 +1220,7 @@ fn create_indicator_window(app: &AppHandle) -> Result<()> {
         return Ok(());
     }
 
+    let (indicator_width, indicator_height) = indicator_window_size(&Settings::default());
     let window = WebviewWindowBuilder::new(
         app,
         "indicator",
@@ -1202,7 +1234,7 @@ fn create_indicator_window(app: &AppHandle) -> Result<()> {
     .always_on_top(true)
     .visible(false)
     .focused(false)
-    .inner_size(INDICATOR_WIDTH as f64, INDICATOR_HEIGHT as f64)
+    .inner_size(indicator_width as f64, indicator_height as f64)
     .build()?;
 
     let _ = window.set_focusable(false);
