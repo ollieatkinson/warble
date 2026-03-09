@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { DEMO_LEVELS } from "../constants";
-import { resampleLevels, smoothLevels } from "../lib/utils";
+import { formatElapsedClock, resampleLevels, smoothLevels } from "../lib/utils";
 import type {
   AppPhase,
   EditableOverlayPosition,
@@ -194,7 +194,10 @@ export function TranscriptionPill({
   detail,
   levels,
   animationStyle,
+  showRecordingTimer,
   showLiveTranscription,
+  elapsedMs = 0,
+  limitMs = null,
   onCancel,
 }: {
   phase: AppPhase;
@@ -202,12 +205,29 @@ export function TranscriptionPill({
   detail: string;
   levels: number[];
   animationStyle: OverlayAnimationStyle;
+  showRecordingTimer: boolean;
   showLiveTranscription: boolean;
+  elapsedMs?: number;
+  limitMs?: number | null;
   onCancel?: (() => void) | null;
 }) {
   const copy = detail.trim() || title;
   const usesRadialCore = animationStyle === "radial";
   const canCancel = phase === "recording" || phase === "transcribing";
+  const hasTimer = showRecordingTimer && canCancel;
+  const timerText = hasTimer
+    ? limitMs && limitMs > 0
+      ? `${formatElapsedClock(elapsedMs)} / ${formatElapsedClock(limitMs)}`
+      : formatElapsedClock(elapsedMs)
+    : "";
+  const timerTone =
+    limitMs && limitMs > 0
+      ? elapsedMs >= limitMs
+        ? "danger"
+        : elapsedMs >= limitMs * 0.8
+          ? "warning"
+          : "muted"
+      : "muted";
 
   return (
     <div
@@ -274,6 +294,16 @@ export function TranscriptionPill({
             </button>
           ) : null}
         </div>
+        {hasTimer ? (
+          <span
+            className={[
+              "indicator-timer",
+              `indicator-timer-${timerTone}`,
+            ].join(" ")}
+          >
+            {timerText}
+          </span>
+        ) : null}
       </div>
       {showLiveTranscription ? (
         <div className="indicator-copy">
@@ -305,7 +335,10 @@ export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
         detail={snapshot.overlay.detail}
         levels={snapshot.overlay.levels}
         animationStyle={snapshot.settings.overlayAnimationStyle}
+        showRecordingTimer={snapshot.settings.showRecordingTimer}
         showLiveTranscription={snapshot.settings.showLiveTranscription}
+        elapsedMs={snapshot.overlay.elapsedMs}
+        limitMs={snapshot.overlay.limitMs}
         onCancel={cancelFromOverlay}
       />
     </main>
@@ -369,10 +402,12 @@ export function AnimationOptionPreview({
 export function InterfacePreviewCard({
   overlayPosition,
   animationStyle,
+  showRecordingTimer,
   showLiveTranscription,
 }: {
   overlayPosition: EditableOverlayPosition;
   animationStyle: OverlayAnimationStyle;
+  showRecordingTimer: boolean;
   showLiveTranscription: boolean;
 }) {
   return (
@@ -385,7 +420,10 @@ export function InterfacePreviewCard({
             detail="Live preview text"
             levels={DEMO_LEVELS}
             animationStyle={animationStyle}
+            showRecordingTimer={showRecordingTimer}
             showLiveTranscription={showLiveTranscription}
+            elapsedMs={134_000}
+            limitMs={300_000}
           />
         </div>
       </div>

@@ -13,6 +13,7 @@ export function OverviewSection({
   activeModel,
   activeSource,
   animationStyle,
+  showRecordingTimer,
   showLiveTranscription,
   phase,
   historyCount,
@@ -20,6 +21,8 @@ export function OverviewSection({
   previewTitle,
   previewDetail,
   levels,
+  elapsedMs,
+  limitMs,
   recentTranscript,
   shortcutsActive,
   onStartRecording,
@@ -29,6 +32,7 @@ export function OverviewSection({
   activeModel: ModelRow | null;
   activeSource: SourceInfo | null;
   animationStyle: OverlayAnimationStyle;
+  showRecordingTimer: boolean;
   showLiveTranscription: boolean;
   phase: AppPhase;
   historyCount: number;
@@ -36,6 +40,8 @@ export function OverviewSection({
   previewTitle: string;
   previewDetail: string;
   levels: number[];
+  elapsedMs: number;
+  limitMs: number | null;
   recentTranscript: boolean;
   shortcutsActive: boolean;
   onStartRecording: (mode: "hold" | "toggle") => void;
@@ -102,7 +108,10 @@ export function OverviewSection({
             detail={previewDetail}
             levels={levels}
             animationStyle={animationStyle}
+            showRecordingTimer={showRecordingTimer}
             showLiveTranscription={showLiveTranscription}
+            elapsedMs={elapsedMs}
+            limitMs={limitMs}
             onCancel={onCancel}
           />
         </div>

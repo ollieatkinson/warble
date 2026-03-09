@@ -72,6 +72,22 @@ export function InterfaceSection({
           <label className="toggle-row toggle-row-card setting-toggle">
             <input
               type="checkbox"
+              checked={draft.showRecordingTimer}
+              onChange={(event) =>
+                void onApplySettings({
+                  showRecordingTimer: event.currentTarget.checked,
+                })
+              }
+            />
+            <div>
+              <strong>Show recording timer</strong>
+              <span>Shows elapsed capture time and warns as batch models near their limit.</span>
+            </div>
+          </label>
+
+          <label className="toggle-row toggle-row-card setting-toggle">
+            <input
+              type="checkbox"
               checked={draft.showLiveTranscription}
               onChange={(event) =>
                 void onApplySettings({
@@ -89,6 +105,7 @@ export function InterfaceSection({
         <div className="mini-meta-row">
           <span>{formatOverlayPosition(draft.overlayPosition)}</span>
           <span>{formatOverlayAnimationStyle(draft.overlayAnimationStyle)}</span>
+          <span>{draft.showRecordingTimer ? "Timer on" : "Timer off"}</span>
           <span>{draft.showLiveTranscription ? "Expanded HUD" : "Compact HUD"}</span>
         </div>
       </article>
@@ -103,6 +120,7 @@ export function InterfaceSection({
         <InterfacePreviewCard
           overlayPosition={draft.overlayPosition}
           animationStyle={draft.overlayAnimationStyle}
+          showRecordingTimer={draft.showRecordingTimer}
           showLiveTranscription={draft.showLiveTranscription}
         />
 

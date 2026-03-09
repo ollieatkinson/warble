@@ -167,10 +167,13 @@ fn begin_recording(app: &AppHandle, shared: &SharedState, mode: RecordingMode) -
         core.phase = AppPhase::Recording;
         core.status_message = format!("Recording from {}", started.source_name);
         core.error_message = None;
+        core.recording_started_at = Some(Instant::now());
         core.overlay.visible = true;
         core.overlay.title = "Listening".to_string();
         core.overlay.detail = String::new();
         core.overlay.levels = default_overlay_levels();
+        core.overlay.elapsed_ms = 0;
+        core.overlay.limit_ms = selected_model_audio_limit_ms(&core.settings);
         core.overlay.anchor = anchor;
         core.settings.selected_source_id = Some(started.source_id);
         core.sources = enumerate_sources();
@@ -535,12 +538,34 @@ fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
 fn indicator_window_size(settings: &Settings) -> (i32, i32) {
     let content_height = if settings.show_live_transcription { 64 } else { 58 };
     let content_width = if settings.show_live_transcription {
-        268
+        if settings.show_recording_timer {
+            332
+        } else {
+            268
+        }
     } else {
         match settings.overlay_animation_style {
-            OverlayAnimationStyle::Radial => 86,
-            OverlayAnimationStyle::Spectrum => 136,
-            OverlayAnimationStyle::Waveform => 142,
+            OverlayAnimationStyle::Radial => {
+                if settings.show_recording_timer {
+                    144
+                } else {
+                    86
+                }
+            }
+            OverlayAnimationStyle::Spectrum => {
+                if settings.show_recording_timer {
+                    194
+                } else {
+                    136
+                }
+            }
+            OverlayAnimationStyle::Waveform => {
+                if settings.show_recording_timer {
+                    202
+                } else {
+                    142
+                }
+            }
         }
     } as i32;
 
@@ -548,6 +573,23 @@ fn indicator_window_size(settings: &Settings) -> (i32, i32) {
         content_width + INDICATOR_WINDOW_PADDING * 2,
         content_height + INDICATOR_WINDOW_PADDING * 2,
     )
+}
+
+fn update_overlay_elapsed(core: &mut AppCore) {
+    if let Some(started_at) = core.recording_started_at {
+        core.overlay.elapsed_ms = started_at.elapsed().as_millis() as u64;
+    }
+}
+
+fn clear_overlay_session_state(core: &mut AppCore) {
+    core.overlay.visible = false;
+    core.overlay.title.clear();
+    core.overlay.detail.clear();
+    core.overlay.levels = default_overlay_levels();
+    core.overlay.elapsed_ms = 0;
+    core.overlay.limit_ms = None;
+    core.overlay.anchor = None;
+    core.recording_started_at = None;
 }
 
 fn show_main_window(app: &AppHandle) {
@@ -840,6 +882,7 @@ fn spawn_live_meter(
 ) {
     std::thread::spawn(move || {
         let mut last_levels = default_overlay_levels();
+        let mut last_elapsed_second = u64::MAX;
         let meter_window_samples =
             (preview_sample_rate as u64 * LIVE_METER_WINDOW_MS / 1_000) as usize;
 
@@ -867,14 +910,26 @@ fn spawn_live_meter(
                 break;
             }
 
+            let (timer_enabled, elapsed_ms) = {
+                let mut core = shared.lock();
+                if !matches!(core.phase, AppPhase::Recording) {
+                    break;
+                }
+                update_overlay_elapsed(&mut core);
+                (core.settings.show_recording_timer, core.overlay.elapsed_ms)
+            };
+            let elapsed_second = elapsed_ms / 1_000;
+
             if levels
                 .iter()
                 .zip(last_levels.iter())
                 .all(|(next, previous)| (next - previous).abs() < 0.025)
+                && (!timer_enabled || elapsed_second == last_elapsed_second)
             {
                 continue;
             }
             last_levels = levels.clone();
+            last_elapsed_second = elapsed_second;
 
             {
                 let mut core = shared.lock();
@@ -882,6 +937,7 @@ fn spawn_live_meter(
                     break;
                 }
                 core.overlay.levels = levels;
+                core.overlay.elapsed_ms = elapsed_ms;
             }
 
             emit_snapshot(&app, &shared);
@@ -937,9 +993,7 @@ fn complete_transcription(
                         core.error_message = None;
                         core.model_status = current_model_status(&app, &core.settings);
                         core.parakeet_model_status = built_in_parakeet_status(&app);
-                        core.overlay.visible = false;
-                        core.overlay.detail.clear();
-                        core.overlay.levels = default_overlay_levels();
+                        clear_overlay_session_state(&mut core);
                         drop(core);
                         update_indicator_window(&app, &shared);
                         emit_snapshot(&app, &shared);
@@ -990,9 +1044,7 @@ fn complete_transcription(
                     core.error_message = None;
                     core.model_status = current_model_status(&app, &core.settings);
                     core.parakeet_model_status = built_in_parakeet_status(&app);
-                    core.overlay.visible = false;
-                    core.overlay.detail.clear();
-                    core.overlay.levels = default_overlay_levels();
+                    clear_overlay_session_state(&mut core);
                     drop(core);
 
                     let _ = save_persisted_state(&app, &shared);
@@ -1004,9 +1056,7 @@ fn complete_transcription(
                     core.error_message = Some(error.to_string());
                     core.model_status = current_model_status(&app, &core.settings);
                     core.parakeet_model_status = built_in_parakeet_status(&app);
-                    core.overlay.visible = false;
-                    core.overlay.detail.clear();
-                    core.overlay.levels = default_overlay_levels();
+                    clear_overlay_session_state(&mut core);
                 }
             }
 
@@ -1024,9 +1074,7 @@ fn complete_transcription(
             ));
             core.model_status = current_model_status(&app, &core.settings);
             core.parakeet_model_status = built_in_parakeet_status(&app);
-            core.overlay.visible = false;
-            core.overlay.detail.clear();
-            core.overlay.levels = default_overlay_levels();
+            clear_overlay_session_state(&mut core);
             drop(core);
             update_indicator_window(&app, &shared);
             emit_snapshot(&app, &shared);
@@ -1055,9 +1103,7 @@ fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()> {
             core.phase = AppPhase::Idle;
             core.status_message = "Capture was too short".to_string();
             core.error_message = None;
-            core.overlay.visible = false;
-            core.overlay.detail.clear();
-            core.overlay.levels = default_overlay_levels();
+            clear_overlay_session_state(&mut core);
         }
         update_indicator_window(app, shared);
         emit_snapshot(app, shared);
@@ -1069,9 +1115,12 @@ fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()> {
         core.phase = AppPhase::Transcribing;
         core.status_message = "Running local Rust transcription".to_string();
         core.error_message = None;
+        core.recording_started_at = None;
         core.overlay.visible = true;
         core.overlay.title = "Transcribing".to_string();
         core.overlay.detail.clear();
+        core.overlay.elapsed_ms = completed.duration_ms;
+        core.overlay.limit_ms = selected_model_audio_limit_ms(&core.settings);
         core.overlay.anchor = completed.anchor;
     }
 
@@ -1113,11 +1162,7 @@ fn cancel_current_operation(app: &AppHandle, shared: &SharedState) -> Result<()>
                 core.phase = AppPhase::Idle;
                 core.status_message = "Recording cancelled".to_string();
                 core.error_message = None;
-                core.overlay.visible = false;
-                core.overlay.title.clear();
-                core.overlay.detail.clear();
-                core.overlay.levels = default_overlay_levels();
-                core.overlay.anchor = None;
+                clear_overlay_session_state(&mut core);
             }
 
             update_indicator_window(app, shared);
@@ -1131,11 +1176,7 @@ fn cancel_current_operation(app: &AppHandle, shared: &SharedState) -> Result<()>
                 core.phase = AppPhase::Idle;
                 core.status_message = "Transcription cancelled".to_string();
                 core.error_message = None;
-                core.overlay.visible = false;
-                core.overlay.title.clear();
-                core.overlay.detail.clear();
-                core.overlay.levels = default_overlay_levels();
-                core.overlay.anchor = None;
+                clear_overlay_session_state(&mut core);
             }
 
             update_indicator_window(app, shared);
@@ -1387,11 +1428,17 @@ fn update_settings_command(
         if let Some(overlay_animation_style) = update.overlay_animation_style {
             core.settings.overlay_animation_style = overlay_animation_style;
         }
+        if let Some(show_recording_timer) = update.show_recording_timer {
+            core.settings.show_recording_timer = show_recording_timer;
+        }
         if let Some(show_live_transcription) = update.show_live_transcription {
             core.settings.show_live_transcription = show_live_transcription;
             if !show_live_transcription {
                 core.overlay.detail.clear();
             }
+        }
+        if matches!(core.phase, AppPhase::Recording | AppPhase::Transcribing) {
+            core.overlay.limit_ms = selected_model_audio_limit_ms(&core.settings);
         }
     }
 

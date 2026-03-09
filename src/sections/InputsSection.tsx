@@ -17,6 +17,8 @@ export function InputsSection({
   previewTitle,
   previewDetail,
   buttonFeedback,
+  elapsedMs,
+  limitMs,
   onApplySettings,
   onRefreshDevices,
   onStartRecording,
@@ -30,6 +32,8 @@ export function InputsSection({
   previewTitle: string;
   previewDetail: string;
   buttonFeedback: Record<string, ButtonFeedbackState>;
+  elapsedMs: number;
+  limitMs: number | null;
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
   onRefreshDevices: () => void | Promise<void>;
   onStartRecording: (mode: "hold" | "toggle") => void;
@@ -99,7 +103,10 @@ export function InputsSection({
             detail={previewDetail}
             levels={snapshot.overlay.levels}
             animationStyle={draft.overlayAnimationStyle}
+            showRecordingTimer={draft.showRecordingTimer}
             showLiveTranscription={draft.showLiveTranscription}
+            elapsedMs={elapsedMs}
+            limitMs={limitMs}
             onCancel={onCancel}
           />
         </div>

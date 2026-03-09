@@ -17,6 +17,19 @@ export function formatDuration(durationMs: number) {
   return `${seconds.toFixed(seconds > 10 ? 0 : 1)}s`;
 }
 
+export function formatElapsedClock(durationMs: number) {
+  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 export function formatPhaseLabel(phase: AppPhase) {
   switch (phase) {
     case "recording":
@@ -223,6 +236,7 @@ export function buildSettingsUpdate(draft: SettingsDraft) {
     audioRetentionPolicy: draft.audioRetentionPolicy,
     overlayPosition: draft.overlayPosition,
     overlayAnimationStyle: draft.overlayAnimationStyle,
+    showRecordingTimer: draft.showRecordingTimer,
     showLiveTranscription: draft.showLiveTranscription,
   };
 }

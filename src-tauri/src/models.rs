@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 use crate::constants::{
-    PARAKEET_DECODER_DOWNLOAD_URL, PARAKEET_ENCODER_DOWNLOAD_URL,
+    BATCH_MODEL_AUDIO_LIMIT_MS, PARAKEET_DECODER_DOWNLOAD_URL, PARAKEET_ENCODER_DOWNLOAD_URL,
     PARAKEET_VOCAB_DOWNLOAD_URL,
 };
 use crate::parakeet;
@@ -211,6 +211,13 @@ pub(crate) fn current_model_status(app: &AppHandle, settings: &Settings) -> Mode
             }
         }
         TranscriptionModelKind::ParakeetCtc => ModelStatus::Missing,
+    }
+}
+
+pub(crate) fn selected_model_audio_limit_ms(settings: &Settings) -> Option<u64> {
+    match settings.selected_model_id.as_str() {
+        "parakeet" | "parakeet-ctc" => Some(BATCH_MODEL_AUDIO_LIMIT_MS),
+        _ => None,
     }
 }
 

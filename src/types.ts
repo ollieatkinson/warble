@@ -47,6 +47,7 @@ export type Settings = {
   audioRetentionPolicy: AudioRetentionPolicy;
   overlayPosition: OverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
+  showRecordingTimer: boolean;
   showLiveTranscription: boolean;
 };
 
@@ -74,6 +75,8 @@ export type OverlaySnapshot = {
   title: string;
   detail: string;
   levels: number[];
+  elapsedMs: number;
+  limitMs: number | null;
 };
 
 export type SystemProfile = {
@@ -106,6 +109,7 @@ export type SettingsDraft = {
   audioRetentionPolicy: AudioRetentionPolicy;
   overlayPosition: EditableOverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
+  showRecordingTimer: boolean;
   showLiveTranscription: boolean;
 };
 
@@ -154,6 +158,7 @@ export type ModelRow = {
   supportsDownload: boolean;
   downloadSizeBytes?: number;
   diskSizeBytes?: number;
+  audioLimitMs?: number | null;
   minimumMemoryBytes?: number;
   recommendedMemoryBytes?: number;
   minimumCores?: number;

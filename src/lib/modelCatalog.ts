@@ -41,6 +41,7 @@ const MODEL_CATALOG: Array<
     supportsInstall: true,
     supportsDownload: true,
     downloadSizeBytes: 593_000_000,
+    audioLimitMs: 5 * 60 * 1_000,
     minimumMemoryBytes: 4 * 1024 ** 3,
     recommendedMemoryBytes: 8 * 1024 ** 3,
     minimumCores: 4,
@@ -84,6 +85,7 @@ const MODEL_CATALOG: Array<
     supportsInstall: false,
     supportsDownload: false,
     downloadSizeBytes: 1_240_000_000,
+    audioLimitMs: 5 * 60 * 1_000,
     minimumMemoryBytes: 4 * 1024 ** 3,
     recommendedMemoryBytes: 8 * 1024 ** 3,
     minimumCores: 4,
@@ -302,6 +304,22 @@ export function formatModelSizeLabel(row: ModelRow) {
   }
 
   return row.footprint;
+}
+
+export function formatModelAudioLimit(row: ModelRow) {
+  if (typeof row.audioLimitMs === "number" && row.audioLimitMs > 0) {
+    const minutes = row.audioLimitMs / 60_000;
+    const label = Number.isInteger(minutes)
+      ? `${minutes.toFixed(0)} min`
+      : `${minutes.toFixed(1)} min`;
+    return `~${label} per pass`;
+  }
+
+  if (row.tags.includes("streaming")) {
+    return "Streaming / chunk-based";
+  }
+
+  return "Not specified";
 }
 
 function isManagedModelPath(path: string) {

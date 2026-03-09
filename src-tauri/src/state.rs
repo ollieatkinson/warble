@@ -107,6 +107,7 @@ pub(crate) struct Settings {
     pub(crate) audio_retention_policy: AudioRetentionPolicy,
     pub(crate) overlay_position: OverlayPosition,
     pub(crate) overlay_animation_style: OverlayAnimationStyle,
+    pub(crate) show_recording_timer: bool,
     pub(crate) show_live_transcription: bool,
 }
 
@@ -126,6 +127,7 @@ impl Default for Settings {
             audio_retention_policy: AudioRetentionPolicy::OneDay,
             overlay_position: OverlayPosition::BottomCenter,
             overlay_animation_style: OverlayAnimationStyle::Spectrum,
+            show_recording_timer: false,
             show_live_transcription: false,
         }
     }
@@ -166,6 +168,7 @@ pub(crate) struct SettingsUpdate {
     pub(crate) audio_retention_policy: Option<AudioRetentionPolicy>,
     pub(crate) overlay_position: Option<OverlayPosition>,
     pub(crate) overlay_animation_style: Option<OverlayAnimationStyle>,
+    pub(crate) show_recording_timer: Option<bool>,
     pub(crate) show_live_transcription: Option<bool>,
 }
 
@@ -186,6 +189,8 @@ pub(crate) struct OverlaySnapshot {
     pub(crate) title: String,
     pub(crate) detail: String,
     pub(crate) levels: Vec<f32>,
+    pub(crate) elapsed_ms: u64,
+    pub(crate) limit_ms: Option<u64>,
     pub(crate) anchor: Option<platform::CaretAnchor>,
 }
 
@@ -269,6 +274,7 @@ pub(crate) struct AppCore {
     pub(crate) model_status: ModelStatus,
     pub(crate) parakeet_model_status: ModelStatus,
     pub(crate) overlay: OverlaySnapshot,
+    pub(crate) recording_started_at: Option<Instant>,
 }
 
 impl AppCore {
@@ -290,8 +296,11 @@ impl AppCore {
                 title: String::new(),
                 detail: String::new(),
                 levels: default_overlay_levels(),
+                elapsed_ms: 0,
+                limit_ms: None,
                 anchor: None,
             },
+            recording_started_at: None,
         }
     }
 }

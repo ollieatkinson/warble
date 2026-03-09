@@ -11,6 +11,7 @@ import { fetchSnapshot, useSnapshotState } from "./hooks/useSnapshotState";
 import {
   buildModelRows,
   describeHardwareFit,
+  formatModelAudioLimit,
   formatModelSizeLabel,
   matchesModel,
 } from "./lib/modelCatalog";
@@ -76,6 +77,7 @@ function ControlApp({
     audioRetentionPolicy: "one-day",
     overlayPosition: "bottom-center",
     overlayAnimationStyle: "spectrum",
+    showRecordingTimer: false,
     showLiveTranscription: false,
   });
   const draftRef = useRef(draft);
@@ -120,6 +122,7 @@ function ControlApp({
         snapshot.settings.overlayPosition,
       ),
       overlayAnimationStyle: snapshot.settings.overlayAnimationStyle,
+      showRecordingTimer: snapshot.settings.showRecordingTimer,
       showLiveTranscription: snapshot.settings.showLiveTranscription,
     });
   }, [snapshot]);
@@ -563,6 +566,7 @@ function ControlApp({
         ["Architecture", selectedModel.architecture],
         ["Parameters", selectedModel.footprint],
         ["Runtime", selectedModel.runtime],
+        ["Audio limit", formatModelAudioLimit(selectedModel)],
         [
           "Download size",
           selectedModel.downloadSizeBytes
@@ -708,6 +712,7 @@ function ControlApp({
               activeModel={activeModel}
               activeSource={activeSource}
               animationStyle={draft.overlayAnimationStyle}
+              showRecordingTimer={draft.showRecordingTimer}
               showLiveTranscription={draft.showLiveTranscription}
               phase={snapshot.phase}
               historyCount={snapshot.history.length}
@@ -715,6 +720,8 @@ function ControlApp({
               previewTitle={previewTitle}
               previewDetail={previewDetail}
               levels={snapshot.overlay.levels}
+              elapsedMs={snapshot.overlay.elapsedMs}
+              limitMs={snapshot.overlay.limitMs}
               recentTranscript={Boolean(recentTranscript)}
               shortcutsActive={snapshot.shortcutsActive}
               onStartRecording={startRecording}
@@ -766,7 +773,10 @@ function ControlApp({
           ) : null}
 
           {activeSection === "interface" ? (
-            <InterfaceSection draft={draft} onApplySettings={applySettings} />
+            <InterfaceSection
+              draft={draft}
+              onApplySettings={applySettings}
+            />
           ) : null}
 
           {activeSection === "cleanup" ? (
@@ -792,6 +802,8 @@ function ControlApp({
               previewTitle={previewTitle}
               previewDetail={previewDetail}
               buttonFeedback={buttonFeedback}
+              elapsedMs={snapshot.overlay.elapsedMs}
+              limitMs={snapshot.overlay.limitMs}
               onApplySettings={applySettings}
               onRefreshDevices={refreshDevices}
               onStartRecording={startRecording}
