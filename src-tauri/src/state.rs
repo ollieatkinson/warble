@@ -217,6 +217,9 @@ pub(crate) struct Snapshot {
 pub(crate) struct SystemProfile {
     pub(crate) logical_cores: usize,
     pub(crate) total_memory_bytes: u64,
+    pub(crate) gpu_name: Option<String>,
+    pub(crate) gpu_memory_bytes: u64,
+    pub(crate) directml_available: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

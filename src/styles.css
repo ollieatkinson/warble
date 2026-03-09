@@ -919,6 +919,11 @@ input::placeholder {
   font-size: 0.72rem;
 }
 
+.model-inline-pill-accent {
+  background: rgba(111, 157, 255, 0.14);
+  color: #c8d9ff;
+}
+
 .model-feature-list {
   display: flex;
   flex-wrap: wrap;
@@ -1037,6 +1042,10 @@ input::placeholder {
   display: grid;
   gap: 0.45rem;
   padding-left: 1rem;
+}
+
+.model-focus-unlocks {
+  margin-top: 0.7rem;
 }
 
 .model-focus-meta-list {
@@ -1480,6 +1489,53 @@ input::placeholder {
 
 .interface-preview-mini > span {
   font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.feature-unlock-panel {
+  margin-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 0.8rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.feature-unlock-head {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.feature-unlock-head span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.feature-unlock-list {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.feature-unlock-row {
+  display: grid;
+  grid-template-columns: minmax(0, 150px) minmax(0, 1fr);
+  gap: 0.9rem;
+  padding: 0.68rem 0.8rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.feature-unlock-row:last-child {
+  border-bottom: none;
+}
+
+.feature-unlock-row strong {
+  font-weight: 600;
+}
+
+.feature-unlock-row span {
   color: var(--muted);
 }
 

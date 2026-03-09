@@ -6,7 +6,11 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 use crate::constants::{
-    BATCH_MODEL_AUDIO_LIMIT_MS, PARAKEET_DECODER_DOWNLOAD_URL, PARAKEET_ENCODER_DOWNLOAD_URL,
+    BATCH_MODEL_AUDIO_LIMIT_MS, NEMOTRON_DECODER_DOWNLOAD_URL,
+    NEMOTRON_ENCODER_DATA_DOWNLOAD_URL, NEMOTRON_ENCODER_DOWNLOAD_URL,
+    NEMOTRON_TOKENIZER_DOWNLOAD_URL, PARAKEET_DECODER_DOWNLOAD_URL,
+    PARAKEET_ENCODER_DOWNLOAD_URL, PARAKEET_EOU_DECODER_DOWNLOAD_URL,
+    PARAKEET_EOU_ENCODER_DOWNLOAD_URL, PARAKEET_EOU_TOKENIZER_DOWNLOAD_URL,
     PARAKEET_VOCAB_DOWNLOAD_URL,
 };
 use crate::parakeet;
@@ -27,6 +31,7 @@ pub(crate) struct CatalogDownloadSpec {
     pub(crate) model_id: &'static str,
     pub(crate) model_kind: TranscriptionModelKind,
     pub(crate) display_name: &'static str,
+    activates_as_default: bool,
     files: &'static [CatalogDownloadFile],
     model_dir_name: &'static str,
 }
@@ -46,13 +51,62 @@ pub(crate) fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpe
             download_url: PARAKEET_VOCAB_DOWNLOAD_URL,
         },
     ];
+    const PARAKEET_EOU_FILES: &[CatalogDownloadFile] = &[
+        CatalogDownloadFile {
+            file_name: "encoder.onnx",
+            download_url: PARAKEET_EOU_ENCODER_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "decoder_joint.onnx",
+            download_url: PARAKEET_EOU_DECODER_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "tokenizer.json",
+            download_url: PARAKEET_EOU_TOKENIZER_DOWNLOAD_URL,
+        },
+    ];
+    const NEMOTRON_FILES: &[CatalogDownloadFile] = &[
+        CatalogDownloadFile {
+            file_name: "encoder.onnx",
+            download_url: NEMOTRON_ENCODER_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "encoder.onnx.data",
+            download_url: NEMOTRON_ENCODER_DATA_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "decoder_joint.onnx",
+            download_url: NEMOTRON_DECODER_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "tokenizer.model",
+            download_url: NEMOTRON_TOKENIZER_DOWNLOAD_URL,
+        },
+    ];
     match model_id {
         "parakeet" => Some(CatalogDownloadSpec {
             model_id: "parakeet",
             model_kind: TranscriptionModelKind::Parakeet,
             display_name: "Parakeet TDT",
+            activates_as_default: true,
             files: PARAKEET_FILES,
             model_dir_name: parakeet::MODEL_ID,
+        }),
+        "parakeet-eou" => Some(CatalogDownloadSpec {
+            model_id: "parakeet-eou",
+            model_kind: TranscriptionModelKind::Parakeet,
+            display_name: "Parakeet Realtime EOU",
+            activates_as_default: false,
+            files: PARAKEET_EOU_FILES,
+            model_dir_name: "realtime_eou_120m-v1-onnx",
+        }),
+        "nemotron-streaming" => Some(CatalogDownloadSpec {
+            model_id: "nemotron-streaming",
+            model_kind: TranscriptionModelKind::Parakeet,
+            display_name: "Nemotron Streaming",
+            activates_as_default: false,
+            files: NEMOTRON_FILES,
+            model_dir_name: "nemotron-speech-streaming-en-0.6b",
         }),
         _ => None,
     }
@@ -354,14 +408,30 @@ pub(crate) fn download_catalog_model(
             .map_err(|error| format!("Couldn't move downloaded model into place: {error}"))?;
     }
 
-    let inspection = inspect_model_candidate(&model_dir.display().to_string())?;
-    activate_catalog_model(
-        app,
-        shared,
-        spec.model_id.to_string(),
-        spec.model_kind,
-        inspection,
-    )
+    if spec.activates_as_default {
+        let inspection = inspect_model_candidate(&model_dir.display().to_string())?;
+        activate_catalog_model(
+            app,
+            shared,
+            spec.model_id.to_string(),
+            spec.model_kind,
+            inspection,
+        )
+    } else {
+        {
+            let mut core = shared.lock();
+            core.settings
+                .installed_model_paths
+                .insert(spec.model_id.to_string(), download_root.display().to_string());
+            core.status_message = format!(
+                "Installed {}. Streaming features are now available.",
+                spec.display_name
+            );
+            core.error_message = None;
+        }
+
+        persist_and_emit_settings_change(app, shared)
+    }
 }
 
 pub(crate) fn remove_catalog_model(

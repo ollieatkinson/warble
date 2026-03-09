@@ -11,10 +11,24 @@ import type { SettingsDraft } from "../types";
 export function InterfaceSection({
   draft,
   onApplySettings,
+  installedStreamingModels,
+  directmlAvailable,
 }: {
   draft: SettingsDraft;
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
+  installedStreamingModels: Array<{
+    id: string;
+    name: string;
+    unlockedFeatures: string[];
+    directmlCapable: boolean;
+  }>;
+  directmlAvailable: boolean;
 }) {
+  const unlockedFeatures = Array.from(
+    new Set(installedStreamingModels.flatMap((model) => model.unlockedFeatures)),
+  );
+  const installedModelLabel = installedStreamingModels.map((model) => model.name).join(" · ");
+
   return (
     <section className="compact-grid-two">
       <article className="surface preference-surface">
@@ -107,6 +121,45 @@ export function InterfaceSection({
           <span>{formatOverlayAnimationStyle(draft.overlayAnimationStyle)}</span>
           <span>{draft.showRecordingTimer ? "Timer on" : "Timer off"}</span>
           <span>{draft.showLiveTranscription ? "Expanded HUD" : "Compact HUD"}</span>
+        </div>
+
+        <div className="feature-unlock-panel">
+          <div className="feature-unlock-head">
+            <strong>Streaming features</strong>
+            <span>
+              {installedStreamingModels.length > 0
+                ? `${installedStreamingModels.length} add-on${installedStreamingModels.length > 1 ? "s" : ""} installed`
+                : "Install Realtime EOU or Nemotron in Models"}
+            </span>
+          </div>
+          <div className="feature-unlock-list">
+            <div className="feature-unlock-row">
+              <strong>Live transcript</strong>
+              <span>
+                {unlockedFeatures.includes("Live transcript")
+                  ? `Unlocked by ${installedModelLabel}`
+                  : "Locked until a streaming model is installed"}
+              </span>
+            </div>
+            <div className="feature-unlock-row">
+              <strong>Long-form guidance</strong>
+              <span>
+                {unlockedFeatures.includes("Long-form guidance")
+                  ? "Unlocked for longer speech workflows"
+                  : "Install a streaming model to remove the short batch-only mental model"}
+              </span>
+            </div>
+            <div className="feature-unlock-row">
+              <strong>GPU acceleration</strong>
+              <span>
+                {installedStreamingModels.some((model) => model.directmlCapable)
+                  ? directmlAvailable
+                    ? "DirectML ready on this Windows machine"
+                    : "Model supports DirectML, but this PC is not reporting DirectML-ready"
+                  : "No DirectML-capable streaming model installed"}
+              </span>
+            </div>
+          </div>
         </div>
       </article>
 

@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "windows")]
+use std::process::Command;
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(target_os = "windows")]
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
@@ -110,25 +113,92 @@ pub(crate) fn detect_system_profile() -> SystemProfile {
         .unwrap_or(4);
 
     #[cfg(target_os = "windows")]
-    let total_memory_bytes = {
+    let (total_memory_bytes, gpu_name, gpu_memory_bytes, directml_available) = {
         let mut status = MEMORYSTATUSEX::default();
         status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
-        unsafe {
+        let total_memory_bytes = unsafe {
             if GlobalMemoryStatusEx(&mut status).is_ok() {
                 status.ullTotalPhys
             } else {
                 0
             }
-        }
+        };
+        let (gpu_name, gpu_memory_bytes) = detect_primary_gpu();
+        let directml_available = gpu_name.is_some() && directml_runtime_available();
+        (
+            total_memory_bytes,
+            gpu_name,
+            gpu_memory_bytes,
+            directml_available,
+        )
     };
 
     #[cfg(not(target_os = "windows"))]
-    let total_memory_bytes = 0;
+    let (total_memory_bytes, gpu_name, gpu_memory_bytes, directml_available) =
+        (0, None, 0, false);
 
     SystemProfile {
         logical_cores,
         total_memory_bytes,
+        gpu_name,
+        gpu_memory_bytes,
+        directml_available,
     }
+}
+
+#[cfg(target_os = "windows")]
+fn directml_runtime_available() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|parent| parent.join("DirectML.dll")))
+        .map(|path| path.exists())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn detect_primary_gpu() -> (Option<String>, u64) {
+    let output = Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "try { $gpu = Get-CimInstance Win32_VideoController | Sort-Object -Property AdapterRAM -Descending | Select-Object -First 1 Name,AdapterRAM; if ($gpu) { $gpu | ConvertTo-Json -Compress } } catch { '' }",
+        ])
+        .output();
+
+    let Ok(output) = output else {
+        return (None, 0);
+    };
+
+    if !output.status.success() {
+        return (None, 0);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return (None, 0);
+    }
+
+    let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+        return (None, 0);
+    };
+
+    let name = value
+        .get("Name")
+        .and_then(|field| field.as_str())
+        .map(str::trim)
+        .filter(|field| !field.is_empty())
+        .map(ToOwned::to_owned);
+    let gpu_memory_bytes = value
+        .get("AdapterRAM")
+        .and_then(|field| match field {
+            Value::Number(value) => value.as_u64(),
+            Value::String(value) => value.parse::<u64>().ok(),
+            _ => None,
+        })
+        .unwrap_or(0);
+
+    (name, gpu_memory_bytes)
 }
 
 pub(crate) fn path_if_not_empty(value: Option<String>) -> Option<String> {

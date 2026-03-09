@@ -106,7 +106,19 @@ export function formatSystemProfile(profile: SystemProfile) {
       ? `${formatBytes(profile.totalMemoryBytes)} RAM`
       : "RAM unknown";
   const coreLabel = `${profile.logicalCores} threads`;
-  return `${memoryLabel} · ${coreLabel}`;
+  const parts = [memoryLabel, coreLabel];
+
+  if (profile.gpuName) {
+    parts.push(profile.gpuName);
+  }
+  if (profile.gpuMemoryBytes > 0) {
+    parts.push(`${formatBytes(profile.gpuMemoryBytes)} VRAM`);
+  }
+  if (profile.directmlAvailable) {
+    parts.push("DirectML ready");
+  }
+
+  return parts.join(" · ");
 }
 
 export function toneForPhase(phase: AppPhase): StatusTone {

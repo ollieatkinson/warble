@@ -37,3 +37,17 @@ pub(crate) const PARAKEET_DECODER_DOWNLOAD_URL: &str =
     "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/decoder_joint-model.int8.onnx";
 pub(crate) const PARAKEET_VOCAB_DOWNLOAD_URL: &str =
     "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/vocab.txt";
+pub(crate) const PARAKEET_EOU_ENCODER_DOWNLOAD_URL: &str =
+    "https://huggingface.co/altunenes/parakeet-rs/resolve/main/realtime_eou_120m-v1-onnx/encoder.onnx";
+pub(crate) const PARAKEET_EOU_DECODER_DOWNLOAD_URL: &str =
+    "https://huggingface.co/altunenes/parakeet-rs/resolve/main/realtime_eou_120m-v1-onnx/decoder_joint.onnx";
+pub(crate) const PARAKEET_EOU_TOKENIZER_DOWNLOAD_URL: &str =
+    "https://huggingface.co/altunenes/parakeet-rs/resolve/main/realtime_eou_120m-v1-onnx/tokenizer.json";
+pub(crate) const NEMOTRON_ENCODER_DOWNLOAD_URL: &str =
+    "https://huggingface.co/altunenes/parakeet-rs/resolve/main/nemotron-speech-streaming-en-0.6b/encoder.onnx";
+pub(crate) const NEMOTRON_ENCODER_DATA_DOWNLOAD_URL: &str =
+    "https://huggingface.co/altunenes/parakeet-rs/resolve/main/nemotron-speech-streaming-en-0.6b/encoder.onnx.data";
+pub(crate) const NEMOTRON_DECODER_DOWNLOAD_URL: &str =
+    "https://huggingface.co/altunenes/parakeet-rs/resolve/main/nemotron-speech-streaming-en-0.6b/decoder_joint.onnx";
+pub(crate) const NEMOTRON_TOKENIZER_DOWNLOAD_URL: &str =
+    "https://huggingface.co/altunenes/parakeet-rs/resolve/main/nemotron-speech-streaming-en-0.6b/tokenizer.model";

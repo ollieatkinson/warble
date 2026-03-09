@@ -566,6 +566,14 @@ function ControlApp({
         ["Architecture", selectedModel.architecture],
         ["Parameters", selectedModel.footprint],
         ["Runtime", selectedModel.runtime],
+        [
+          "Acceleration",
+          selectedModel.directmlCapable
+            ? snapshot?.systemProfile.directmlAvailable
+              ? "DirectML GPU ready on this PC"
+              : "DirectML-capable model"
+            : "CPU / ONNX",
+        ],
         ["Audio limit", formatModelAudioLimit(selectedModel)],
         [
           "Download size",
@@ -574,6 +582,12 @@ function ControlApp({
             : "Included / n.a.",
         ],
         ["Size on disk", formatBytes(selectedModel.diskSizeBytes)],
+        [
+          "Unlocks",
+          selectedModel.unlockedFeatures?.length
+            ? selectedModel.unlockedFeatures.join(" · ")
+            : "Default dictation engine",
+        ],
         ["Speed", selectedModel.speed],
         ["Quality", selectedModel.quality],
         ["License", selectedModel.license],
@@ -652,6 +666,12 @@ function ControlApp({
     matchesModel(row, modelQuery, modelFilter),
   );
   const cleanupTerms = snapshot.settings.cleanupTerms;
+  const installedStreamingModels = modelRows.filter(
+    (row) =>
+      row.state === "ready" &&
+      row.tags.includes("streaming") &&
+      (row.unlockedFeatures?.length ?? 0) > 0,
+  );
 
   return (
     <main
@@ -776,6 +796,13 @@ function ControlApp({
             <InterfaceSection
               draft={draft}
               onApplySettings={applySettings}
+              installedStreamingModels={installedStreamingModels.map((row) => ({
+                id: row.id,
+                name: row.name,
+                unlockedFeatures: row.unlockedFeatures ?? [],
+                directmlCapable: Boolean(row.directmlCapable),
+              }))}
+              directmlAvailable={snapshot.systemProfile.directmlAvailable}
             />
           ) : null}
 

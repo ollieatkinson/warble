@@ -105,7 +105,7 @@ export function ModelsSection({
       <div className="model-library-head">
         <div className="model-library-copy">
           <span className="surface-title-label">Speech models</span>
-          <p>Compare NVIDIA speech runtimes, streaming variants, and speaker-aware pipelines.</p>
+          <p>Compare NVIDIA speech runtimes, DirectML-ready streaming add-ons, and speaker-aware pipelines.</p>
         </div>
       </div>
 
@@ -136,6 +136,9 @@ export function ModelsSection({
             label={activeModel ? `${activeModel.name} active` : "No active model"}
             tone={snapshot.modelStatus === "ready" ? "success" : "warning"}
           />
+          {snapshot.systemProfile.directmlAvailable ? (
+            <StatusChip label="DirectML ready" tone="accent" />
+          ) : null}
           {selectedModelFit ? (
             <StatusChip label={selectedModelFit.label} tone={selectedModelFit.tone} />
           ) : null}
@@ -217,6 +220,9 @@ export function ModelsSection({
                       <div className="model-entry-head">
                         <strong>{row.name}</strong>
                         {row.active ? <span className="model-inline-pill">Default</span> : null}
+                        {!row.selectable && row.state === "ready" ? (
+                          <span className="model-inline-pill model-inline-pill-accent">Installed</span>
+                        ) : null}
                       </div>
                       <div className="model-entry-meta">
                         <span>{row.provider}</span>
@@ -258,7 +264,7 @@ export function ModelsSection({
                           Use
                         </button>
                       ) : null}
-                      {row.supportsDownload && !row.selectable ? (
+                      {row.supportsDownload && row.state !== "ready" && !row.selectable ? (
                         <ActionButton
                           className="secondary small"
                           state={buttonFeedback[`model-download:${row.id}`]}
@@ -297,6 +303,9 @@ export function ModelsSection({
                           onClick={() => onRemoveCatalogModel(row)}
                           iconOnly
                         />
+                      ) : null}
+                      {!row.selectable && row.state === "ready" ? (
+                        <StatusChip label="Unlocked" tone="accent" />
                       ) : null}
                       {row.hfUrl ? (
                         <button
@@ -345,7 +354,11 @@ export function ModelsSection({
                 label={
                   selectedModel.active
                     ? "Active"
-                    : selectedModel.selectable
+                    : selectedModel.state === "ready"
+                      ? selectedModel.selectable
+                        ? "Ready"
+                        : "Installed"
+                      : selectedModel.selectable
                       ? "Ready"
                       : selectedModel.state === "downloadable"
                         ? "Downloadable"
@@ -354,7 +367,11 @@ export function ModelsSection({
                 tone={
                   selectedModel.active
                     ? "success"
-                    : selectedModel.selectable
+                    : selectedModel.state === "ready"
+                      ? selectedModel.selectable
+                        ? "success"
+                        : "accent"
+                      : selectedModel.selectable
                       ? "success"
                       : selectedModel.state === "downloadable"
                         ? "accent"
@@ -386,6 +403,14 @@ export function ModelsSection({
                   />
                 ))}
               </div>
+
+              {selectedModel.unlockedFeatures?.length ? (
+                <ul className="detail-list model-focus-unlocks">
+                  {selectedModel.unlockedFeatures.map((feature) => (
+                    <li key={feature}>{feature}</li>
+                  ))}
+                </ul>
+              ) : null}
 
               <div className="inline-actions model-focus-actions">
                 {selectedModel.supportsDownload ? (

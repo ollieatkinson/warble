@@ -18,6 +18,7 @@ const MODEL_CATALOG: Array<
     footprint: "0.6B",
     runtime: "Ready in app",
     license: "See model card",
+    supportsDefaultSelection: true,
     summary:
       "Multilingual offline dictation model with fast local ONNX inference and timestamp support.",
     note:
@@ -61,6 +62,7 @@ const MODEL_CATALOG: Array<
     footprint: "0.6B",
     runtime: "Stable runtime pending",
     license: "See model card",
+    supportsDefaultSelection: false,
     summary:
       "English-first Parakeet variant aimed at fast offline transcription with punctuation and capitalization.",
     note:
@@ -103,18 +105,21 @@ const MODEL_CATALOG: Array<
     speed: "Realtime",
     quality: "Balanced",
     footprint: "120M",
-    runtime: "Streaming runtime pending",
+    runtime: "Streaming add-on",
     license: "See model card",
+    supportsDefaultSelection: false,
+    directmlCapable: true,
     summary:
       "Lightweight streaming ASR model with end-of-utterance detection for low-latency voice UX.",
     note:
-      "The best candidate for a future live preview path once we wire a proper streaming session into the app.",
+      "The best candidate for a low-latency live transcript path, with GPU acceleration available on Windows through DirectML in parakeet-rs.",
     bestFor: "Low-latency live dictation",
     capabilities: ["EOU detection", "160 ms chunking", "Stateful streaming"],
+    unlockedFeatures: ["Live transcript", "Low-latency preview", "Long-form guidance"],
     featureBadges: [
       { id: "stream", label: "Streaming", icon: "bolt" },
       { id: "eou", label: "EOU", icon: "clock" },
-      { id: "light", label: "120M", icon: "spark" },
+      { id: "directml", label: "DirectML", icon: "bolt" },
     ],
     highlights: [
       "Lowest-footprint speech model in the current NVIDIA set",
@@ -127,7 +132,10 @@ const MODEL_CATALOG: Array<
     artifactLabel: "Compatible ONNX export",
     tags: ["nvidia", "streaming", "future"],
     supportsInstall: false,
-    supportsDownload: false,
+    supportsDownload: true,
+    downloadSizeBytes: 480_708_981,
+    minimumGpuMemoryBytes: 2 * 1024 ** 3,
+    recommendedGpuMemoryBytes: 4 * 1024 ** 3,
     minimumMemoryBytes: 4 * 1024 ** 3,
     recommendedMemoryBytes: 8 * 1024 ** 3,
     minimumCores: 6,
@@ -145,18 +153,21 @@ const MODEL_CATALOG: Array<
     speed: "Realtime",
     quality: "High",
     footprint: "0.6B",
-    runtime: "Streaming runtime pending",
+    runtime: "Streaming add-on",
     license: "See model card",
+    supportsDefaultSelection: false,
+    directmlCapable: true,
     summary:
       "English streaming model with punctuation-oriented decoding and a cache-aware inference path.",
     note:
-      "A stronger streaming candidate than the batch models when the goal is fast incremental text with cleaner punctuation.",
+      "A stronger live transcript candidate than the batch models when you want cleaner punctuation, with DirectML GPU acceleration available on Windows through parakeet-rs.",
     bestFor: "Streaming English transcription with punctuation",
     capabilities: ["Cache-aware streaming", "Punctuation-friendly", "Batch + stream capable"],
+    unlockedFeatures: ["Live transcript", "Punctuated live transcript", "Long-form guidance"],
     featureBadges: [
       { id: "stream", label: "Streaming", icon: "bolt" },
       { id: "timed", label: "Punctuated", icon: "clock" },
-      { id: "rnnt", label: "RNNT", icon: "spark" },
+      { id: "directml", label: "DirectML", icon: "bolt" },
     ],
     highlights: [
       "Official NVIDIA streaming ASR family",
@@ -169,7 +180,10 @@ const MODEL_CATALOG: Array<
     artifactLabel: "Compatible ONNX export",
     tags: ["nvidia", "streaming", "future"],
     supportsInstall: false,
-    supportsDownload: false,
+    supportsDownload: true,
+    downloadSizeBytes: 2_515_376_329,
+    minimumGpuMemoryBytes: 4 * 1024 ** 3,
+    recommendedGpuMemoryBytes: 8 * 1024 ** 3,
     minimumMemoryBytes: 8 * 1024 ** 3,
     recommendedMemoryBytes: 16 * 1024 ** 3,
     minimumCores: 8,
@@ -189,6 +203,8 @@ const MODEL_CATALOG: Array<
     footprint: "4 speakers",
     runtime: "Speaker pipeline pending",
     license: "See model card",
+    supportsDefaultSelection: false,
+    directmlCapable: true,
     summary:
       "Streaming diarization model for splitting live audio into speaker segments before transcription.",
     note:
@@ -228,6 +244,8 @@ const MODEL_CATALOG: Array<
     footprint: "4 speakers",
     runtime: "Speaker pipeline pending",
     license: "See model card",
+    supportsDefaultSelection: false,
+    directmlCapable: true,
     summary:
       "Newer Sortformer diarization revision for speaker segmentation in live or chunked audio.",
     note:
@@ -267,6 +285,8 @@ const MODEL_CATALOG: Array<
     footprint: "0.6B pipeline",
     runtime: "Speaker pipeline pending",
     license: "See model card",
+    supportsDefaultSelection: false,
+    directmlCapable: true,
     summary:
       "Multi-instance streaming ASR pipeline that turns overlapping speech into per-speaker transcripts.",
     note:
@@ -363,6 +383,7 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
       activeModelId === entry.id &&
       snapshot.settings.selectedModelKind === entry.modelKind;
     const runtimeDisabled = entry.id === "parakeet-ctc";
+    const supportsDefaultSelection = entry.supportsDefaultSelection !== false;
     const isReady = Boolean(installedPath);
     const supportsDownload = Boolean(entry.supportsDownload);
     const isManaged = Boolean(installedPath && isManagedModelPath(installedPath));
@@ -378,21 +399,33 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
             : "planned",
       source: "catalog",
       managed: isManaged,
-      active: !runtimeDisabled && isSelectedEngine && snapshot.modelStatus === "ready",
-      selectable: !runtimeDisabled && isReady,
+      active:
+        !runtimeDisabled &&
+        supportsDefaultSelection &&
+        isSelectedEngine &&
+        snapshot.modelStatus === "ready",
+      selectable: !runtimeDisabled && supportsDefaultSelection && isReady,
       runtime: isReady
-        ? "Ready in app"
+        ? supportsDefaultSelection
+          ? "Ready in app"
+          : entry.directmlCapable && snapshot.systemProfile.directmlAvailable
+            ? "Installed add-on · DirectML ready"
+            : "Installed add-on"
         : supportsDownload
           ? "Download in app"
           : entry.runtime,
       note: runtimeDisabled
         ? "Catalog reference only for now. The stable runtime currently falls back to Parakeet TDT."
         : isReady
-          ? isManaged
-            ? "Downloaded into Transcribed and ready to use locally."
-            : "Linked to a local model folder. You can activate it from this catalog entry."
+          ? supportsDefaultSelection
+            ? isManaged
+              ? "Downloaded into Transcribed and ready to use locally."
+              : "Linked to a local model folder. You can activate it from this catalog entry."
+            : `Installed in Transcribed. Unlocks ${entry.unlockedFeatures?.join(", ") ?? "additional streaming capabilities"}.`
           : supportsDownload
-            ? "Download this NVIDIA speech model or point Transcribed at an existing compatible folder."
+            ? entry.supportsInstall
+              ? "Download this NVIDIA speech model or point Transcribed at an existing compatible folder."
+              : "Download this NVIDIA speech model into Transcribed to unlock its add-on capabilities."
             : entry.note,
       path: installedPath,
       diskSizeBytes: snapshot.installedModelSizes[entry.id] ?? 0,
@@ -407,7 +440,16 @@ function formatHardwareTarget(row: ModelRow) {
     : row.minimumMemoryBytes
       ? formatBytes(row.minimumMemoryBytes)
       : null;
+  const gpuLabel = row.recommendedGpuMemoryBytes
+    ? formatBytes(row.recommendedGpuMemoryBytes)
+    : row.minimumGpuMemoryBytes
+      ? formatBytes(row.minimumGpuMemoryBytes)
+      : null;
   const coreLabel = row.recommendedCores ?? row.minimumCores ?? null;
+
+  if (memoryLabel && gpuLabel && coreLabel) {
+    return `${memoryLabel} RAM, ${gpuLabel} VRAM, and ${coreLabel}+ threads`;
+  }
 
   if (memoryLabel && coreLabel) {
     return `${memoryLabel} RAM and ${coreLabel}+ threads`;
@@ -415,6 +457,10 @@ function formatHardwareTarget(row: ModelRow) {
 
   if (memoryLabel) {
     return `${memoryLabel} RAM`;
+  }
+
+  if (gpuLabel) {
+    return `${gpuLabel} VRAM`;
   }
 
   if (coreLabel) {
@@ -446,22 +492,44 @@ export function describeHardwareFit(row: ModelRow, profile: SystemProfile) {
 
   const memory = profile.totalMemoryBytes;
   const cores = profile.logicalCores;
+  const gpuMemory = profile.gpuMemoryBytes;
   const minimumMemory = row.minimumMemoryBytes ?? 0;
   const recommendedMemory = row.recommendedMemoryBytes ?? minimumMemory;
+  const minimumGpuMemory = row.minimumGpuMemoryBytes ?? 0;
+  const recommendedGpuMemory =
+    row.recommendedGpuMemoryBytes ?? minimumGpuMemory;
   const minimumCores = row.minimumCores ?? 1;
   const recommendedCores = row.recommendedCores ?? minimumCores;
+  const requiresGpu = Boolean(row.directmlCapable);
+  const gpuMissing = requiresGpu && !profile.directmlAvailable;
+  const gpuRecommendedMet =
+    !requiresGpu || recommendedGpuMemory <= 0 || gpuMemory >= recommendedGpuMemory;
+  const gpuMinimumMet =
+    !requiresGpu || minimumGpuMemory <= 0 || gpuMemory >= minimumGpuMemory;
 
-  if (memory >= recommendedMemory && cores >= recommendedCores) {
+  if (gpuMissing) {
     return {
-      label: "Great fit",
+      label: "CPU only",
+      tone: "warning",
+      detail: `${row.name} can use DirectML GPU acceleration on Windows, but this machine does not currently look DirectML-ready. Target: ${formatHardwareTarget(row)}.`,
+    } as const;
+  }
+
+  if (
+    memory >= recommendedMemory &&
+    cores >= recommendedCores &&
+    gpuRecommendedMet
+  ) {
+    return {
+      label: requiresGpu ? "Great fit · DirectML" : "Great fit",
       tone: "success",
       detail: `${formatSystemProfile(profile)} should run ${row.name} comfortably.`,
     } as const;
   }
 
-  if (memory >= minimumMemory && cores >= minimumCores) {
+  if (memory >= minimumMemory && cores >= minimumCores && gpuMinimumMet) {
     return {
-      label: "Should work",
+      label: requiresGpu ? "Should work · DirectML" : "Should work",
       tone: "accent",
       detail: `${formatSystemProfile(profile)} should handle ${row.name}, but expect heavier CPU/RAM use than the recommended target of ${formatHardwareTarget(row)}.`,
     } as const;

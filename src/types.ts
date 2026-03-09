@@ -82,6 +82,9 @@ export type OverlaySnapshot = {
 export type SystemProfile = {
   logicalCores: number;
   totalMemoryBytes: number;
+  gpuName: string | null;
+  gpuMemoryBytes: number;
+  directmlAvailable: boolean;
 };
 
 export type Snapshot = {
@@ -138,6 +141,9 @@ export type ModelRow = {
   footprint: string;
   runtime: string;
   license: string;
+  supportsDefaultSelection?: boolean;
+  directmlCapable?: boolean;
+  unlockedFeatures?: string[];
   state: ModelRowState;
   source: "built-in" | "catalog";
   managed: boolean;
@@ -159,6 +165,8 @@ export type ModelRow = {
   downloadSizeBytes?: number;
   diskSizeBytes?: number;
   audioLimitMs?: number | null;
+  minimumGpuMemoryBytes?: number;
+  recommendedGpuMemoryBytes?: number;
   minimumMemoryBytes?: number;
   recommendedMemoryBytes?: number;
   minimumCores?: number;
