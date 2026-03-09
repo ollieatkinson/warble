@@ -354,12 +354,8 @@ function resampleLevels(sourceLevels: number[], count: number) {
     }
 
     const position = (index / (count - 1)) * (sourceLevels.length - 1);
-    const baseIndex = Math.floor(position);
-    const nextIndex = Math.min(sourceLevels.length - 1, baseIndex + 1);
-    const mix = position - baseIndex;
-    const baseLevel = sourceLevels[baseIndex] ?? 0.14;
-    const nextLevel = sourceLevels[nextIndex] ?? baseLevel;
-    return baseLevel + (nextLevel - baseLevel) * mix;
+    const nearestIndex = Math.round(position);
+    return sourceLevels[nearestIndex] ?? sourceLevels[0] ?? 0.14;
   });
 }
 
@@ -840,8 +836,7 @@ function SignalBars({
     const stackHeight = compact ? 2.1 : 2.7;
     const stackGap = compact ? 1.3 : 1.8;
     const maxStacks = compact ? 5 : 8;
-    const sampled = smoothLevels(resampleLevels(sourceLevels, pointCount)).map(
-      (level, index) => {
+    const sampled = resampleLevels(sourceLevels, pointCount).map((level, index) => {
         const progress = pointCount > 1 ? index / (pointCount - 1) : 0;
         const lifted = Math.max(0, (level - 0.22) / 0.78);
         const energy = Math.pow(lifted, 1.45);
@@ -909,8 +904,7 @@ function SignalBars({
     const spikeStep = compact ? 1.35 : 1.9;
     const spikeLength = compact ? 1.05 : 1.55;
     const maxSpikes = compact ? 3 : 5;
-    const sampled = smoothLevels(resampleLevels(sourceLevels, pointCount)).map(
-      (level, index) => {
+    const sampled = resampleLevels(sourceLevels, pointCount).map((level, index) => {
         const progress = pointCount > 1 ? index / (pointCount - 1) : 0;
         const angle = progress * Math.PI * 2 - Math.PI / 2;
         const lifted = Math.max(0, (level - 0.22) / 0.78);

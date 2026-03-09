@@ -39,6 +39,7 @@ const LIVE_PREVIEW_MAX_WORDS: usize = 18;
 const LIVE_PREVIEW_RESET_AFTER_DIVERGENCE: usize = 2;
 const LIVE_METER_INTERVAL_MS: u64 = 75;
 const LIVE_METER_WINDOW_MS: u64 = 700;
+const LIVE_METER_ANALYSIS_SAMPLES: usize = 2_048;
 const LIVE_METER_BAR_COUNT: usize = 12;
 const BACKGROUND_ARG: &str = "--background";
 const TRAY_ID: &str = "main-tray";
@@ -725,29 +726,68 @@ fn default_overlay_levels() -> Vec<f32> {
     vec![0.14; LIVE_METER_BAR_COUNT]
 }
 
-fn measure_overlay_levels(samples: &[f32]) -> Vec<f32> {
-    if samples.is_empty() {
+fn hanning_window(index: usize, length: usize) -> f32 {
+    if length <= 1 {
+        return 1.0;
+    }
+
+    let phase = (2.0 * std::f32::consts::PI * index as f32) / (length - 1) as f32;
+    0.5 - 0.5 * phase.cos()
+}
+
+fn goertzel_power(samples: &[f32], sample_rate: u32, target_frequency: f32) -> f32 {
+    if samples.is_empty() || sample_rate == 0 {
+        return 0.0;
+    }
+
+    let normalized_frequency = (target_frequency / sample_rate as f32).clamp(0.0, 0.5);
+    if normalized_frequency <= 0.0 {
+        return 0.0;
+    }
+
+    let omega = 2.0 * std::f32::consts::PI * normalized_frequency;
+    let coefficient = 2.0 * omega.cos();
+    let mut q1 = 0.0f32;
+    let mut q2 = 0.0f32;
+
+    for (index, sample) in samples.iter().enumerate() {
+        let weighted = *sample * hanning_window(index, samples.len());
+        let q0 = coefficient * q1 - q2 + weighted;
+        q2 = q1;
+        q1 = q0;
+    }
+
+    q1 * q1 + q2 * q2 - coefficient * q1 * q2
+}
+
+fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
+    if samples.is_empty() || sample_rate == 0 {
         return default_overlay_levels();
     }
 
+    let analysis_len = samples.len().min(LIVE_METER_ANALYSIS_SAMPLES).max(256);
+    let window = &samples[samples.len().saturating_sub(analysis_len)..];
+    let nyquist = sample_rate as f32 * 0.5;
+    let min_frequency = 120.0f32;
+    let max_frequency = (nyquist * 0.82).min(5_800.0).max(min_frequency * 1.5);
+    let ratio = (max_frequency / min_frequency).powf(1.0 / (LIVE_METER_BAR_COUNT as f32 - 1.0));
+
+    let powers = (0..LIVE_METER_BAR_COUNT)
+        .map(|index| {
+            let center_frequency = min_frequency * ratio.powf(index as f32);
+            goertzel_power(window, sample_rate, center_frequency)
+        })
+        .collect::<Vec<_>>();
+
+    let max_power = powers
+        .iter()
+        .copied()
+        .fold(0.0f32, f32::max)
+        .max(1e-9);
+
     let mut levels = default_overlay_levels();
-    let chunk_len = samples.len().max(LIVE_METER_BAR_COUNT) / LIVE_METER_BAR_COUNT;
-
     for (index, level) in levels.iter_mut().enumerate() {
-        let start = index * chunk_len;
-        if start >= samples.len() {
-            break;
-        }
-
-        let end = (start + chunk_len).min(samples.len());
-        let slice = &samples[start..end];
-        if slice.is_empty() {
-            continue;
-        }
-
-        let rms = (slice.iter().map(|sample| sample * sample).sum::<f32>() / slice.len() as f32)
-            .sqrt();
-        let normalized = ((rms - 0.01).max(0.0) / 0.18).clamp(0.0, 1.0).sqrt();
+        let normalized = (powers[index] / max_power).clamp(0.0, 1.0).sqrt();
         *level = 0.12 + normalized * 0.88;
     }
 
@@ -1052,7 +1092,7 @@ fn spawn_live_meter(
             let levels = {
                 let samples = preview_buffer.lock().expect("preview buffer poisoned");
                 let start = samples.len().saturating_sub(meter_window_samples);
-                measure_overlay_levels(&samples[start..])
+                measure_overlay_levels(&samples[start..], preview_sample_rate)
             };
 
             if preview_control.current_generation() != generation {
