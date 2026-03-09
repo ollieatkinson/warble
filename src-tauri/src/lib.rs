@@ -36,6 +36,7 @@ const DEFAULT_TOGGLE_SHORTCUT: &str = "F9";
 const DEFAULT_CLEANUP_TERMS: &[&str] = &["um", "uh", "erm", "uhm", "hmm"];
 const LEGACY_HOLD_SHORTCUT: &str = "Ctrl+Alt+Space";
 const LEGACY_TOGGLE_SHORTCUT: &str = "Ctrl+Alt+Shift+Space";
+const CANCEL_SHORTCUT: &str = "Escape";
 const INDICATOR_MARGIN: i32 = 24;
 const LIVE_PREVIEW_INTERVAL_MS: u64 = 1_500;
 const LIVE_PREVIEW_MIN_MS: u64 = 900;
@@ -1317,20 +1318,35 @@ fn register_shortcuts(app: &AppHandle, shared: &SharedState) -> Result<()> {
             let core = shared.lock();
             core.settings.clone()
         };
-        if normalize_shortcut(&settings.hold_shortcut) == normalize_shortcut(&settings.toggle_shortcut) {
+        let hold_shortcut = normalize_shortcut(&settings.hold_shortcut);
+        let toggle_shortcut = normalize_shortcut(&settings.toggle_shortcut);
+        let cancel_shortcut = normalize_shortcut(CANCEL_SHORTCUT);
+
+        if hold_shortcut == toggle_shortcut {
             return Err(anyhow!("Hold and toggle shortcuts must be different"));
+        }
+        if hold_shortcut == cancel_shortcut || toggle_shortcut == cancel_shortcut {
+            return Err(anyhow!("Escape is reserved for cancel"));
         }
 
         app.global_shortcut().unregister_all()?;
         app.global_shortcut().register(settings.hold_shortcut.as_str())?;
         app.global_shortcut().register(settings.toggle_shortcut.as_str())?;
+        let escape_registered = app.global_shortcut().register(CANCEL_SHORTCUT).is_ok();
 
         let mut core = shared.lock();
         core.shortcuts_active = true;
-        core.shortcut_message = format!(
-            "Listening for {} and {}",
-            settings.hold_shortcut, settings.toggle_shortcut
-        );
+        core.shortcut_message = if escape_registered {
+            format!(
+                "Listening for {}, {}, and Esc",
+                settings.hold_shortcut, settings.toggle_shortcut
+            )
+        } else {
+            format!(
+                "Listening for {} and {}",
+                settings.hold_shortcut, settings.toggle_shortcut
+            )
+        };
         core.error_message = None;
     }
 
@@ -1524,14 +1540,24 @@ fn complete_transcription(
     app: AppHandle,
     shared: SharedState,
     transcriber: TranscriberHandle,
+    preview_control: PreviewControl,
+    generation: u64,
     completed: CompletedRecording,
 ) {
     std::thread::spawn(move || {
+        if preview_control.current_generation() != generation {
+            return;
+        }
+
         let settings = {
             let core = shared.lock();
             core.settings.clone()
         };
         let result = transcribe_audio(&app, &transcriber, &settings, &completed.samples);
+
+        if preview_control.current_generation() != generation {
+            return;
+        }
 
         match result {
             Ok(text) => {
@@ -1630,7 +1656,7 @@ fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()> {
     let recorder = app.state::<RecorderHandle>();
     let transcriber = app.state::<TranscriberHandle>();
     let preview_control = app.state::<PreviewControl>();
-    preview_control.next_generation();
+    let transcription_generation = preview_control.next_generation();
     let (response_tx, response_rx) = mpsc::channel();
     recorder
         .sender
@@ -1669,8 +1695,73 @@ fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()> {
 
     update_indicator_window(app, shared);
     emit_snapshot(app, shared);
-    complete_transcription(app.clone(), shared.clone(), transcriber.inner().clone(), completed);
+    complete_transcription(
+        app.clone(),
+        shared.clone(),
+        transcriber.inner().clone(),
+        preview_control.inner().clone(),
+        transcription_generation,
+        completed,
+    );
     Ok(())
+}
+
+fn cancel_current_operation(app: &AppHandle, shared: &SharedState) -> Result<()> {
+    let preview_control = app.state::<PreviewControl>();
+    let phase = {
+        let core = shared.lock();
+        core.phase.clone()
+    };
+
+    match phase {
+        AppPhase::Recording => {
+            preview_control.next_generation();
+            let recorder = app.state::<RecorderHandle>();
+            let (response_tx, response_rx) = mpsc::channel();
+            recorder
+                .sender
+                .send(RecorderRequest::Stop { response: response_tx })
+                .map_err(|_| anyhow!("Recording worker is unavailable"))?;
+            let _ = response_rx
+                .recv()
+                .map_err(|_| anyhow!("Recording worker did not respond"))?;
+
+            {
+                let mut core = shared.lock();
+                core.phase = AppPhase::Idle;
+                core.status_message = "Recording cancelled".to_string();
+                core.error_message = None;
+                core.overlay.visible = false;
+                core.overlay.title.clear();
+                core.overlay.detail.clear();
+                core.overlay.levels = default_overlay_levels();
+                core.overlay.anchor = None;
+            }
+
+            update_indicator_window(app, shared);
+            emit_snapshot(app, shared);
+            Ok(())
+        }
+        AppPhase::Transcribing => {
+            preview_control.next_generation();
+            {
+                let mut core = shared.lock();
+                core.phase = AppPhase::Idle;
+                core.status_message = "Transcription cancelled".to_string();
+                core.error_message = None;
+                core.overlay.visible = false;
+                core.overlay.title.clear();
+                core.overlay.detail.clear();
+                core.overlay.levels = default_overlay_levels();
+                core.overlay.anchor = None;
+            }
+
+            update_indicator_window(app, shared);
+            emit_snapshot(app, shared);
+            Ok(())
+        }
+        AppPhase::Idle | AppPhase::Error => Ok(()),
+    }
 }
 
 fn create_indicator_window(app: &AppHandle) -> Result<()> {
@@ -2110,6 +2201,14 @@ fn stop_manual_recording(app: AppHandle, shared: tauri::State<'_, SharedState>) 
     stop_recording(&app, &shared).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn cancel_current_operation_command(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    cancel_current_operation(&app, &shared).map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let recorder = spawn_recorder_thread();
@@ -2184,6 +2283,12 @@ pub fn run() {
                                 )
                             };
                             let shortcut_text = normalize_shortcut(&shortcut_text);
+                            let cancel_shortcut = normalize_shortcut(CANCEL_SHORTCUT);
+
+                            if shortcut_text == cancel_shortcut && matches!(event.state, ShortcutState::Pressed) {
+                                let _ = cancel_current_operation(app, &state_for_shortcuts);
+                                return;
+                            }
 
                             if shortcut_text == hold_shortcut {
                                 match event.state {
@@ -2191,7 +2296,13 @@ pub fn run() {
                                         let _ = begin_recording(app, &state_for_shortcuts, RecordingMode::Hold);
                                     }
                                     ShortcutState::Released => {
-                                        let _ = stop_recording(app, &state_for_shortcuts);
+                                        let phase = {
+                                            let core = state_for_shortcuts.lock();
+                                            core.phase.clone()
+                                        };
+                                        if matches!(phase, AppPhase::Recording) {
+                                            let _ = stop_recording(app, &state_for_shortcuts);
+                                        }
                                     }
                                 }
                                 return;
@@ -2253,7 +2364,8 @@ pub fn run() {
             restore_default_cleanup_terms,
             remove_history_item,
             start_manual_recording,
-            stop_manual_recording
+            stop_manual_recording,
+            cancel_current_operation_command
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

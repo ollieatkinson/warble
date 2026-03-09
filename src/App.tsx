@@ -1864,6 +1864,26 @@ function ControlApp({
     }
   }, [activeModelId, modelRows, selectedRowExists]);
 
+  useEffect(() => {
+    function handleCancelEscape(event: globalThis.KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (!snapshot || (snapshot.phase !== "recording" && snapshot.phase !== "transcribing")) {
+        return;
+      }
+
+      event.preventDefault();
+      void invoke("cancel_current_operation_command");
+    }
+
+    document.addEventListener("keydown", handleCancelEscape);
+    return () => {
+      document.removeEventListener("keydown", handleCancelEscape);
+    };
+  }, [snapshot]);
+
   if (!snapshot) {
     return <main className="loading-shell">Loading...</main>;
   }
@@ -2331,6 +2351,9 @@ function ControlApp({
                 <div className="mini-meta-row">
                   <span>{snapshot.shortcutMessage}</span>
                   <span>{snapshot.shortcutsActive ? "Ready globally" : "Unavailable globally"}</span>
+                </div>
+                <div className="detail-copy">
+                  <p>Press Esc while recording or transcribing to cancel the current dictation.</p>
                 </div>
               </article>
 
