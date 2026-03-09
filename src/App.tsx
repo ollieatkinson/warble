@@ -159,6 +159,7 @@ type ChoiceOption = {
 type IconProps = SVGProps<SVGSVGElement>;
 
 const SNAPSHOT_EVENT = "transcribed://snapshot";
+const SIDEBAR_COLLAPSED_KEY = "transcribed:sidebar-collapsed";
 const isIndicatorWindow = new URLSearchParams(window.location.search).has(
   "indicator",
 );
@@ -921,9 +922,10 @@ function GlyphBase({
 function OverviewIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
-      <rect x="4.5" y="4.5" width="15" height="15" rx="3" />
-      <path d="M8 12h8" />
-      <path d="M12 8v8" />
+      <rect x="4.75" y="4.75" width="5.25" height="5.25" rx="1.35" />
+      <rect x="14" y="4.75" width="5.25" height="5.25" rx="1.35" />
+      <rect x="4.75" y="14" width="5.25" height="5.25" rx="1.35" />
+      <rect x="14" y="14" width="5.25" height="5.25" rx="1.35" />
     </GlyphBase>
   );
 }
@@ -973,9 +975,9 @@ function CleanupIcon(props: IconProps) {
 function InterfaceIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
-      <rect x="4.5" y="6" width="15" height="12" rx="3" />
-      <path d="M9 10.5h6" />
-      <path d="M8 14h8" />
+      <rect x="4.5" y="5.5" width="15" height="13" rx="3" />
+      <path d="M7.5 9h9" />
+      <rect x="7" y="12" width="10" height="3.5" rx="1.75" />
     </GlyphBase>
   );
 }
@@ -1781,11 +1783,13 @@ function SidebarButton({
   active,
   label,
   section,
+  collapsed,
   onClick,
 }: {
   active: boolean;
   label: string;
   section: SectionId;
+  collapsed: boolean;
   onClick: () => void;
 }) {
   return (
@@ -1793,9 +1797,11 @@ function SidebarButton({
       type="button"
       className={`sidebar-button ${active ? "sidebar-button-active" : ""}`}
       onClick={onClick}
+      aria-label={label}
+      title={label}
     >
       <SectionIcon section={section} className="sidebar-icon" />
-      <span>{label}</span>
+      {collapsed ? null : <span>{label}</span>}
     </button>
   );
 }
@@ -1814,6 +1820,26 @@ function StatusChip({
       {icon ? <span className="status-chip-icon">{icon}</span> : null}
       {label}
     </span>
+  );
+}
+
+function SidebarToggleIcon({
+  collapsed,
+  className,
+}: {
+  collapsed: boolean;
+  className?: string;
+}) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className={className}>
+      <rect x="3.5" y="4.5" width="13" height="11" rx="2.4" />
+      {collapsed ? (
+        <path d="M 10.75 7.2 L 13.4 10 L 10.75 12.8" strokeLinecap="round" strokeLinejoin="round" />
+      ) : (
+        <path d="M 9.25 7.2 L 6.6 10 L 9.25 12.8" strokeLinecap="round" strokeLinejoin="round" />
+      )}
+      <path d="M 7.1 4.5 V 15.5" />
+    </svg>
   );
 }
 
@@ -1937,6 +1963,13 @@ function ControlApp({
   setSnapshot: (snapshot: Snapshot | null) => void;
 }) {
   const [activeSection, setActiveSection] = useState<SectionId>("overview");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [message, setMessage] = useState<FlashMessage>(null);
   const [capturing, setCapturing] = useState<ShortcutFieldName | null>(null);
   const [historyQuery, setHistoryQuery] = useState("");
@@ -1964,6 +1997,17 @@ function ControlApp({
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SIDEBAR_COLLAPSED_KEY,
+        sidebarCollapsed ? "1" : "0",
+      );
+    } catch {
+      // Ignore local preference persistence issues.
+    }
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     return () => {
@@ -2499,16 +2543,27 @@ function ControlApp({
   );
 
   return (
-    <main className="workspace-shell">
-      <aside className="sidebar">
+    <main className={`workspace-shell ${sidebarCollapsed ? "workspace-shell-collapsed" : ""}`}>
+      <aside className={`sidebar ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <div className="sidebar-brand">
           <div className="sidebar-brand-mark">
             <SparkIcon className="brand-icon" />
           </div>
-          <div className="sidebar-brand-copy">
-            <strong>Transcribed</strong>
-            <span>Local dictation</span>
-          </div>
+          {sidebarCollapsed ? null : (
+            <div className="sidebar-brand-copy">
+              <strong>Transcribed</strong>
+              <span>Local dictation</span>
+            </div>
+          )}
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={() => setSidebarCollapsed((value) => !value)}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <SidebarToggleIcon collapsed={sidebarCollapsed} className="sidebar-toggle-icon" />
+          </button>
         </div>
 
         <nav className="sidebar-nav">
@@ -2518,18 +2573,21 @@ function ControlApp({
               active={activeSection === section.id}
               label={section.label}
               section={section.id}
+              collapsed={sidebarCollapsed}
               onClick={() => setActiveSection(section.id)}
             />
           ))}
         </nav>
 
-        <div className="sidebar-footer">
-          <StatusChip
-            label={formatPhaseLabel(snapshot.phase)}
-            tone={toneForPhase(snapshot.phase)}
-          />
-          <StatusChip label="Local" tone="accent" />
-        </div>
+        {sidebarCollapsed ? null : (
+          <div className="sidebar-footer">
+            <StatusChip
+              label={formatPhaseLabel(snapshot.phase)}
+              tone={toneForPhase(snapshot.phase)}
+            />
+            <StatusChip label="Local" tone="accent" />
+          </div>
+        )}
       </aside>
 
       <section className="workspace-main">
