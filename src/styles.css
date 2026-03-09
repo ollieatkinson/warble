@@ -624,6 +624,105 @@ input::placeholder {
   gap: 0.45rem;
 }
 
+.choice-dropdown {
+  position: relative;
+}
+
+.choice-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  padding: 0.78rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(10, 13, 18, 0.96);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.choice-dropdown-open .choice-trigger {
+  border-color: rgba(111, 157, 255, 0.32);
+  background: rgba(14, 18, 25, 0.98);
+}
+
+.choice-trigger-copy,
+.choice-option-copy {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+  text-align: left;
+}
+
+.choice-trigger-copy strong,
+.choice-option-copy strong {
+  font-size: 0.92rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.choice-trigger-copy span,
+.choice-option-copy span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.choice-chevron,
+.choice-check {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.choice-chevron {
+  color: var(--muted);
+}
+
+.choice-check {
+  color: #d8e4ff;
+}
+
+.choice-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: rgba(12, 15, 21, 0.98);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.34);
+}
+
+.choice-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.72rem 0.78rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+}
+
+.choice-option:hover,
+.choice-option-active {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(111, 157, 255, 0.18);
+}
+
 .toggle-row {
   display: flex;
   gap: 0.9rem;
@@ -838,6 +937,63 @@ input::placeholder {
 
 .signal-spectrum-idle .signal-spectrum-center {
   stroke: rgba(127, 140, 161, 0.18);
+}
+
+.signal-radial {
+  display: block;
+  width: 32px;
+  min-width: 32px;
+  height: 20px;
+  overflow: visible;
+}
+
+.signal-radial-compact {
+  width: 32px;
+  min-width: 32px;
+  height: 20px;
+}
+
+.signal-radial-ring,
+.signal-radial-core {
+  fill: none;
+  transition:
+    opacity 120ms ease,
+    stroke 160ms ease,
+    fill 160ms ease,
+    r 90ms linear;
+}
+
+.signal-radial-ring {
+  stroke-width: 1.55;
+  stroke-linecap: round;
+}
+
+.signal-radial-live .signal-radial-ring {
+  stroke: #35df98;
+}
+
+.signal-radial-live .signal-radial-core {
+  fill: #35df98;
+}
+
+.signal-radial-warm .signal-radial-ring {
+  stroke: #f4be71;
+}
+
+.signal-radial-warm .signal-radial-core {
+  fill: #f4be71;
+}
+
+.signal-radial-idle {
+  opacity: 0.72;
+}
+
+.signal-radial-idle .signal-radial-ring {
+  stroke: #7f8ca1;
+}
+
+.signal-radial-idle .signal-radial-core {
+  fill: #7f8ca1;
 }
 
 .signal-wave {

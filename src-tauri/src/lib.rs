@@ -91,6 +91,7 @@ impl Default for OverlayPosition {
 enum OverlayAnimationStyle {
     Spectrum,
     Waveform,
+    Radial,
 }
 
 impl Default for OverlayAnimationStyle {

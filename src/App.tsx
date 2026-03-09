@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, SVGProps } from "react";
 
 type RecordingMode = "hold" | "toggle";
@@ -11,7 +11,7 @@ type OverlayPosition =
   | "bottom-left"
   | "bottom-right"
   | "caret";
-type OverlayAnimationStyle = "spectrum" | "waveform";
+type OverlayAnimationStyle = "spectrum" | "waveform" | "radial";
 type ShortcutFieldName = "holdShortcut" | "toggleShortcut";
 type SectionId =
   | "overview"
@@ -118,6 +118,12 @@ type ModelRow = {
   tags: string[];
 };
 
+type ChoiceOption = {
+  id: string;
+  label: string;
+  description?: string;
+};
+
 type IconProps = SVGProps<SVGSVGElement>;
 
 const SNAPSHOT_EVENT = "transcribed://snapshot";
@@ -161,9 +167,11 @@ const overlayPositionOptions: Array<{
 const overlayAnimationOptions: Array<{
   id: OverlayAnimationStyle;
   label: string;
+  description: string;
 }> = [
-  { id: "spectrum", label: "Spectrum" },
-  { id: "waveform", label: "Waveform" },
+  { id: "spectrum", label: "Spectrum", description: "Compact reactive bars" },
+  { id: "waveform", label: "Waveform", description: "Mirrored voice wave" },
+  { id: "radial", label: "Radial", description: "Concentric pulse rings" },
 ];
 
 async function getSnapshot() {
@@ -209,6 +217,8 @@ function formatOverlayPosition(position: OverlayPosition) {
 
 function formatOverlayAnimationStyle(style: OverlayAnimationStyle) {
   switch (style) {
+    case "radial":
+      return "Radial";
     case "waveform":
       return "Waveform";
     case "spectrum":
@@ -641,6 +651,14 @@ function CheckIcon(props: IconProps) {
   );
 }
 
+function ChevronDownIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <path d="m6 9 6 6 6-6" />
+    </GlyphBase>
+  );
+}
+
 function SearchIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
@@ -799,6 +817,45 @@ function SignalBars({
     );
   }
 
+  if (animationStyle === "radial") {
+    const width = compact ? 32 : 44;
+    const height = compact ? 20 : 28;
+    const cx = width / 2;
+    const cy = height / 2;
+    const ringLevels = smoothLevels(resampleLevels(sourceLevels, 3));
+    const baseRadii = compact ? [3.2, 6.1, 9] : [4, 7.8, 11.4];
+    const growth = compact ? 0.95 : 1.3;
+
+    return (
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className={`signal-radial signal-radial-${tone} ${compact ? "signal-radial-compact" : ""}`}
+        aria-hidden="true"
+      >
+        {ringLevels.map((level, index) => (
+          <circle
+            key={`${index}-${level.toFixed(3)}`}
+            cx={cx}
+            cy={cy}
+            r={baseRadii[index] + level * growth}
+            className="signal-radial-ring"
+            style={{
+              opacity: 0.24 + level * 0.76,
+              strokeDasharray:
+                index === 2 ? "16 8" : index === 1 ? "12 5" : undefined,
+            }}
+          />
+        ))}
+        <circle
+          cx={cx}
+          cy={cy}
+          r={compact ? 2.4 : 3.2}
+          className="signal-radial-core"
+        />
+      </svg>
+    );
+  }
+
   const smoothedLevels = smoothLevels(resampleLevels(sourceLevels, count));
   const width = compact ? 60 : 114;
   const height = compact ? 20 : 36;
@@ -948,6 +1005,102 @@ function ShortcutField({
         {armed ? "Press shortcut..." : value}
       </button>
     </label>
+  );
+}
+
+function ChoiceDropdown({
+  label,
+  value,
+  options,
+  onChange,
+  placeholder = "Select",
+}: {
+  label: string;
+  value: string;
+  options: ChoiceOption[];
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const selected =
+    options.find((option) => option.id === value) ?? options[0] ?? null;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (
+        rootRef.current &&
+        event.target instanceof Node &&
+        !rootRef.current.contains(event.target)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    function handleEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
+
+  return (
+    <div className="field">
+      <span>{label}</span>
+      <div
+        ref={rootRef}
+        className={`choice-dropdown ${open ? "choice-dropdown-open" : ""}`}
+      >
+        <button
+          type="button"
+          className="choice-trigger"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          disabled={options.length === 0}
+        >
+          <div className="choice-trigger-copy">
+            <strong>{selected?.label ?? placeholder}</strong>
+            {selected?.description ? <span>{selected.description}</span> : null}
+          </div>
+          <ChevronDownIcon className="choice-chevron" />
+        </button>
+
+        {open && options.length > 0 ? (
+          <div className="choice-menu" role="listbox">
+            {options.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={`choice-option ${value === option.id ? "choice-option-active" : ""}`}
+                onClick={() => {
+                  onChange(option.id);
+                  setOpen(false);
+                }}
+              >
+                <div className="choice-option-copy">
+                  <strong>{option.label}</strong>
+                  {option.description ? <span>{option.description}</span> : null}
+                </div>
+                {value === option.id ? <CheckIcon className="choice-check" /> : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -1236,6 +1389,11 @@ function ControlApp({
     snapshot.sources.find((source) => source.isDefault) ??
     snapshot.sources[0] ??
     null;
+  const sourceOptions: ChoiceOption[] = snapshot.sources.map((source) => ({
+    id: source.id,
+    label: source.name,
+    description: `${source.sampleRate} Hz · ${source.channels} ch${source.isDefault ? " · default" : ""}`,
+  }));
   const recentTranscript = snapshot.history[0] ?? null;
   const filteredHistory = snapshot.history.filter((item) =>
     matchesHistory(item, historyQuery),
@@ -1622,47 +1780,29 @@ function ControlApp({
                   </div>
                 </label>
 
-                <div className="field">
-                  <span>HUD</span>
-                  <div className="segmented">
-                    {overlayPositionOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className={`segment ${draft.overlayPosition === option.id ? "segment-active" : ""}`}
-                        onClick={() =>
-                          setDraft((current) => ({
-                            ...current,
-                            overlayPosition: option.id,
-                          }))
-                        }
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <ChoiceDropdown
+                  label="HUD"
+                  value={draft.overlayPosition}
+                  options={overlayPositionOptions}
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      overlayPosition: value as EditableOverlayPosition,
+                    }))
+                  }
+                />
 
-                <div className="field">
-                  <span>Animation</span>
-                  <div className="segmented">
-                    {overlayAnimationOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className={`segment ${draft.overlayAnimationStyle === option.id ? "segment-active" : ""}`}
-                        onClick={() =>
-                          setDraft((current) => ({
-                            ...current,
-                            overlayAnimationStyle: option.id,
-                          }))
-                        }
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <ChoiceDropdown
+                  label="Animation"
+                  value={draft.overlayAnimationStyle}
+                  options={overlayAnimationOptions}
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      overlayAnimationStyle: value as OverlayAnimationStyle,
+                    }))
+                  }
+                />
 
                 <label className="toggle-row toggle-row-card">
                   <input
@@ -1697,25 +1837,18 @@ function ControlApp({
             <>
               <section className="compact-grid-two">
                 <article className="surface">
-                  <label className="field">
-                    <span>Source</span>
-                    <select
-                      value={draft.selectedSourceId}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          selectedSourceId: event.currentTarget.value,
-                        }))
-                      }
-                    >
-                      {snapshot.sources.map((source) => (
-                        <option key={source.id} value={source.id}>
-                          {source.name}
-                          {source.isDefault ? " (default)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <ChoiceDropdown
+                    label="Source"
+                    value={draft.selectedSourceId}
+                    options={sourceOptions}
+                    placeholder="No source"
+                    onChange={(value) =>
+                      setDraft((current) => ({
+                        ...current,
+                        selectedSourceId: value,
+                      }))
+                    }
+                  />
 
                   <div className="mini-meta-row">
                     <span>{activeSource?.sampleRate ?? 0} Hz</span>
