@@ -1476,7 +1476,6 @@ function ControlApp({
   setSnapshot: (snapshot: Snapshot | null) => void;
 }) {
   const [activeSection, setActiveSection] = useState<SectionId>("overview");
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<FlashMessage>(null);
   const [capturing, setCapturing] = useState<ShortcutFieldName | null>(null);
   const [historyQuery, setHistoryQuery] = useState("");
@@ -1487,7 +1486,6 @@ function ControlApp({
   const [buttonFeedback, setButtonFeedback] = useState<
     Record<string, ButtonFeedbackState>
   >({});
-  const pendingSettingsSaves = useRef(0);
   const buttonFeedbackTimersRef = useRef<Record<string, number>>({});
   const [draft, setDraft] = useState<SettingsDraft>({
     holdShortcut: "",
@@ -1541,8 +1539,6 @@ function ControlApp({
   }
 
   async function sendSettingsUpdate(update: Record<string, unknown>) {
-    pendingSettingsSaves.current += 1;
-    setSaving(true);
     setMessage(null);
 
     try {
@@ -1550,9 +1546,6 @@ function ControlApp({
     } catch (error) {
       await refreshSnapshot();
       throw error;
-    } finally {
-      pendingSettingsSaves.current = Math.max(0, pendingSettingsSaves.current - 1);
-      setSaving(pendingSettingsSaves.current > 0);
     }
   }
 
@@ -1972,7 +1965,6 @@ function ControlApp({
               label={snapshot.shortcutsActive ? "Keys active" : "Keys off"}
               tone={snapshot.shortcutsActive ? "accent" : "warning"}
             />
-            {saving ? <StatusChip label="Syncing" tone="muted" /> : null}
           </div>
         </header>
 
