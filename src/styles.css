@@ -1106,6 +1106,13 @@ input::placeholder {
   align-items: flex-start;
 }
 
+.history-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .history-row p {
   margin: 0.75rem 0 0;
   color: var(--text);

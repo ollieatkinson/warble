@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, SVGProps } from "react";
 
@@ -26,6 +26,7 @@ type SectionId =
   | "about";
 type ModelFilter = "all" | "available" | "multilingual" | "future";
 type EditableOverlayPosition = Exclude<OverlayPosition, "caret">;
+type AudioRetentionPolicy = "one-day" | "seven-days" | "thirty-days";
 
 type Settings = {
   holdShortcut: string;
@@ -37,6 +38,7 @@ type Settings = {
   selectedModelPath: string | null;
   cleanupEnabled: boolean;
   cleanupTerms: string[];
+  audioRetentionPolicy: AudioRetentionPolicy;
   overlayPosition: OverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
   showLiveTranscription: boolean;
@@ -58,6 +60,7 @@ type HistoryItem = {
   mode: RecordingMode;
   durationMs: number;
   pasted: boolean;
+  audioPath: string | null;
 };
 
 type OverlaySnapshot = {
@@ -87,6 +90,7 @@ type SettingsDraft = {
   selectedSourceId: string;
   autoPaste: boolean;
   cleanupEnabled: boolean;
+  audioRetentionPolicy: AudioRetentionPolicy;
   overlayPosition: EditableOverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
   showLiveTranscription: boolean;
@@ -182,6 +186,15 @@ const overlayAnimationOptions: Array<{
 
 const DEMO_LEVELS = [0.18, 0.34, 0.62, 0.28, 0.82, 0.46, 0.24, 0.58, 0.38, 0.22, 0.48, 0.26];
 const CLEANUP_SUGGESTIONS = ["um", "uh", "erm", "uhm", "hmm", "you know"];
+const audioRetentionOptions: Array<{
+  id: AudioRetentionPolicy;
+  label: string;
+  description: string;
+}> = [
+  { id: "one-day", label: "24h", description: "Keep clip audio for one day." },
+  { id: "seven-days", label: "7d", description: "Keep clip audio for seven days." },
+  { id: "thirty-days", label: "30d", description: "Keep clip audio for thirty days." },
+];
 
 async function getSnapshot() {
   return invoke<Snapshot>("get_snapshot");
@@ -229,6 +242,18 @@ function formatOverlayAnimationStyle(style: OverlayAnimationStyle) {
     case "spectrum":
     default:
       return "Bars";
+  }
+}
+
+function formatAudioRetentionPolicy(policy: AudioRetentionPolicy) {
+  switch (policy) {
+    case "seven-days":
+      return "7 days";
+    case "thirty-days":
+      return "30 days";
+    case "one-day":
+    default:
+      return "24 hours";
   }
 }
 
@@ -347,6 +372,7 @@ function buildSettingsUpdate(draft: SettingsDraft) {
     selectedSourceId: draft.selectedSourceId || undefined,
     autoPaste: draft.autoPaste,
     cleanupEnabled: draft.cleanupEnabled,
+    audioRetentionPolicy: draft.audioRetentionPolicy,
     overlayPosition: draft.overlayPosition,
     overlayAnimationStyle: draft.overlayAnimationStyle,
     showLiveTranscription: draft.showLiveTranscription,
@@ -792,6 +818,18 @@ function ExternalIcon(props: IconProps) {
       <path d="M14 5h5v5" />
       <path d="m10 14 9-9" />
       <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4" />
+    </GlyphBase>
+  );
+}
+
+function TrashIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <path d="M5.5 7.5h13" />
+      <path d="M9 7.5V5.8A1.8 1.8 0 0 1 10.8 4h2.4A1.8 1.8 0 0 1 15 5.8v1.7" />
+      <path d="M7.5 7.5 8.2 18a2 2 0 0 0 2 1.9h3.6a2 2 0 0 0 2-1.9l.7-10.5" />
+      <path d="M10 11v5" />
+      <path d="M14 11v5" />
     </GlyphBase>
   );
 }
@@ -1454,6 +1492,7 @@ function ControlApp({
     selectedSourceId: "",
     autoPaste: true,
     cleanupEnabled: true,
+    audioRetentionPolicy: "one-day",
     overlayPosition: "bottom-center",
     overlayAnimationStyle: "spectrum",
     showLiveTranscription: false,
@@ -1484,6 +1523,7 @@ function ControlApp({
         snapshot.settings.selectedSourceId ?? snapshot.sources[0]?.id ?? "",
       autoPaste: snapshot.settings.autoPaste,
       cleanupEnabled: snapshot.settings.cleanupEnabled,
+      audioRetentionPolicy: snapshot.settings.audioRetentionPolicy,
       overlayPosition: normalizeEditableOverlayPosition(
         snapshot.settings.overlayPosition,
       ),
@@ -1619,6 +1659,39 @@ function ControlApp({
     try {
       await navigator.clipboard.writeText(text);
       finishButtonFeedback(actionId, 1000);
+    } catch (error) {
+      clearButtonFeedback(actionId);
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
+  async function openHistoryAudio(item: HistoryItem) {
+    if (!item.audioPath) {
+      return;
+    }
+
+    try {
+      setMessage(null);
+      await openPath(item.audioPath);
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
+  async function removeHistoryItem(id: string) {
+    const actionId = `history-remove:${id}`;
+    setMessage(null);
+    setButtonFeedbackState(actionId, "working");
+
+    try {
+      await invoke("remove_history_item", { id });
+      finishButtonFeedback(actionId, 900);
     } catch (error) {
       clearButtonFeedback(actionId);
       setMessage({
@@ -2541,16 +2614,64 @@ function ControlApp({
 
           {activeSection === "history" ? (
             <>
-              <section className="surface">
-                <label className="search-field">
-                  <SearchIcon className="search-icon" />
-                  <input
-                    type="search"
-                    value={historyQuery}
-                    onChange={(event) => setHistoryQuery(event.currentTarget.value)}
-                    placeholder="Search transcripts"
-                  />
-                </label>
+              <section className="compact-grid-two">
+                <article className="surface preference-surface">
+                  <div className="surface-bar">
+                    <div className="surface-title">
+                      <span className="surface-title-label">Search</span>
+                    </div>
+                  </div>
+
+                  <label className="search-field">
+                    <SearchIcon className="search-icon" />
+                    <input
+                      type="search"
+                      value={historyQuery}
+                      onChange={(event) => setHistoryQuery(event.currentTarget.value)}
+                      placeholder="Search transcripts"
+                    />
+                  </label>
+
+                  <div className="mini-meta-row">
+                    <span>{snapshot.history.length} saved</span>
+                    <span>{filteredHistory.length} visible</span>
+                  </div>
+                </article>
+
+                <article className="surface preference-surface">
+                  <div className="surface-bar">
+                    <div className="surface-title">
+                      <span className="surface-title-label">Audio clips</span>
+                    </div>
+                  </div>
+
+                  <div className="setting-list">
+                    <div className="field">
+                      <span>Keep original captured audio</span>
+                      <div className="segmented">
+                        {audioRetentionOptions.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            className={`segment ${draft.audioRetentionPolicy === option.id ? "segment-active" : ""}`}
+                            onClick={() =>
+                              void applySettings({
+                                audioRetentionPolicy: option.id,
+                              })
+                            }
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mini-meta-row">
+                    <span>{formatAudioRetentionPolicy(draft.audioRetentionPolicy)}</span>
+                    <span>Transcript text stays until you remove it</span>
+                  </div>
+                </article>
               </section>
 
               {filteredHistory.length === 0 ? (
@@ -2569,16 +2690,40 @@ function ControlApp({
                           <span>{item.sourceName}</span>
                           <span>{item.mode}</span>
                           <span>{formatDuration(item.durationMs)}</span>
+                          {item.audioPath ? <span>Audio saved</span> : null}
                         </div>
-                        <ActionButton
-                          className="secondary small"
-                          state={buttonFeedback[`copy:${item.id}`]}
-                          idleLabel="Copy"
-                          doneLabel="Copied"
-                          idleIcon={<CopyIcon className="small-icon" />}
-                          doneIcon={<CheckIcon className="small-icon" />}
-                          onClick={() => copyHistory(item.id, item.text)}
-                        />
+                        <div className="history-actions">
+                          {item.audioPath ? (
+                            <button
+                              className="secondary small icon-button"
+                              onClick={() => {
+                                void openHistoryAudio(item);
+                              }}
+                            >
+                              <ExternalIcon className="small-icon" />
+                              <span>Audio</span>
+                            </button>
+                          ) : null}
+                          <ActionButton
+                            className="secondary small"
+                            state={buttonFeedback[`copy:${item.id}`]}
+                            idleLabel="Copy"
+                            doneLabel="Copied"
+                            idleIcon={<CopyIcon className="small-icon" />}
+                            doneIcon={<CheckIcon className="small-icon" />}
+                            onClick={() => copyHistory(item.id, item.text)}
+                          />
+                          <ActionButton
+                            className="secondary small"
+                            state={buttonFeedback[`history-remove:${item.id}`]}
+                            idleLabel="Remove"
+                            workingLabel="Removing"
+                            doneLabel="Removed"
+                            idleIcon={<TrashIcon className="small-icon" />}
+                            doneIcon={<CheckIcon className="small-icon" />}
+                            onClick={() => removeHistoryItem(item.id)}
+                          />
+                        </div>
                       </div>
                       <p>{item.text}</p>
                     </article>

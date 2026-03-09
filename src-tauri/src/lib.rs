@@ -3,7 +3,7 @@ mod platform;
 pub mod whisper;
 
 use anyhow::{anyhow, Context, Result};
-use chrono::Utc;
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig, SupportedStreamConfig};
 use regex::{Regex, RegexBuilder};
@@ -27,6 +27,7 @@ use uuid::Uuid;
 
 const EVENT_SNAPSHOT: &str = "transcribed://snapshot";
 const PERSISTED_STATE_FILE: &str = "state.json";
+const RECORDINGS_DIR: &str = "recordings";
 const HOLD_MIN_DURATION_MS: u64 = 250;
 const HISTORY_LIMIT: usize = 50;
 const DEFAULT_HOLD_SHORTCUT: &str = "F8";
@@ -119,6 +120,20 @@ impl Default for OverlayAnimationStyle {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum AudioRetentionPolicy {
+    OneDay,
+    SevenDays,
+    ThirtyDays,
+}
+
+impl Default for AudioRetentionPolicy {
+    fn default() -> Self {
+        Self::OneDay
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct Settings {
@@ -131,6 +146,7 @@ struct Settings {
     selected_model_path: Option<String>,
     cleanup_enabled: bool,
     cleanup_terms: Vec<String>,
+    audio_retention_policy: AudioRetentionPolicy,
     overlay_position: OverlayPosition,
     overlay_animation_style: OverlayAnimationStyle,
     show_live_transcription: bool,
@@ -148,6 +164,7 @@ impl Default for Settings {
             selected_model_path: None,
             cleanup_enabled: true,
             cleanup_terms: default_cleanup_terms(),
+            audio_retention_policy: AudioRetentionPolicy::OneDay,
             overlay_position: OverlayPosition::BottomCenter,
             overlay_animation_style: OverlayAnimationStyle::Spectrum,
             show_live_transcription: false,
@@ -165,6 +182,7 @@ struct HistoryItem {
     mode: RecordingMode,
     duration_ms: u64,
     pasted: bool,
+    audio_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +204,7 @@ struct SettingsUpdate {
     selected_model_path: Option<Option<String>>,
     cleanup_enabled: Option<bool>,
     cleanup_terms: Option<Vec<String>>,
+    audio_retention_policy: Option<AudioRetentionPolicy>,
     overlay_position: Option<OverlayPosition>,
     overlay_animation_style: Option<OverlayAnimationStyle>,
     show_live_transcription: Option<bool>,
@@ -361,6 +380,8 @@ impl PreviewControl {
 #[derive(Debug)]
 struct CompletedRecording {
     samples: Vec<f32>,
+    captured_samples: Vec<f32>,
+    captured_sample_rate: u32,
     duration_ms: u64,
     source_name: String,
     mode: RecordingMode,
@@ -410,6 +431,12 @@ fn model_root_dir(app: &AppHandle) -> Result<PathBuf> {
     Ok(dir)
 }
 
+fn recordings_dir(app: &AppHandle) -> Result<PathBuf> {
+    let dir = app_data_dir(app)?.join(RECORDINGS_DIR);
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
 fn path_if_not_empty(value: Option<String>) -> Option<String> {
     value.and_then(|path| {
         let trimmed = path.trim().to_string();
@@ -418,7 +445,116 @@ fn path_if_not_empty(value: Option<String>) -> Option<String> {
         } else {
             Some(trimmed)
         }
-    })
+        })
+}
+
+fn audio_retention_duration(policy: &AudioRetentionPolicy) -> ChronoDuration {
+    match policy {
+        AudioRetentionPolicy::OneDay => ChronoDuration::days(1),
+        AudioRetentionPolicy::SevenDays => ChronoDuration::days(7),
+        AudioRetentionPolicy::ThirtyDays => ChronoDuration::days(30),
+    }
+}
+
+fn history_item_created_at(item: &HistoryItem) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(&item.created_at)
+        .ok()
+        .map(|value| value.with_timezone(&Utc))
+}
+
+fn remove_history_audio_file(item: &HistoryItem) {
+    let Some(path) = item.audio_path.as_ref() else {
+        return;
+    };
+
+    let _ = fs::remove_file(path);
+}
+
+fn write_recording_wav(path: &Path, samples: &[f32], sample_rate: u32) -> Result<()> {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(path, spec)
+        .with_context(|| format!("failed to create wav file at {}", path.display()))?;
+
+    for sample in samples {
+        let scaled = (sample.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16;
+        writer.write_sample(scaled)?;
+    }
+
+    writer.finalize()?;
+    Ok(())
+}
+
+fn save_history_audio(
+    app: &AppHandle,
+    item_id: &str,
+    samples: &[f32],
+    sample_rate: u32,
+) -> Result<String> {
+    let path = recordings_dir(app)?.join(format!("{item_id}.wav"));
+    write_recording_wav(&path, samples, sample_rate)?;
+    Ok(path.display().to_string())
+}
+
+fn prune_history_audio(app: &AppHandle, shared: &SharedState) -> bool {
+    let now = Utc::now();
+    let mut removed_paths = Vec::new();
+    let mut changed = false;
+
+    {
+        let mut core = shared.lock();
+        let cutoff = now - audio_retention_duration(&core.settings.audio_retention_policy);
+
+        for item in &mut core.history {
+            let Some(path) = item.audio_path.as_ref() else {
+                continue;
+            };
+
+            let should_expire = history_item_created_at(item)
+                .map(|created_at| created_at < cutoff)
+                .unwrap_or(false);
+            let file_missing = !Path::new(path).exists();
+            if should_expire || file_missing {
+                if should_expire {
+                    removed_paths.push(path.clone());
+                }
+                item.audio_path = None;
+                changed = true;
+            }
+        }
+    }
+
+    for path in removed_paths {
+        let _ = fs::remove_file(path);
+    }
+
+    if let Ok(directory) = recordings_dir(app) {
+        let referenced_paths = {
+            let core = shared.lock();
+            core.history
+                .iter()
+                .filter_map(|item| item.audio_path.clone())
+                .collect::<Vec<_>>()
+        };
+
+        if let Ok(entries) = fs::read_dir(directory) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let path_string = path.display().to_string();
+                if path.extension().and_then(|value| value.to_str()) == Some("wav")
+                    && !referenced_paths.iter().any(|existing| existing == &path_string)
+                {
+                    let _ = fs::remove_file(path);
+                }
+            }
+        }
+    }
+
+    changed
 }
 
 fn parakeet_status_for_path(path: &Path) -> ModelStatus {
@@ -722,6 +858,8 @@ fn finalize_recording(session: RecordingSession) -> Result<Option<CompletedRecor
 
     Ok(Some(CompletedRecording {
         samples: parakeet::resample_to_16khz(&samples, session.sample_rate),
+        captured_samples: samples,
+        captured_sample_rate: session.sample_rate,
         duration_ms,
         source_name: session.source_name,
         mode: session.mode,
@@ -1414,22 +1552,35 @@ fn complete_transcription(
                         false
                     }
                 };
+                let item_id = Uuid::new_v4().to_string();
+                let audio_path = save_history_audio(
+                    &app,
+                    &item_id,
+                    &completed.captured_samples,
+                    completed.captured_sample_rate,
+                )
+                .ok();
 
                 {
                     let mut core = shared.lock();
                     core.history.insert(
                         0,
                         HistoryItem {
-                            id: Uuid::new_v4().to_string(),
+                            id: item_id,
                             text: text.clone(),
                             created_at: Utc::now().to_rfc3339(),
                             source_name: completed.source_name.clone(),
                             mode: completed.mode.clone(),
                             duration_ms: completed.duration_ms,
                             pasted,
+                            audio_path,
                         },
                     );
-                    core.history.truncate(HISTORY_LIMIT);
+                    let keep_len = HISTORY_LIMIT.min(core.history.len());
+                    let removed_items = core.history.split_off(keep_len);
+                    for item in &removed_items {
+                        remove_history_audio_file(item);
+                    }
                     core.phase = AppPhase::Idle;
                     core.status_message = if pasted {
                         "Transcribed in Rust and pasted".to_string()
@@ -1707,10 +1858,14 @@ fn inspect_model_path(path: String) -> Result<ModelPathInspection, String> {
 }
 
 fn persist_and_emit_settings_change(app: &AppHandle, shared: &SharedState) -> Result<(), String> {
+    let audio_changed = prune_history_audio(app, shared);
     {
         let mut core = shared.lock();
         core.model_status = current_model_status(app, &core.settings);
         core.parakeet_model_status = built_in_parakeet_status(app);
+        if audio_changed && core.history.iter().all(|item| item.audio_path.is_none()) {
+            core.status_message = "Expired audio clips were cleaned up".to_string();
+        }
     }
     save_persisted_state(app, shared).map_err(|error| error.to_string())?;
     update_indicator_window(app, shared);
@@ -1766,6 +1921,9 @@ fn update_settings_command(
         if let Some(cleanup_terms) = update.cleanup_terms {
             core.settings.cleanup_terms = normalize_cleanup_terms(&cleanup_terms);
         }
+        if let Some(audio_retention_policy) = update.audio_retention_policy {
+            core.settings.audio_retention_policy = audio_retention_policy;
+        }
         if let Some(overlay_position) = update.overlay_position {
             core.settings.overlay_position = overlay_position;
         }
@@ -1793,6 +1951,29 @@ fn update_settings_command(
         return Err(error.to_string());
     }
     persist_and_emit_settings_change(&app, &shared)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_history_item(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+    id: String,
+) -> Result<(), String> {
+    {
+        let mut core = shared.lock();
+        let Some(index) = core.history.iter().position(|item| item.id == id) else {
+            return Ok(());
+        };
+
+        let item = core.history.remove(index);
+        remove_history_audio_file(&item);
+        core.status_message = "History item removed".to_string();
+        core.error_message = None;
+    }
+
+    save_persisted_state(&app, &shared).map_err(|error| error.to_string())?;
+    emit_snapshot(&app, &shared);
     Ok(())
 }
 
@@ -1911,6 +2092,9 @@ pub fn run() {
                 core.model_status = current_model_status(app.handle(), &core.settings);
                 core.parakeet_model_status = built_in_parakeet_status(app.handle());
             }
+            if prune_history_audio(app.handle(), &shared) {
+                let _ = save_persisted_state(app.handle(), &shared);
+            }
 
             create_tray_icon(app.handle())?;
             create_indicator_window(app.handle())?;
@@ -2001,6 +2185,7 @@ pub fn run() {
             add_cleanup_term,
             remove_cleanup_term,
             restore_default_cleanup_terms,
+            remove_history_item,
             start_manual_recording,
             stop_manual_recording
         ])
