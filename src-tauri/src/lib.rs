@@ -1,6 +1,5 @@
 pub mod parakeet;
 mod platform;
-pub mod whisper;
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -66,16 +65,14 @@ const PARAKEET_ENCODER_DOWNLOAD_URL: &str =
     "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/encoder-model.int8.onnx";
 const PARAKEET_DECODER_DOWNLOAD_URL: &str =
     "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/decoder_joint-model.int8.onnx";
-const PARAKEET_PREPROCESSOR_DOWNLOAD_URL: &str =
-    "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/nemo128.onnx";
-const PARAKEET_CONFIG_DOWNLOAD_URL: &str =
-    "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/config.json";
 const PARAKEET_VOCAB_DOWNLOAD_URL: &str =
     "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/vocab.txt";
-const WHISPER_SMALL_DOWNLOAD_URL: &str =
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
-const WHISPER_LARGE_V3_TURBO_DOWNLOAD_URL: &str =
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin";
+const PARAKEET_CTC_MODEL_DOWNLOAD_URL: &str =
+    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/onnx/model_int8.onnx";
+const PARAKEET_CTC_MODEL_DATA_DOWNLOAD_URL: &str =
+    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/onnx/model_int8.onnx_data";
+const PARAKEET_CTC_TOKENIZER_DOWNLOAD_URL: &str =
+    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/tokenizer.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -104,7 +101,7 @@ enum ModelStatus {
 #[serde(rename_all = "kebab-case")]
 enum TranscriptionModelKind {
     Parakeet,
-    Whisper,
+    ParakeetCtc,
 }
 
 impl Default for TranscriptionModelKind {
@@ -396,7 +393,7 @@ struct TranscriberCache {
 
 enum TranscriberEngine {
     Parakeet(parakeet::ParakeetTdt),
-    Whisper(whisper::WhisperTranscriber),
+    ParakeetCtc(parakeet::ParakeetCtc),
 }
 
 #[derive(Clone, Default)]
@@ -440,7 +437,7 @@ struct CatalogDownloadSpec {
     model_kind: TranscriptionModelKind,
     display_name: &'static str,
     files: &'static [CatalogDownloadFile],
-    inspect_path: &'static str,
+    model_dir_name: &'static str,
 }
 
 fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpec> {
@@ -454,26 +451,24 @@ fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpec> {
             download_url: PARAKEET_DECODER_DOWNLOAD_URL,
         },
         CatalogDownloadFile {
-            file_name: "nemo128.onnx",
-            download_url: PARAKEET_PREPROCESSOR_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "config.json",
-            download_url: PARAKEET_CONFIG_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
             file_name: "vocab.txt",
             download_url: PARAKEET_VOCAB_DOWNLOAD_URL,
         },
     ];
-    const WHISPER_SMALL_FILES: &[CatalogDownloadFile] = &[CatalogDownloadFile {
-        file_name: "ggml-small.bin",
-        download_url: WHISPER_SMALL_DOWNLOAD_URL,
-    }];
-    const WHISPER_LARGE_FILES: &[CatalogDownloadFile] = &[CatalogDownloadFile {
-        file_name: "ggml-large-v3-turbo.bin",
-        download_url: WHISPER_LARGE_V3_TURBO_DOWNLOAD_URL,
-    }];
+    const PARAKEET_CTC_FILES: &[CatalogDownloadFile] = &[
+        CatalogDownloadFile {
+            file_name: "model_int8.onnx",
+            download_url: PARAKEET_CTC_MODEL_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "model_int8.onnx_data",
+            download_url: PARAKEET_CTC_MODEL_DATA_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "tokenizer.json",
+            download_url: PARAKEET_CTC_TOKENIZER_DOWNLOAD_URL,
+        },
+    ];
 
     match model_id {
         "parakeet" => Some(CatalogDownloadSpec {
@@ -481,21 +476,14 @@ fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpec> {
             model_kind: TranscriptionModelKind::Parakeet,
             display_name: "Parakeet TDT",
             files: PARAKEET_FILES,
-            inspect_path: ".",
+            model_dir_name: parakeet::MODEL_ID,
         }),
-        "whisper-small" => Some(CatalogDownloadSpec {
-            model_id: "whisper-small",
-            model_kind: TranscriptionModelKind::Whisper,
-            display_name: "Whisper Small",
-            files: WHISPER_SMALL_FILES,
-            inspect_path: "ggml-small.bin",
-        }),
-        "whisper-large-v3-turbo" => Some(CatalogDownloadSpec {
-            model_id: "whisper-large-v3-turbo",
-            model_kind: TranscriptionModelKind::Whisper,
-            display_name: "Whisper Large V3 Turbo",
-            files: WHISPER_LARGE_FILES,
-            inspect_path: "ggml-large-v3-turbo.bin",
+        "parakeet-ctc" => Some(CatalogDownloadSpec {
+            model_id: "parakeet-ctc",
+            model_kind: TranscriptionModelKind::ParakeetCtc,
+            display_name: "Parakeet CTC",
+            files: PARAKEET_CTC_FILES,
+            model_dir_name: parakeet::CTC_MODEL_ID,
         }),
         _ => None,
     }
@@ -769,12 +757,22 @@ fn parakeet_status_for_path(path: &Path) -> ModelStatus {
     }
 }
 
+fn parakeet_ctc_status_for_path(path: &Path) -> ModelStatus {
+    if parakeet::ctc_model_ready_in_dir(path) || parakeet::ctc_model_ready_at(path) {
+        ModelStatus::Ready
+    } else {
+        ModelStatus::Missing
+    }
+}
+
 fn path_matches_selected_model_kind(path: &Path, model_kind: TranscriptionModelKind) -> bool {
     match model_kind {
         TranscriptionModelKind::Parakeet => {
             parakeet::model_ready_in_dir(path) || parakeet::model_ready_at(path)
         }
-        TranscriptionModelKind::Whisper => whisper::model_ready_at(path),
+        TranscriptionModelKind::ParakeetCtc => {
+            parakeet::ctc_model_ready_in_dir(path) || parakeet::ctc_model_ready_at(path)
+        }
     }
 }
 
@@ -802,10 +800,12 @@ fn resolved_selected_model_path(settings: &Settings) -> Option<String> {
 fn model_kind_for_model_id(model_id: &str) -> TranscriptionModelKind {
     if model_id == "parakeet" {
         TranscriptionModelKind::Parakeet
+    } else if model_id == "parakeet-ctc" {
+        TranscriptionModelKind::ParakeetCtc
     } else {
         catalog_download_spec(model_id)
             .map(|spec| spec.model_kind)
-            .unwrap_or(TranscriptionModelKind::Whisper)
+            .unwrap_or(TranscriptionModelKind::Parakeet)
     }
 }
 
@@ -817,7 +817,7 @@ fn choose_fallback_model_selection(app: &AppHandle, settings: &mut Settings) {
         return;
     }
 
-    let preferred_ids = ["parakeet", "whisper-small", "whisper-large-v3-turbo"];
+    let preferred_ids = ["parakeet", "parakeet-ctc"];
     for model_id in preferred_ids {
         if let Some(path) = settings.installed_model_paths.get(model_id) {
             settings.selected_model_id = model_id.to_string();
@@ -848,8 +848,8 @@ fn selected_model_cache_key(settings: &Settings) -> String {
                 .unwrap_or("builtin")
                 .to_ascii_lowercase()
         ),
-        TranscriptionModelKind::Whisper => format!(
-            "whisper:{}",
+        TranscriptionModelKind::ParakeetCtc => format!(
+            "parakeet-ctc:{}",
             resolved_selected_model_path(settings)
                 .as_deref()
                 .unwrap_or("missing")
@@ -875,10 +875,11 @@ fn current_model_status(app: &AppHandle, settings: &Settings) -> ModelStatus {
                 built_in_parakeet_status(app)
             }
         }
-        TranscriptionModelKind::Whisper => resolved_selected_model_path(settings)
+        TranscriptionModelKind::ParakeetCtc => resolved_selected_model_path(settings)
             .as_ref()
             .map(PathBuf::from)
-            .filter(|path| whisper::model_ready_at(path))
+            .map(|path| parakeet_ctc_status_for_path(&path))
+            .filter(|status| *status == ModelStatus::Ready)
             .map(|_| ModelStatus::Ready)
             .unwrap_or(ModelStatus::Missing),
     }
@@ -1164,11 +1165,16 @@ fn transcribe_audio(
                 };
                 TranscriberEngine::Parakeet(model)
             }
-            TranscriptionModelKind::Whisper => {
+            TranscriptionModelKind::ParakeetCtc => {
                 let model_path = resolved_selected_model_path(settings)
                     .map(PathBuf::from)
-                    .ok_or_else(|| anyhow!("Whisper model path is not configured"))?;
-                TranscriberEngine::Whisper(whisper::WhisperTranscriber::load(&model_path)?)
+                    .ok_or_else(|| anyhow!("Parakeet CTC model path is not configured"))?;
+                let model = if parakeet::ctc_model_ready_in_dir(&model_path) {
+                    parakeet::ParakeetCtc::load_from_dir(&model_path)?
+                } else {
+                    parakeet::ParakeetCtc::load(&model_path)?
+                };
+                TranscriberEngine::ParakeetCtc(model)
             }
         };
 
@@ -1178,7 +1184,7 @@ fn transcribe_audio(
 
     match guard.engine.as_mut().expect("transcriber initialized") {
         TranscriberEngine::Parakeet(model) => model.transcribe_audio(audio),
-        TranscriberEngine::Whisper(model) => model.transcribe_audio(audio),
+        TranscriberEngine::ParakeetCtc(model) => model.transcribe_audio(audio),
     }
 }
 
@@ -2193,37 +2199,36 @@ fn inspect_model_candidate(path: &str) -> Result<ModelPathInspection, String> {
         .map_err(|_| format!("Path not found: {trimmed}"))?;
 
     if canonical.is_file() {
-        let ready = whisper::model_ready_at(&canonical);
-        let name = whisper::display_name_for(&canonical);
-        return Ok(ModelPathInspection {
-            name,
-            path: canonical.display().to_string(),
-            model_kind: TranscriptionModelKind::Whisper,
-            compatible: ready,
-            ready,
-        });
+        return Err("Choose a Parakeet model folder, not an individual file.".to_string());
     }
 
     if !canonical.is_dir() {
         return Err("That path is not a file or folder.".to_string());
     }
 
-    let direct_ready = parakeet::model_ready_in_dir(&canonical);
-    let nested_dir = canonical.join(parakeet::MODEL_ID);
-    let nested_ready = nested_dir.is_dir() && parakeet::model_ready_in_dir(&nested_dir);
-    let resolved_dir = if nested_ready { nested_dir } else { canonical.clone() };
+    let detected = parakeet::detect_model_dir(&canonical);
+    let resolved_dir = detected
+        .as_ref()
+        .map(|(_, path)| path.clone())
+        .unwrap_or_else(|| canonical.clone());
     let name = resolved_dir
         .file_name()
         .and_then(|value| value.to_str())
         .filter(|value| !value.is_empty())
         .unwrap_or("Custom model")
         .to_string();
-    let ready = direct_ready || nested_ready;
+    let ready = detected.is_some();
+    let model_kind = detected
+        .map(|(family, _)| match family {
+            parakeet::TranscriptionFamily::Tdt => TranscriptionModelKind::Parakeet,
+            parakeet::TranscriptionFamily::Ctc => TranscriptionModelKind::ParakeetCtc,
+        })
+        .unwrap_or(TranscriptionModelKind::Parakeet);
 
     Ok(ModelPathInspection {
         name,
         path: canonical.display().to_string(),
-        model_kind: TranscriptionModelKind::Parakeet,
+        model_kind,
         compatible: ready,
         ready,
     })
@@ -2262,24 +2267,15 @@ fn install_catalog_model(
     let inspection = inspect_model_candidate(&path)?;
     if !inspection.ready || !inspection.compatible {
         return Err(match model_kind {
-            TranscriptionModelKind::Whisper => {
-                "That file is not a usable Whisper model. Choose a local `.bin` Whisper file."
-                    .to_string()
-            }
-            TranscriptionModelKind::Parakeet => {
-                "That folder is not a usable Parakeet model.".to_string()
-            }
+            TranscriptionModelKind::Parakeet => "That folder is not a usable Parakeet TDT model.".to_string(),
+            TranscriptionModelKind::ParakeetCtc => "That folder is not a usable Parakeet CTC model.".to_string(),
         });
     }
 
     if inspection.model_kind != model_kind {
         return Err(match model_kind {
-            TranscriptionModelKind::Whisper => {
-                "Choose a local Whisper `.bin` file for this catalog entry.".to_string()
-            }
-            TranscriptionModelKind::Parakeet => {
-                "Choose a compatible Parakeet model folder for this entry.".to_string()
-            }
+            TranscriptionModelKind::Parakeet => "Choose a compatible Parakeet TDT folder for this catalog entry.".to_string(),
+            TranscriptionModelKind::ParakeetCtc => "Choose a compatible Parakeet CTC folder for this catalog entry.".to_string(),
         });
     }
 
@@ -2306,10 +2302,7 @@ fn download_catalog_model(
         .map_err(|error| error.to_string())?
         .join(spec.model_id);
     fs::create_dir_all(&model_dir).map_err(|error| error.to_string())?;
-    let download_root = match spec.model_kind {
-        TranscriptionModelKind::Parakeet => model_dir.join(parakeet::MODEL_ID),
-        TranscriptionModelKind::Whisper => model_dir.clone(),
-    };
+    let download_root = model_dir.join(spec.model_dir_name);
     fs::create_dir_all(&download_root).map_err(|error| error.to_string())?;
 
     let client = Client::builder()
@@ -2321,10 +2314,7 @@ fn download_catalog_model(
         let partial = destination.with_extension("part");
         let _ = fs::remove_file(&partial);
 
-        let already_ready = match spec.model_kind {
-            TranscriptionModelKind::Parakeet => destination.exists(),
-            TranscriptionModelKind::Whisper => whisper::model_ready_at(&destination),
-        };
+        let already_ready = destination.exists();
         if already_ready {
             continue;
         }
@@ -2358,12 +2348,7 @@ fn download_catalog_model(
             .map_err(|error| format!("Couldn't move downloaded model into place: {error}"))?;
     }
 
-    let inspection_target = if spec.inspect_path == "." {
-        model_dir.clone()
-    } else {
-        model_dir.join(spec.inspect_path)
-    };
-    let inspection = inspect_model_candidate(&inspection_target.display().to_string())?;
+    let inspection = inspect_model_candidate(&model_dir.display().to_string())?;
     activate_catalog_model(
         &app,
         &shared,

@@ -8,7 +8,7 @@ import type { KeyboardEvent, ReactNode, SVGProps } from "react";
 type RecordingMode = "hold" | "toggle";
 type AppPhase = "idle" | "recording" | "transcribing" | "error";
 type ModelStatus = "ready" | "missing";
-type TranscriptionModelKind = "parakeet" | "whisper";
+type TranscriptionModelKind = "parakeet" | "parakeet-ctc";
 type OverlayPosition =
   | "bottom-center"
   | "bottom-left"
@@ -402,12 +402,12 @@ function modelSpeedScore(row: ModelRow) {
   switch (row.id) {
     case "parakeet":
       return 4.6;
-    case "whisper-small":
-      return 3.7;
-    case "whisper-large-v3-turbo":
-      return 2.9;
-    case "canary-1b":
-      return 2.3;
+    case "parakeet-ctc":
+      return 4.3;
+    case "parakeet-eou":
+      return 4.8;
+    case "nemotron-streaming":
+      return 4.1;
     default:
       return 3;
   }
@@ -417,11 +417,11 @@ function modelAccuracyScore(row: ModelRow) {
   switch (row.id) {
     case "parakeet":
       return 4.3;
-    case "whisper-small":
-      return 3.8;
-    case "whisper-large-v3-turbo":
-      return 4.7;
-    case "canary-1b":
+    case "parakeet-ctc":
+      return 4.1;
+    case "parakeet-eou":
+      return 3.9;
+    case "nemotron-streaming":
       return 4.4;
     default:
       return 3.5;
@@ -456,15 +456,17 @@ function modelFeatureItems(row: ModelRow) {
     {
       id: "focus",
       label:
-        row.id === "parakeet"
-          ? "Dictation"
-          : row.id.includes("large")
-            ? "Quality"
-            : row.id.includes("whisper")
-              ? "Balanced"
+        row.tags.includes("streaming")
+          ? "Streaming"
+          : row.id === "parakeet"
+            ? "Dictation"
+            : row.id === "parakeet-ctc"
+              ? "English"
               : "Reference",
       icon:
-        row.id === "parakeet" ? (
+        row.tags.includes("streaming") ? (
+          <BoltIcon className="small-icon" />
+        ) : row.id === "parakeet" ? (
           <InputIcon className="small-icon" />
         ) : (
           <SparkIcon className="small-icon" />
@@ -635,121 +637,117 @@ const MODEL_CATALOG: Array<
     family: "Parakeet",
     provider: "NVIDIA",
     architecture: "FastConformer + TDT",
-    languages: "English",
+    languages: "25 languages",
     speed: "Fast",
     quality: "High",
     footprint: "0.6B",
     runtime: "Ready in app",
     license: "See model card",
-    summary: "English-first local ASR tuned for fast dictation.",
-    note: "Best current in-app path for low-latency desktop dictation.",
+    summary: "Multilingual Parakeet TDT with local ONNX inference and fast dictation latency.",
+    note: "Best current in-app path for local dictation, auto language detection, and broader language support.",
     highlights: [
-      "Optimized for quick local transcription",
       "Current default engine in Transcribed",
-      "Best fit today for English-heavy dictation",
+      "Uses parakeet-rs in the Rust backend",
+      "Supports timestamps and DirectML-capable ONNX execution",
     ],
-    hfUrl: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2",
+    hfUrl: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3",
     artifactUrl: "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8",
     artifactLabel: "ONNX export bundle",
-    tags: ["english", "nvidia", "available"],
+    tags: ["multilingual", "nvidia", "available", "timestamps"],
     supportsInstall: true,
     supportsDownload: true,
-    downloadSizeBytes: 670_525_864,
+    downloadSizeBytes: 593_000_000,
     minimumMemoryBytes: 4 * 1024 ** 3,
     recommendedMemoryBytes: 8 * 1024 ** 3,
     minimumCores: 4,
     recommendedCores: 8,
   },
   {
-    id: "whisper-small",
-    name: "Whisper Small",
-    modelKind: "whisper",
-    family: "Whisper",
-    provider: "OpenAI",
-    architecture: "Transformer encoder-decoder",
-    languages: "Multilingual",
-    speed: "Medium",
-    quality: "Balanced",
-    footprint: "Small",
-    runtime: "Backend ready",
-    license: "Apache-2.0",
-    summary: "Balanced Whisper checkpoint with broad language coverage.",
-    note: "A strong general fallback when Parakeet misses mixed-language or non-English dictation.",
-    highlights: [
-      "Better multilingual coverage than Parakeet",
-      "Good balance between speed and accuracy",
-      "Useful for many Asian and European languages",
-    ],
-    hfUrl: "https://huggingface.co/openai/whisper-small",
-    artifactUrl: "https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-small.bin",
-    artifactLabel: "ggml-small.bin",
-    tags: ["multilingual", "openai", "future"],
-    supportsInstall: true,
-    supportsDownload: true,
-    downloadSizeBytes: 487_601_967,
-    minimumMemoryBytes: 4 * 1024 ** 3,
-    recommendedMemoryBytes: 8 * 1024 ** 3,
-    minimumCores: 4,
-    recommendedCores: 8,
-  },
-  {
-    id: "whisper-large-v3-turbo",
-    name: "Whisper Large V3 Turbo",
-    modelKind: "whisper",
-    family: "Whisper",
-    provider: "OpenAI",
-    architecture: "Transformer encoder-decoder",
-    languages: "Multilingual",
-    speed: "Fast",
+    id: "parakeet-ctc",
+    name: "Parakeet CTC",
+    modelKind: "parakeet-ctc",
+    family: "Parakeet",
+    provider: "NVIDIA",
+    architecture: "FastConformer + CTC",
+    languages: "English",
+    speed: "Very fast",
     quality: "High",
-    footprint: "Large turbo",
+    footprint: "0.6B",
     runtime: "Backend ready",
-    license: "MIT",
-    summary: "High-quality multilingual Whisper model aimed at faster large-model inference.",
-    note: "Best catalog fit for multilingual quality once model installation is wired into the app.",
+    license: "See model card",
+    summary: "English-only CTC model with punctuation and capitalization through parakeet-rs.",
+    note: "Good fit when you want a simpler English-first Parakeet path without the TDT multilingual stack.",
     highlights: [
-      "Best Whisper quality path in this catalog",
-      "Good target for future live/final dual-lane setups",
-      "Strong choice when language coverage matters most",
+      "Uses parakeet-rs in the Rust backend",
+      "Strong English punctuation and capitalization",
+      "Timestamp-capable via the underlying crate",
     ],
-    hfUrl: "https://huggingface.co/openai/whisper-large-v3-turbo",
-    artifactUrl:
-      "https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-large-v3-turbo.bin",
-    artifactLabel: "ggml-large-v3-turbo.bin",
-    tags: ["multilingual", "openai", "future"],
+    hfUrl: "https://huggingface.co/nvidia/parakeet-ctc-0.6b",
+    artifactUrl: "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx",
+    artifactLabel: "ONNX export bundle",
+    tags: ["english", "nvidia", "available", "timestamps"],
     supportsInstall: true,
     supportsDownload: true,
-    downloadSizeBytes: 1_624_555_275,
-    minimumMemoryBytes: 8 * 1024 ** 3,
-    recommendedMemoryBytes: 16 * 1024 ** 3,
+    downloadSizeBytes: 1_240_000_000,
+    minimumMemoryBytes: 4 * 1024 ** 3,
+    recommendedMemoryBytes: 8 * 1024 ** 3,
+    minimumCores: 4,
+    recommendedCores: 8,
+  },
+  {
+    id: "parakeet-eou",
+    name: "Parakeet Realtime EOU",
+    modelKind: "parakeet",
+    family: "Parakeet",
+    provider: "NVIDIA",
+    architecture: "Streaming encoder-decoder + EOU",
+    languages: "English",
+    speed: "Realtime",
+    quality: "Balanced",
+    footprint: "120M",
+    runtime: "Streaming integration pending",
+    license: "See model card",
+    summary: "Realtime Parakeet model with end-of-utterance detection, exposed by parakeet-rs.",
+    note: "Best next target for a truer live transcription experience, but not yet wired into the app session flow.",
+    highlights: [
+      "Designed for chunked live transcription",
+      "End-of-utterance aware",
+      "Good candidate for a future streaming HUD mode",
+    ],
+    hfUrl: "https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1",
+    tags: ["english", "nvidia", "future", "streaming"],
+    supportsInstall: false,
+    supportsDownload: false,
+    minimumMemoryBytes: 4 * 1024 ** 3,
+    recommendedMemoryBytes: 8 * 1024 ** 3,
     minimumCores: 8,
     recommendedCores: 12,
   },
   {
-    id: "canary-1b",
-    name: "Canary 1B",
-    modelKind: "whisper",
-    family: "Canary",
+    id: "nemotron-streaming",
+    name: "Nemotron Streaming",
+    modelKind: "parakeet",
+    family: "Parakeet",
     provider: "NVIDIA",
-    architecture: "FastConformer encoder-decoder",
-    languages: "25 EU languages",
-    speed: "Medium",
+    architecture: "Cache-aware streaming RNNT",
+    languages: "English",
+    speed: "Realtime",
     quality: "High",
-    footprint: "1B",
-    runtime: "Not supported",
-    license: "CC-BY-4.0",
-    summary: "NVIDIA multilingual ASR model with broad European language support.",
-    note: "Worth tracking as a future multilingual option, but not wired into the Rust runtime yet.",
+    footprint: "0.6B",
+    runtime: "Streaming integration pending",
+    license: "See model card",
+    summary: "Streaming Nemotron speech model supported by parakeet-rs for chunked ASR.",
+    note: "Promising for future low-latency dictation with punctuation, but not yet connected to the current app flow.",
     highlights: [
-      "Strong multilingual catalog candidate",
-      "Useful benchmark against Whisper for EU languages",
+      "Cache-aware streaming path",
+      "Good punctuation-oriented future option",
       "Not yet supported in-app",
     ],
-    hfUrl: "https://huggingface.co/nvidia/canary-1b",
-    tags: ["multilingual", "nvidia", "future"],
+    hfUrl: "https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b",
+    tags: ["english", "nvidia", "future", "streaming"],
     supportsInstall: false,
     supportsDownload: false,
-    minimumMemoryBytes: 12 * 1024 ** 3,
+    minimumMemoryBytes: 8 * 1024 ** 3,
     recommendedMemoryBytes: 16 * 1024 ** 3,
     minimumCores: 8,
     recommendedCores: 12,
@@ -810,9 +808,9 @@ function buildModelRows(snapshot: Snapshot): ModelRow[] {
       note: isReady
         ? isManaged
           ? "Downloaded into Transcribed and ready to use locally."
-          : "Linked to a local model file. You can activate it from this catalog entry."
+          : "Linked to a local Parakeet model folder. You can activate it from this catalog entry."
         : supportsDownload
-          ? "Download a compatible Whisper binary from Hugging Face or point Transcribed at an existing local `.bin` file."
+          ? "Download this Parakeet variant from Hugging Face or point Transcribed at an existing compatible model folder."
           : "Reference-only for now. Browse the model card, but the runtime is not wired into Transcribed yet.",
       path: installedPath,
       diskSizeBytes: snapshot.installedModelSizes[entry.id] ?? 0,
@@ -2260,12 +2258,8 @@ function ControlApp({
 
     try {
       const selected = await openDialog({
-        directory: row.modelKind === "parakeet",
+        directory: true,
         multiple: false,
-        filters:
-          row.modelKind === "whisper"
-            ? [{ name: "Whisper model", extensions: ["bin"] }]
-            : undefined,
       });
 
       if (!selected || Array.isArray(selected)) {
@@ -3649,7 +3643,7 @@ function ControlApp({
               <article className="surface info-tile">
                 <ExternalIcon className="tile-icon-svg" />
                 <strong>Next</strong>
-                <span>Better live preview, Whisper options, vector search.</span>
+                <span>Better live preview, more Parakeet variants, vector search.</span>
               </article>
             </section>
           ) : null}
