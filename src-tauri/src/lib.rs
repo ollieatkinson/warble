@@ -800,9 +800,9 @@ fn indicator_window_size(settings: &Settings) -> (i32, i32) {
         228
     } else {
         match settings.overlay_animation_style {
-            OverlayAnimationStyle::Radial => 58,
-            OverlayAnimationStyle::Spectrum => 96,
-            OverlayAnimationStyle::Waveform => 104,
+            OverlayAnimationStyle::Radial => 54,
+            OverlayAnimationStyle::Spectrum => 84,
+            OverlayAnimationStyle::Waveform => 90,
         }
     };
 

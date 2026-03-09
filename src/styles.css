@@ -921,130 +921,152 @@ input::placeholder {
   text-overflow: ellipsis;
 }
 
-.signal-spectrum {
+.signal-bars,
+.signal-radial,
+.signal-wave {
   display: block;
-  width: 72px;
-  min-width: 72px;
-  height: 18px;
   overflow: visible;
 }
 
-.signal-spectrum-compact {
-  width: 72px;
-  min-width: 72px;
+.signal-bars {
+  width: 60px;
+  min-width: 60px;
   height: 18px;
 }
 
-.signal-spectrum-glow,
-.signal-spectrum-dot,
-.signal-spectrum-stack {
+.signal-bars-compact {
+  width: 60px;
+  min-width: 60px;
+  height: 18px;
+}
+
+.signal-bars-base,
+.signal-bars-bar,
+.signal-radial-ring,
+.signal-radial-spoke,
+.signal-wave-fill,
+.signal-wave-line,
+.signal-wave-center {
   transition:
+    d 90ms linear,
     opacity 120ms ease,
-    fill 160ms ease,
-    transform 120ms ease;
+    fill 140ms ease,
+    stroke 140ms ease,
+    y 90ms linear,
+    height 90ms linear;
 }
 
-.signal-spectrum-idle {
-  opacity: 0.7;
+.signal-bars-base,
+.signal-wave-center,
+.signal-radial-ring {
+  fill: none;
 }
 
-.signal-spectrum-glow {
-  filter: drop-shadow(0 0 4px rgba(125, 104, 255, 0.42));
+.signal-bars-bar {
+  fill: #35df98;
+}
+
+.signal-bars-base {
+  stroke: rgba(53, 223, 152, 0.26);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.signal-bars-warm .signal-bars-bar {
+  fill: #f4be71;
+}
+
+.signal-bars-warm .signal-bars-base {
+  stroke: rgba(244, 190, 113, 0.24);
+}
+
+.signal-bars-idle {
+  opacity: 0.72;
+}
+
+.signal-bars-idle .signal-bars-bar {
+  fill: #9aa7b8;
+}
+
+.signal-bars-idle .signal-bars-base {
+  stroke: rgba(154, 167, 184, 0.2);
 }
 
 .signal-radial {
-  display: block;
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  overflow: visible;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
 }
 
 .signal-radial-compact {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
 }
 
-.signal-radial-glow,
-.signal-radial-dot,
-.signal-radial-spike,
-.signal-radial-core {
-  transition:
-    opacity 120ms ease,
-    stroke 160ms ease,
-    fill 160ms ease,
-    transform 120ms ease;
+.signal-radial-ring {
+  stroke: rgba(53, 223, 152, 0.22);
+  stroke-width: 1;
 }
 
-.signal-radial-glow {
-  filter: drop-shadow(0 0 4px rgba(168, 77, 255, 0.45));
-}
-
-.signal-radial-spike {
-  stroke-width: 1.25;
+.signal-radial-spoke {
+  stroke: #35df98;
+  stroke-width: 1.35;
   stroke-linecap: round;
+}
+
+.signal-radial-warm .signal-radial-ring {
+  stroke: rgba(244, 190, 113, 0.2);
+}
+
+.signal-radial-warm .signal-radial-spoke {
+  stroke: #f4be71;
 }
 
 .signal-radial-idle {
   opacity: 0.72;
 }
 
+.signal-radial-idle .signal-radial-ring {
+  stroke: rgba(154, 167, 184, 0.2);
+}
+
+.signal-radial-idle .signal-radial-spoke {
+  stroke: #9aa7b8;
+}
+
 .signal-wave {
-  display: block;
-  width: 60px;
-  min-width: 60px;
+  width: 62px;
+  min-width: 62px;
   height: 20px;
-  overflow: visible;
 }
 
 .signal-wave-compact {
-  width: 60px;
-  min-width: 60px;
+  width: 62px;
+  min-width: 62px;
   height: 20px;
 }
 
-.signal-wave-fill,
-.signal-wave-line,
-.signal-wave-center {
-  transition:
-    d 90ms linear,
-    opacity 140ms ease,
-    fill 160ms ease,
-    stroke 160ms ease;
-}
-
 .signal-wave-fill {
-  opacity: 0.96;
+  fill: rgba(53, 223, 152, 0.12);
 }
 
 .signal-wave-line {
   fill: none;
-  stroke-width: 1.85;
+  stroke: #35df98;
+  stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .signal-wave-center {
-  fill: none;
+  stroke: rgba(53, 223, 152, 0.2);
   stroke-width: 1;
   stroke-linecap: round;
 }
 
-.signal-wave-live .signal-wave-fill {
-  fill: rgba(47, 210, 127, 0.18);
-}
-
-.signal-wave-live .signal-wave-line {
-  stroke: #35df98;
-}
-
-.signal-wave-live .signal-wave-center {
-  stroke: rgba(53, 223, 152, 0.28);
-}
-
 .signal-wave-warm .signal-wave-fill {
-  fill: rgba(243, 180, 92, 0.16);
+  fill: rgba(244, 190, 113, 0.12);
 }
 
 .signal-wave-warm .signal-wave-line {
@@ -1052,23 +1074,23 @@ input::placeholder {
 }
 
 .signal-wave-warm .signal-wave-center {
-  stroke: rgba(244, 190, 113, 0.24);
+  stroke: rgba(244, 190, 113, 0.2);
 }
 
 .signal-wave-idle {
-  opacity: 0.68;
+  opacity: 0.72;
 }
 
 .signal-wave-idle .signal-wave-fill {
-  fill: rgba(140, 152, 171, 0.12);
+  fill: rgba(154, 167, 184, 0.1);
 }
 
 .signal-wave-idle .signal-wave-line {
-  stroke: #7f8ca1;
+  stroke: #9aa7b8;
 }
 
 .signal-wave-idle .signal-wave-center {
-  stroke: rgba(127, 140, 161, 0.22);
+  stroke: rgba(154, 167, 184, 0.18);
 }
 
 @keyframes indicator-pulse {
