@@ -49,6 +49,7 @@ const LIVE_METER_SILENCE_RMS_THRESHOLD: f32 = 0.0045;
 const LIVE_METER_SILENCE_PEAK_THRESHOLD: f32 = 0.015;
 const LIVE_METER_FULL_RMS: f32 = 0.05;
 const LIVE_METER_FULL_PEAK: f32 = 0.18;
+const INDICATOR_WINDOW_PADDING: i32 = 10;
 const BACKGROUND_ARG: &str = "--background";
 const TRAY_ID: &str = "main-tray";
 const TRAY_SHOW_ID: &str = "tray-show";
@@ -1171,8 +1172,8 @@ fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
 }
 
 fn indicator_window_size(settings: &Settings) -> (i32, i32) {
-    let height = if settings.show_live_transcription { 54 } else { 46 };
-    let width = if settings.show_live_transcription {
+    let content_height = if settings.show_live_transcription { 54 } else { 46 };
+    let content_width = if settings.show_live_transcription {
         228
     } else {
         match settings.overlay_animation_style {
@@ -1180,9 +1181,12 @@ fn indicator_window_size(settings: &Settings) -> (i32, i32) {
             OverlayAnimationStyle::Spectrum => 84,
             OverlayAnimationStyle::Waveform => 90,
         }
-    };
+    } as i32;
 
-    (width, height)
+    (
+        content_width + INDICATOR_WINDOW_PADDING * 2,
+        content_height + INDICATOR_WINDOW_PADDING * 2,
+    )
 }
 
 fn show_main_window(app: &AppHandle) {
