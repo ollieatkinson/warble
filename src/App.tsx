@@ -17,6 +17,7 @@ type SectionId =
   | "overview"
   | "models"
   | "keybindings"
+  | "interface"
   | "inputs"
   | "history"
   | "about";
@@ -76,7 +77,7 @@ type SettingsDraft = {
   toggleShortcut: string;
   selectedSourceId: string;
   autoPaste: boolean;
-  overlayPosition: OverlayPosition;
+  overlayPosition: EditableOverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
   showLiveTranscription: boolean;
 };
@@ -142,6 +143,7 @@ const sections: Array<{
   { id: "overview", label: "Overview" },
   { id: "models", label: "Models" },
   { id: "keybindings", label: "Keys" },
+  { id: "interface", label: "Interface" },
   { id: "inputs", label: "Input" },
   { id: "history", label: "History" },
   { id: "about", label: "About" },
@@ -175,6 +177,8 @@ const overlayAnimationOptions: Array<{
   { id: "spectrum", label: "Bars", description: "Fixed reactive bars" },
   { id: "radial", label: "Radial", description: "Static reactive ring" },
 ];
+
+const DEMO_LEVELS = [0.18, 0.34, 0.62, 0.28, 0.82, 0.46, 0.24, 0.58, 0.38, 0.22, 0.48, 0.26];
 
 async function getSnapshot() {
   return invoke<Snapshot>("get_snapshot");
@@ -613,6 +617,16 @@ function InputIcon(props: IconProps) {
   );
 }
 
+function InterfaceIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <rect x="4.5" y="6" width="15" height="12" rx="3" />
+      <path d="M9 10.5h6" />
+      <path d="M8 14h8" />
+    </GlyphBase>
+  );
+}
+
 function HistoryIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
@@ -716,6 +730,8 @@ function SectionIcon({
       return <ModelsIcon className={className} />;
     case "keybindings":
       return <KeysIcon className={className} />;
+    case "interface":
+      return <InterfaceIcon className={className} />;
     case "inputs":
       return <InputIcon className={className} />;
     case "history":
@@ -1082,18 +1098,99 @@ function ShortcutField({
   );
 }
 
+function OverlayPositionPreview({
+  position,
+  large = false,
+}: {
+  position: EditableOverlayPosition;
+  large?: boolean;
+}) {
+  return (
+    <div
+      className={[
+        "position-preview",
+        large ? "position-preview-large" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <div className={`position-preview-screen position-preview-screen-${position}`}>
+        <span className="position-preview-pill" />
+      </div>
+    </div>
+  );
+}
+
+function AnimationOptionPreview({
+  style,
+  large = false,
+}: {
+  style: OverlayAnimationStyle;
+  large?: boolean;
+}) {
+  return (
+    <div
+      className={[
+        "animation-choice-preview",
+        large ? "animation-choice-preview-large" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <div className="animation-choice-pill">
+        <span className="animation-choice-dot" />
+        <SignalBars
+          phase="recording"
+          levels={DEMO_LEVELS}
+          compact
+          animationStyle={style}
+        />
+      </div>
+    </div>
+  );
+}
+
+function InterfacePreviewCard({
+  overlayPosition,
+  animationStyle,
+  showLiveTranscription,
+}: {
+  overlayPosition: EditableOverlayPosition;
+  animationStyle: OverlayAnimationStyle;
+  showLiveTranscription: boolean;
+}) {
+  return (
+    <div className="interface-demo-frame">
+      <div className={`interface-demo-screen interface-demo-screen-${overlayPosition}`}>
+        <div className="interface-demo-pill">
+          <TranscriptionPill
+            phase="recording"
+            title="Listening"
+            detail="Live preview text"
+            levels={DEMO_LEVELS}
+            animationStyle={animationStyle}
+            showLiveTranscription={showLiveTranscription}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ChoiceDropdown({
   label,
   value,
   options,
   onChange,
   placeholder = "Select",
+  renderPreview,
 }: {
   label: string;
   value: string;
   options: ChoiceOption[];
   onChange: (value: string) => void;
   placeholder?: string;
+  renderPreview?: (value: string, mode: "trigger" | "option") => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1145,6 +1242,9 @@ function ChoiceDropdown({
           aria-haspopup="listbox"
           disabled={options.length === 0}
         >
+          {selected && renderPreview ? (
+            <span className="choice-preview">{renderPreview(selected.id, "trigger")}</span>
+          ) : null}
           <div className="choice-trigger-copy">
             <strong>{selected?.label ?? placeholder}</strong>
             {selected?.description ? <span>{selected.description}</span> : null}
@@ -1164,9 +1264,16 @@ function ChoiceDropdown({
                   setOpen(false);
                 }}
               >
-                <div className="choice-option-copy">
-                  <strong>{option.label}</strong>
-                  {option.description ? <span>{option.description}</span> : null}
+                <div className="choice-option-main">
+                  {renderPreview ? (
+                    <span className="choice-preview choice-preview-option">
+                      {renderPreview(option.id, "option")}
+                    </span>
+                  ) : null}
+                  <div className="choice-option-copy">
+                    <strong>{option.label}</strong>
+                    {option.description ? <span>{option.description}</span> : null}
+                  </div>
                 </div>
                 {value === option.id ? <CheckIcon className="choice-check" /> : null}
               </button>
@@ -1872,6 +1979,11 @@ function ControlApp({
           {activeSection === "keybindings" ? (
             <section className="compact-grid-two">
               <article className="surface">
+                <div className="surface-bar">
+                  <div className="surface-title">
+                    <span className="surface-title-label">Global shortcuts</span>
+                  </div>
+                </div>
                 <div className="field-grid">
                   <ShortcutField
                     label="Hold"
@@ -1896,9 +2008,16 @@ function ControlApp({
                     onCancel={() => setCapturing(null)}
                   />
                 </div>
+                <div className="mini-meta-row">
+                  <span>{snapshot.shortcutMessage}</span>
+                  <span>{snapshot.shortcutsActive ? "Ready globally" : "Unavailable globally"}</span>
+                </div>
               </article>
 
-              <article className="surface">
+              <article className="surface preference-note-surface">
+                <div className="surface-title">
+                  <span className="surface-title-label">Recording</span>
+                </div>
                 <label className="toggle-row toggle-row-card">
                   <input
                     type="checkbox"
@@ -1911,55 +2030,123 @@ function ControlApp({
                   />
                   <div>
                     <strong>Auto paste</strong>
-                    <span>Paste after final transcript.</span>
+                    <span>Paste after the final transcript is ready.</span>
                   </div>
                 </label>
+              </article>
+            </section>
+          ) : null}
 
-                <ChoiceDropdown
-                  label="HUD"
-                  value={draft.overlayPosition}
-                  options={overlayPositionOptions}
-                  onChange={(value) =>
-                    void applySettings({
-                      overlayPosition: value as EditableOverlayPosition,
-                    })
-                  }
-                />
-
-                <ChoiceDropdown
-                  label="Animation"
-                  value={draft.overlayAnimationStyle}
-                  options={overlayAnimationOptions}
-                  onChange={(value) =>
-                    void applySettings({
-                      overlayAnimationStyle: value as OverlayAnimationStyle,
-                    })
-                  }
-                />
-
-                <label className="toggle-row toggle-row-card">
-                  <input
-                    type="checkbox"
-                    checked={draft.showLiveTranscription}
-                    onChange={(event) =>
-                      void applySettings({
-                        showLiveTranscription: event.currentTarget.checked,
-                      })
-                    }
-                  />
-                  <div>
-                    <strong>Show live transcription</strong>
-                    <span>Show draft text in the HUD while speaking.</span>
+          {activeSection === "interface" ? (
+            <section className="compact-grid-two">
+              <article className="surface preference-surface">
+                <div className="surface-bar">
+                  <div className="surface-title">
+                    <span className="surface-title-label">Indicator</span>
                   </div>
-                </label>
+                </div>
+
+                <div className="setting-list">
+                  <div className="setting-row">
+                    <div className="setting-copy">
+                      <strong>HUD position</strong>
+                      <span>Where the pill sits while dictating.</span>
+                    </div>
+                    <div className="setting-control">
+                      <ChoiceDropdown
+                        label="Position"
+                        value={draft.overlayPosition}
+                        options={overlayPositionOptions}
+                        renderPreview={(value) => (
+                          <OverlayPositionPreview
+                            position={value as EditableOverlayPosition}
+                          />
+                        )}
+                        onChange={(value) =>
+                          void applySettings({
+                            overlayPosition: value as EditableOverlayPosition,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="setting-row">
+                    <div className="setting-copy">
+                      <strong>Animation</strong>
+                      <span>Choose a simpler live meter style.</span>
+                    </div>
+                    <div className="setting-control">
+                      <ChoiceDropdown
+                        label="Style"
+                        value={draft.overlayAnimationStyle}
+                        options={overlayAnimationOptions}
+                        renderPreview={(value) => (
+                          <AnimationOptionPreview
+                            style={value as OverlayAnimationStyle}
+                          />
+                        )}
+                        onChange={(value) =>
+                          void applySettings({
+                            overlayAnimationStyle: value as OverlayAnimationStyle,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <label className="toggle-row toggle-row-card setting-toggle">
+                    <input
+                      type="checkbox"
+                      checked={draft.showLiveTranscription}
+                      onChange={(event) =>
+                        void applySettings({
+                          showLiveTranscription: event.currentTarget.checked,
+                        })
+                      }
+                    />
+                    <div>
+                      <strong>Show live transcription</strong>
+                      <span>Expand the pill with draft text while speaking.</span>
+                    </div>
+                  </label>
+                </div>
 
                 <div className="mini-meta-row">
-                  <span>{snapshot.shortcutMessage}</span>
                   <span>{formatOverlayPosition(draft.overlayPosition)}</span>
                   <span>{formatOverlayAnimationStyle(draft.overlayAnimationStyle)}</span>
-                  {snapshot.settings.overlayPosition === "caret" ? (
-                    <span>Caret mode is hidden here until the settings UI is stable.</span>
-                  ) : null}
+                  <span>{draft.showLiveTranscription ? "Expanded HUD" : "Compact HUD"}</span>
+                </div>
+              </article>
+
+              <article className="surface preview-surface interface-preview-surface">
+                <div className="surface-bar">
+                  <div className="surface-title">
+                    <span className="surface-title-label">Preview</span>
+                  </div>
+                </div>
+
+                <InterfacePreviewCard
+                  overlayPosition={draft.overlayPosition}
+                  animationStyle={draft.overlayAnimationStyle}
+                  showLiveTranscription={draft.showLiveTranscription}
+                />
+
+                <div className="interface-preview-grid">
+                  <div className="interface-preview-mini">
+                    <span>Placement</span>
+                    <OverlayPositionPreview
+                      position={draft.overlayPosition}
+                      large
+                    />
+                  </div>
+                  <div className="interface-preview-mini">
+                    <span>Meter</span>
+                    <AnimationOptionPreview
+                      style={draft.overlayAnimationStyle}
+                      large
+                    />
+                  </div>
                 </div>
               </article>
             </section>
