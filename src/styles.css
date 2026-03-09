@@ -1515,8 +1515,8 @@ input::placeholder {
 }
 
 .indicator-shell-compact {
-  padding: 0.54rem 0.78rem;
-  gap: 0.5rem;
+  padding: 0.58rem 0.88rem;
+  gap: 0.56rem;
   max-width: none;
 }
 
@@ -1536,6 +1536,10 @@ input::placeholder {
   align-items: center;
   position: relative;
   flex: 0 0 auto;
+}
+
+.indicator-signal-linear {
+  padding-right: 0.18rem;
 }
 
 .indicator-signal-radial {

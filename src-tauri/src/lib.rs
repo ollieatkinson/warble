@@ -1448,8 +1448,8 @@ fn indicator_window_size(settings: &Settings) -> (i32, i32) {
     } else {
         match settings.overlay_animation_style {
             OverlayAnimationStyle::Radial => 86,
-            OverlayAnimationStyle::Spectrum => 126,
-            OverlayAnimationStyle::Waveform => 134,
+            OverlayAnimationStyle::Spectrum => 136,
+            OverlayAnimationStyle::Waveform => 142,
         }
     } as i32;
 
@@ -2049,8 +2049,8 @@ fn create_indicator_window(app: &AppHandle) -> Result<()> {
     .inner_size(indicator_width as f64, indicator_height as f64)
     .build()?;
 
-    let _ = window.set_focusable(false);
-    let _ = window.set_ignore_cursor_events(true);
+    let _ = window.set_focusable(true);
+    let _ = window.set_ignore_cursor_events(false);
     let _ = window.set_shadow(false);
     Ok(())
 }

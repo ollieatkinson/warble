@@ -1483,6 +1483,7 @@ function TranscriptionPill({
         <div
           className={[
             "indicator-signal",
+            usesRadialCore ? "" : "indicator-signal-linear",
             usesRadialCore ? "indicator-signal-radial" : "",
           ]
             .filter(Boolean)
