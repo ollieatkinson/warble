@@ -129,6 +129,7 @@ type ModelRow = {
   license: string;
   state: ModelRowState;
   source: "built-in" | "catalog";
+  managed: boolean;
   active: boolean;
   selectable: boolean;
   summary: string;
@@ -624,7 +625,7 @@ function smoothLevels(levels: number[]) {
 }
 
 const MODEL_CATALOG: Array<
-  Omit<ModelRow, "state" | "source" | "active" | "selectable" | "path">
+  Omit<ModelRow, "state" | "source" | "managed" | "active" | "selectable" | "path">
 > = [
   {
     id: "parakeet",
@@ -771,6 +772,7 @@ function buildModelRows(snapshot: Snapshot): ModelRow[] {
         ...entry,
         state: isReady ? "ready" : "downloadable",
         source: "built-in",
+        managed: Boolean(installedPath && isManagedModelPath(installedPath)),
         active,
         selectable: isReady,
         runtime:
@@ -794,16 +796,20 @@ function buildModelRows(snapshot: Snapshot): ModelRow[] {
       snapshot.settings.selectedModelKind === entry.modelKind;
     const isReady = Boolean(installedPath);
     const supportsDownload = Boolean(entry.supportsDownload);
+    const isManaged = Boolean(installedPath && isManagedModelPath(installedPath));
 
     return {
       ...entry,
       state: isReady ? "ready" : supportsDownload ? "downloadable" : "planned",
       source: "catalog",
+      managed: isManaged,
       active: isSelectedEngine && snapshot.modelStatus === "ready",
       selectable: isReady,
       runtime: isReady ? "Ready in app" : supportsDownload ? "Download in app" : entry.runtime,
       note: isReady
-        ? "Linked to a local model file. You can activate it from this catalog entry."
+        ? isManaged
+          ? "Downloaded into Transcribed and ready to use locally."
+          : "Linked to a local model file. You can activate it from this catalog entry."
         : supportsDownload
           ? "Download a compatible Whisper binary from Hugging Face or point Transcribed at an existing local `.bin` file."
           : "Reference-only for now. Browse the model card, but the runtime is not wired into Transcribed yet.",
@@ -816,6 +822,10 @@ function buildModelRows(snapshot: Snapshot): ModelRow[] {
   });
 
   return rows;
+}
+
+function isManagedModelPath(path: string) {
+  return /[\\/]catalog-models(?:[\\/]|$)/i.test(path);
 }
 
 function matchesModel(row: ModelRow, query: string, filter: ModelFilter) {
@@ -2256,6 +2266,29 @@ function ControlApp({
     }
   }
 
+  async function removeCatalogModel(row: ModelRow) {
+    if (!row.managed) {
+      return;
+    }
+
+    const actionId = `model-remove:${row.id}`;
+    setMessage(null);
+    setButtonFeedbackState(actionId, "working");
+
+    try {
+      await invoke("remove_catalog_model", {
+        modelId: row.id,
+      });
+      finishButtonFeedback(actionId, 1200);
+    } catch (error) {
+      clearButtonFeedback(actionId);
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
   async function openModelReference(row: ModelRow) {
     if (!row.hfUrl) {
       return;
@@ -2845,6 +2878,19 @@ function ControlApp({
                                     iconOnly
                                   />
                                 ) : null}
+                                {row.managed ? (
+                                  <ActionButton
+                                    className="secondary small"
+                                    state={buttonFeedback[`model-remove:${row.id}`]}
+                                    idleLabel="Delete downloaded model"
+                                    workingLabel="Deleting"
+                                    doneLabel="Deleted"
+                                    idleIcon={<TrashIcon className="small-icon" />}
+                                    doneIcon={<CheckIcon className="small-icon" />}
+                                    onClick={() => removeCatalogModel(row)}
+                                    iconOnly
+                                  />
+                                ) : null}
                                 {row.hfUrl ? (
                                   <button
                                     className="secondary small icon-only-button"
@@ -2959,6 +3005,18 @@ function ControlApp({
                               idleIcon={<FolderIcon className="small-icon" />}
                               doneIcon={<CheckIcon className="small-icon" />}
                               onClick={() => linkCatalogModel(selectedModel)}
+                            />
+                          ) : null}
+                          {selectedModel.managed ? (
+                            <ActionButton
+                              className="secondary"
+                              state={buttonFeedback[`model-remove:${selectedModel.id}`]}
+                              idleLabel="Delete downloaded model"
+                              workingLabel="Deleting"
+                              doneLabel="Deleted"
+                              idleIcon={<TrashIcon className="small-icon" />}
+                              doneIcon={<CheckIcon className="small-icon" />}
+                              onClick={() => removeCatalogModel(selectedModel)}
                             />
                           ) : null}
                           {selectedModel.selectable && !selectedModel.active ? (

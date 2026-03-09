@@ -93,7 +93,7 @@ enum AppPhase {
     Error,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 enum ModelStatus {
     Ready,
@@ -549,6 +549,20 @@ fn managed_models_dir(app: &AppHandle) -> Result<PathBuf> {
     Ok(dir)
 }
 
+fn managed_model_dir_for_id(app: &AppHandle, model_id: &str) -> Result<PathBuf> {
+    Ok(managed_models_dir(app)?.join(model_id))
+}
+
+fn is_managed_model_path(app: &AppHandle, path: &Path) -> bool {
+    let Ok(managed_root) = managed_models_dir(app) else {
+        return false;
+    };
+
+    let managed_root = managed_root.canonicalize().unwrap_or(managed_root);
+    let candidate = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    candidate.starts_with(&managed_root)
+}
+
 fn path_size_bytes(path: &Path) -> u64 {
     let Ok(metadata) = fs::metadata(path) else {
         return 0;
@@ -783,6 +797,46 @@ fn resolved_selected_model_path(settings: &Settings) -> Option<String> {
                 })
                 .cloned()
         })
+}
+
+fn model_kind_for_model_id(model_id: &str) -> TranscriptionModelKind {
+    if model_id == "parakeet" {
+        TranscriptionModelKind::Parakeet
+    } else {
+        catalog_download_spec(model_id)
+            .map(|spec| spec.model_kind)
+            .unwrap_or(TranscriptionModelKind::Whisper)
+    }
+}
+
+fn choose_fallback_model_selection(app: &AppHandle, settings: &mut Settings) {
+    if built_in_parakeet_status(app) == ModelStatus::Ready {
+        settings.selected_model_id = "parakeet".to_string();
+        settings.selected_model_kind = TranscriptionModelKind::Parakeet;
+        settings.selected_model_path = None;
+        return;
+    }
+
+    let preferred_ids = ["parakeet", "whisper-small", "whisper-large-v3-turbo"];
+    for model_id in preferred_ids {
+        if let Some(path) = settings.installed_model_paths.get(model_id) {
+            settings.selected_model_id = model_id.to_string();
+            settings.selected_model_kind = model_kind_for_model_id(model_id);
+            settings.selected_model_path = Some(path.clone());
+            return;
+        }
+    }
+
+    if let Some((model_id, path)) = settings.installed_model_paths.iter().next() {
+        settings.selected_model_id = model_id.clone();
+        settings.selected_model_kind = model_kind_for_model_id(model_id);
+        settings.selected_model_path = Some(path.clone());
+        return;
+    }
+
+    settings.selected_model_id = "parakeet".to_string();
+    settings.selected_model_kind = TranscriptionModelKind::Parakeet;
+    settings.selected_model_path = None;
 }
 
 fn selected_model_cache_key(settings: &Settings) -> String {
@@ -2319,6 +2373,69 @@ fn download_catalog_model(
     )
 }
 
+#[tauri::command]
+fn remove_catalog_model(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+    model_id: String,
+) -> Result<(), String> {
+    let display_name = catalog_download_spec(&model_id)
+        .map(|spec| spec.display_name)
+        .unwrap_or(&model_id)
+        .to_string();
+    let stored_path = {
+        let core = shared.lock();
+        core.settings
+            .installed_model_paths
+            .get(&model_id)
+            .cloned()
+            .ok_or_else(|| "That model is not installed locally.".to_string())?
+    };
+
+    let stored_path_buf = PathBuf::from(&stored_path);
+    if !is_managed_model_path(&app, &stored_path_buf) {
+        return Err("Only models downloaded inside Transcribed can be removed here.".to_string());
+    }
+
+    let model_root = managed_model_dir_for_id(&app, &model_id).map_err(|error| error.to_string())?;
+    if model_root.exists() {
+        fs::remove_dir_all(&model_root)
+            .map_err(|error| format!("Couldn't remove downloaded model: {error}"))?;
+    } else if stored_path_buf.exists() {
+        if stored_path_buf.is_dir() {
+            fs::remove_dir_all(&stored_path_buf)
+                .map_err(|error| format!("Couldn't remove downloaded model: {error}"))?;
+        } else {
+            fs::remove_file(&stored_path_buf)
+                .map_err(|error| format!("Couldn't remove downloaded model: {error}"))?;
+        }
+    }
+
+    {
+        let mut core = shared.lock();
+        core.settings.installed_model_paths.remove(&model_id);
+
+        let selected_path_matches = core
+            .settings
+            .selected_model_path
+            .as_ref()
+            .map(|selected| {
+                let selected_path = PathBuf::from(selected);
+                selected_path == stored_path_buf || selected_path.starts_with(&model_root)
+            })
+            .unwrap_or(false);
+
+        if core.settings.selected_model_id == model_id || selected_path_matches {
+            choose_fallback_model_selection(&app, &mut core.settings);
+        }
+
+        core.status_message = format!("Removed {display_name}");
+        core.error_message = None;
+    }
+
+    persist_and_emit_settings_change(&app, &shared)
+}
+
 fn persist_and_emit_settings_change(app: &AppHandle, shared: &SharedState) -> Result<(), String> {
     let audio_changed = prune_history_audio(app, shared);
     {
@@ -2686,6 +2803,7 @@ pub fn run() {
             inspect_model_path,
             install_catalog_model,
             download_catalog_model,
+            remove_catalog_model,
             update_settings_command,
             add_cleanup_term,
             remove_cleanup_term,
