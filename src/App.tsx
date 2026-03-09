@@ -186,6 +186,12 @@ const modelFilters: Array<{
   { id: "future", label: "Future" },
 ];
 
+const modelTypeTabs = [
+  { id: "speech", label: "Speech", active: true },
+  { id: "language", label: "Language", active: false },
+  { id: "embedding", label: "Embedding", active: false },
+];
+
 const overlayPositionOptions: Array<{
   id: EditableOverlayPosition;
   label: string;
@@ -388,6 +394,83 @@ function formatModelSizeLabel(row: ModelRow) {
   }
 
   return row.footprint;
+}
+
+function modelSpeedScore(row: ModelRow) {
+  switch (row.id) {
+    case "parakeet":
+      return 4.6;
+    case "whisper-small":
+      return 3.7;
+    case "whisper-large-v3-turbo":
+      return 2.9;
+    case "canary-1b":
+      return 2.3;
+    default:
+      return 3;
+  }
+}
+
+function modelAccuracyScore(row: ModelRow) {
+  switch (row.id) {
+    case "parakeet":
+      return 4.3;
+    case "whisper-small":
+      return 3.8;
+    case "whisper-large-v3-turbo":
+      return 4.7;
+    case "canary-1b":
+      return 4.4;
+    default:
+      return 3.5;
+  }
+}
+
+function modelFeatureItems(row: ModelRow) {
+  const items = [
+    {
+      id: "runtime",
+      label:
+        row.state === "planned"
+          ? "Research"
+          : row.supportsDownload || row.selectable
+            ? "Local"
+            : "Catalog",
+      icon: row.state === "planned" ? (
+        <SparkIcon className="small-icon" />
+      ) : (
+        <CpuIcon className="small-icon" />
+      ),
+    },
+    {
+      id: "language",
+      label: row.tags.includes("multilingual") ? "Multilingual" : "English",
+      icon: row.tags.includes("multilingual") ? (
+        <GlobeIcon className="small-icon" />
+      ) : (
+        <InputIcon className="small-icon" />
+      ),
+    },
+    {
+      id: "focus",
+      label:
+        row.id === "parakeet"
+          ? "Dictation"
+          : row.id.includes("large")
+            ? "Quality"
+            : row.id.includes("whisper")
+              ? "Balanced"
+              : "Reference",
+      icon:
+        row.id === "parakeet" ? (
+          <InputIcon className="small-icon" />
+        ) : (
+          <SparkIcon className="small-icon" />
+        ),
+    },
+  ];
+
+  return items;
 }
 
 function normalizeEditableOverlayPosition(
@@ -970,6 +1053,41 @@ function DownloadIcon(props: IconProps) {
   );
 }
 
+function BoltIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <path d="M13.5 3.5 7.5 13h4l-1 7.5 6-9h-4l1-8Z" />
+    </GlyphBase>
+  );
+}
+
+function GlobeIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M4.5 12h15" />
+      <path d="M12 4.5a12 12 0 0 1 0 15" />
+      <path d="M12 4.5a12 12 0 0 0 0 15" />
+    </GlyphBase>
+  );
+}
+
+function CpuIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <rect x="7.5" y="7.5" width="9" height="9" rx="2" />
+      <path d="M9.5 2.5v3" />
+      <path d="M14.5 2.5v3" />
+      <path d="M9.5 18.5v3" />
+      <path d="M14.5 18.5v3" />
+      <path d="M2.5 9.5h3" />
+      <path d="M2.5 14.5h3" />
+      <path d="M18.5 9.5h3" />
+      <path d="M18.5 14.5h3" />
+    </GlyphBase>
+  );
+}
+
 function FolderIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
@@ -1048,20 +1166,6 @@ function toneForPhase(phase: AppPhase): StatusTone {
     case "idle":
     default:
       return "success";
-  }
-}
-
-function toneForModelState(row: ModelRow): StatusTone {
-  switch (row.state) {
-    case "ready":
-      return "success";
-    case "downloadable":
-      return "accent";
-    case "planned":
-      return "warning";
-    case "incomplete":
-    default:
-      return "muted";
   }
 }
 
@@ -1644,6 +1748,71 @@ function StatusChip({
   );
 }
 
+function ModelPickerPreview({
+  active = false,
+  selectable = false,
+}: {
+  active?: boolean;
+  selectable?: boolean;
+}) {
+  return (
+    <span
+      className={[
+        "model-picker-dot",
+        active ? "model-picker-dot-active" : "",
+        !active && selectable ? "model-picker-dot-ready" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    />
+  );
+}
+
+function ScoreMeter({
+  value,
+  kind,
+}: {
+  value: number;
+  kind: "speed" | "accuracy";
+}) {
+  const rounded = Math.max(0, Math.min(5, Math.round(value)));
+
+  return (
+    <div className={`score-meter score-meter-${kind}`}>
+      <div className="score-meter-icons" aria-hidden="true">
+        {Array.from({ length: 5 }, (_, index) =>
+          kind === "speed" ? (
+            <BoltIcon
+              key={`${kind}-${index}`}
+              className={`score-bolt ${index < rounded ? "score-bolt-on" : ""}`}
+            />
+          ) : (
+            <span
+              key={`${kind}-${index}`}
+              className={`score-dot ${index < rounded ? "score-dot-on" : ""}`}
+            />
+          ),
+        )}
+      </div>
+      <span>{value.toFixed(1)}</span>
+    </div>
+  );
+}
+
+function ModelFeatureBadge({
+  icon,
+  label,
+}: {
+  icon: ReactNode;
+  label: string;
+}) {
+  return (
+    <span className="model-feature-badge" title={label} aria-label={label}>
+      {icon}
+    </span>
+  );
+}
+
 function StatTile({
   icon,
   label,
@@ -2125,6 +2294,15 @@ function ControlApp({
   const selectedModelFit = snapshot && selectedModel
     ? describeHardwareFit(selectedModel, snapshot.systemProfile)
     : null;
+  const readyModelOptions: ChoiceOption[] = modelRows
+    .filter((row) => row.selectable)
+    .map((row) => ({
+      id: row.id,
+      label: row.name,
+      description: `${row.provider} · ${formatModelSizeLabel(row)}`,
+    }));
+  const activeReadyModelId =
+    activeModel?.selectable && activeModel ? activeModel.id : readyModelOptions[0]?.id ?? "";
 
   useEffect(() => {
     if (!selectedRowExists && modelRows[0]) {
@@ -2151,6 +2329,18 @@ function ControlApp({
       document.removeEventListener("keydown", handleCancelEscape);
     };
   }, [snapshot]);
+
+  async function chooseDefaultModel(modelId: string) {
+    const row = modelRows.find((candidate) => candidate.id === modelId);
+    if (!row) {
+      return;
+    }
+
+    setSelectedModelId(row.id);
+    if (row.selectable) {
+      await activateModel(row);
+    }
+  }
 
   if (!snapshot) {
     return <main className="loading-shell">Loading...</main>;
@@ -2349,8 +2539,71 @@ function ControlApp({
 
           {activeSection === "models" ? (
             <>
-              <section className="surface">
-                <div className="toolbar">
+              <section className="surface model-library-surface">
+                <div className="model-library-head">
+                  <div className="model-library-copy">
+                    <span className="surface-title-label">Speech models</span>
+                    <p>Choose the local ASR engine Transcribed should use by default.</p>
+                  </div>
+
+                  <div className="model-type-tabs" aria-label="Model categories">
+                    {modelTypeTabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        className={`model-type-tab ${tab.active ? "model-type-tab-active" : ""}`}
+                        disabled={!tab.active}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="model-selector-row">
+                  <div className="model-selector-card">
+                    <ChoiceDropdown
+                      label="Default speech model"
+                      value={activeReadyModelId}
+                      options={readyModelOptions}
+                      placeholder="Download a model"
+                      renderPreview={(value) => {
+                        const row = modelRows.find((candidate) => candidate.id === value);
+                        return (
+                          <ModelPickerPreview
+                            active={Boolean(row?.active)}
+                            selectable={Boolean(row?.selectable)}
+                          />
+                        );
+                      }}
+                      onChange={(value) => {
+                        void chooseDefaultModel(value);
+                      }}
+                    />
+                  </div>
+
+                  <div className="model-selector-meta">
+                    <StatusChip
+                      label={
+                        activeModel
+                          ? `${activeModel.name} active`
+                          : "No active model"
+                      }
+                      tone={snapshot.modelStatus === "ready" ? "success" : "warning"}
+                    />
+                    {selectedModelFit ? (
+                      <StatusChip
+                        label={selectedModelFit.label}
+                        tone={selectedModelFit.tone}
+                      />
+                    ) : null}
+                    <span className="model-selector-footnote">
+                      {formatSystemProfile(snapshot.systemProfile)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="toolbar model-toolbar">
                   <label className="search-field">
                     <SearchIcon className="search-icon" />
                     <input
@@ -2375,16 +2628,16 @@ function ControlApp({
                   </div>
                 </div>
 
-                <div className="table-shell">
-                  <table className="model-table">
+                <div className="table-shell model-library-table-shell">
+                  <table className="model-table model-library-table">
                     <thead>
                       <tr>
                         <th />
                         <th>Model</th>
-                        <th>Lang</th>
-                        <th>Size</th>
-                        <th>This PC</th>
-                        <th>Status</th>
+                        <th>Features</th>
+                        <th>Speed</th>
+                        <th>Accuracy</th>
+                        <th />
                       </tr>
                     </thead>
                     <tbody>
@@ -2413,35 +2666,116 @@ function ControlApp({
                               selectModel(row);
                             }}
                           >
-                            <td>
+                            <td className="model-radio-cell">
                               <span
-                                className={`model-active-dot ${row.active ? "model-active-dot-on" : ""}`}
+                                className={[
+                                  "model-radio",
+                                  row.id === resolvedSelectedModelId
+                                    ? "model-radio-selected"
+                                    : "",
+                                  row.active ? "model-radio-active" : "",
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")}
                               />
                             </td>
-                            <td>
-                              <div className="model-cell-main">
-                                <strong>{row.name}</strong>
-                                <span>{row.family}</span>
+                            <td className="model-main-cell">
+                              <div className="model-entry">
+                                <div className="model-entry-head">
+                                  <strong>{row.name}</strong>
+                                  {row.active ? (
+                                    <span className="model-inline-pill">Default</span>
+                                  ) : null}
+                                </div>
+                                <div className="model-entry-meta">
+                                  <span>{row.provider}</span>
+                                  <span>{row.languages}</span>
+                                  <span>{formatModelSizeLabel(row)}</span>
+                                </div>
                               </div>
                             </td>
-                            <td>{row.languages}</td>
-                            <td>{formatModelSizeLabel(row)}</td>
-                            <td>{hardwareFit.label}</td>
                             <td>
-                              <StatusChip
-                                label={
-                                  row.active
-                                    ? "Active"
-                                    : row.state === "downloadable"
-                                      ? "Download"
-                                      : row.state === "ready"
-                                        ? "Ready"
-                                        : row.state === "planned"
-                                          ? "Planned"
-                                          : "Missing"
-                                }
-                                tone={toneForModelState(row)}
-                              />
+                              <div className="model-feature-list">
+                                {modelFeatureItems(row).map((feature) => (
+                                  <ModelFeatureBadge
+                                    key={`${row.id}-${feature.id}`}
+                                    icon={feature.icon}
+                                    label={feature.label}
+                                  />
+                                ))}
+                              </div>
+                            </td>
+                            <td>
+                              <ScoreMeter value={modelSpeedScore(row)} kind="speed" />
+                            </td>
+                            <td>
+                              <ScoreMeter value={modelAccuracyScore(row)} kind="accuracy" />
+                            </td>
+                            <td className="model-actions-cell">
+                              <div className="model-row-actions">
+                                {row.active ? (
+                                  <StatusChip label="Active" tone="success" />
+                                ) : row.selectable ? (
+                                  <button
+                                    className="secondary small"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void activateModel(row);
+                                    }}
+                                  >
+                                    Use
+                                  </button>
+                                ) : null}
+                                {row.supportsDownload && !row.selectable ? (
+                                  <ActionButton
+                                    className="secondary small"
+                                    state={buttonFeedback[`model-download:${row.id}`]}
+                                    idleLabel="Download"
+                                    workingLabel="Downloading"
+                                    doneLabel="Downloaded"
+                                    idleIcon={<DownloadIcon className="small-icon" />}
+                                    workingIcon={<DownloadIcon className="small-icon" />}
+                                    doneIcon={<CheckIcon className="small-icon" />}
+                                    onClick={() => downloadCatalogModel(row)}
+                                    iconOnly
+                                  />
+                                ) : null}
+                                {row.supportsInstall ? (
+                                  <ActionButton
+                                    className="secondary small"
+                                    state={buttonFeedback[`model-link:${row.id}`]}
+                                    idleLabel={row.path ? "Choose another file" : "Use local file"}
+                                    workingLabel="Linking"
+                                    doneLabel="Linked"
+                                    idleIcon={<FolderIcon className="small-icon" />}
+                                    doneIcon={<CheckIcon className="small-icon" />}
+                                    onClick={() => linkCatalogModel(row)}
+                                    iconOnly
+                                  />
+                                ) : null}
+                                {row.hfUrl ? (
+                                  <button
+                                    className="secondary small icon-only-button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void openModelReference(row);
+                                    }}
+                                    aria-label="Open Hugging Face"
+                                    title="Open Hugging Face"
+                                  >
+                                    <ExternalIcon className="small-icon" />
+                                  </button>
+                                ) : null}
+                              </div>
+                              <span className="model-row-footnote">
+                                {row.state === "planned"
+                                  ? "Reference only"
+                                  : row.diskSizeBytes
+                                    ? formatBytes(row.diskSizeBytes)
+                                    : row.downloadSizeBytes
+                                      ? `~${formatBytes(row.downloadSizeBytes)}`
+                                      : hardwareFit.label}
+                              </span>
                             </td>
                           </tr>
                         );
@@ -2453,14 +2787,14 @@ function ControlApp({
                     <div className="empty-state">No models match.</div>
                   ) : null}
                 </div>
-              </section>
-
-              {selectedModel ? (
-                <section className="model-detail-grid">
-                  <article className="surface">
-                    <div className="surface-bar">
+                {selectedModel ? (
+                  <article className="model-focus-card">
+                    <div className="surface-bar model-focus-head">
                       <div className="surface-title">
                         <span className="surface-title-label">{selectedModel.name}</span>
+                        <span className="model-focus-subtitle">
+                          {selectedModel.provider} · {selectedModel.architecture}
+                        </span>
                       </div>
                       <div className="header-actions">
                         <StatusChip
@@ -2469,24 +2803,18 @@ function ControlApp({
                               ? "Active"
                               : selectedModel.selectable
                                 ? "Ready"
-                              : selectedModel.state === "downloadable"
-                                ? "Downloadable"
-                              : selectedModel.source === "catalog"
-                                ? "Planned"
-                                  : "Missing"
+                                : selectedModel.state === "downloadable"
+                                  ? "Downloadable"
+                                  : "Planned"
                           }
                           tone={
                             selectedModel.active
                               ? "success"
                               : selectedModel.selectable
                                 ? "success"
-                              : selectedModel.state === "downloadable"
-                                ? "accent"
-                              : selectedModel.source === "catalog"
-                                ? "warning"
-                                : selectedModel.state === "incomplete"
-                                  ? "warning"
-                                  : "accent"
+                                : selectedModel.state === "downloadable"
+                                  ? "accent"
+                                  : "warning"
                           }
                         />
                         {selectedModelFit ? (
@@ -2498,187 +2826,140 @@ function ControlApp({
                       </div>
                     </div>
 
-                    <div className="metric-grid">
-                      <div className="metric">
-                        <span>Provider</span>
-                        <strong>{selectedModel.provider}</strong>
-                      </div>
-                      <div className="metric">
-                        <span>Architecture</span>
-                        <strong>{selectedModel.architecture}</strong>
-                      </div>
-                      <div className="metric">
-                        <span>Runtime</span>
-                        <strong>{selectedModel.runtime}</strong>
-                      </div>
-                      <div className="metric">
-                        <span>Download size</span>
-                        <strong>
-                          {selectedModel.downloadSizeBytes
-                            ? formatBytes(selectedModel.downloadSizeBytes)
-                            : "Included / n.a."}
-                        </strong>
-                      </div>
-                      <div className="metric">
-                        <span>Size on disk</span>
-                        <strong>{formatBytes(selectedModel.diskSizeBytes)}</strong>
-                      </div>
-                      <div className="metric">
-                        <span>Languages</span>
-                        <strong>{selectedModel.languages}</strong>
-                      </div>
-                      <div className="metric">
-                        <span>Speed</span>
-                        <strong>{selectedModel.speed}</strong>
-                      </div>
-                      <div className="metric">
-                        <span>Quality</span>
-                        <strong>{selectedModel.quality}</strong>
-                      </div>
-                      <div className="metric">
-                        <span>Footprint</span>
-                        <strong>{selectedModel.footprint}</strong>
-                      </div>
-                      <div className="metric">
-                        <span>License</span>
-                        <strong>{selectedModel.license}</strong>
-                      </div>
-                      <div className="metric">
-                        <span>This PC</span>
-                        <strong>{selectedModelFit?.label ?? "Unknown"}</strong>
-                      </div>
-                      <div className="metric">
-                        <span>Hardware</span>
-                        <strong>{formatSystemProfile(snapshot.systemProfile)}</strong>
-                      </div>
-                    </div>
+                    <div className="model-focus-layout">
+                      <div className="model-focus-copy">
+                        <div className="detail-copy model-focus-copy-block">
+                          <p>{selectedModel.summary}</p>
+                          <p>{selectedModel.note}</p>
+                          {selectedModelFit ? <p>{selectedModelFit.detail}</p> : null}
+                          {selectedModel.path ? (
+                            <code className="path-chip">{selectedModel.path}</code>
+                          ) : null}
+                        </div>
 
-                    <div className="detail-copy">
-                      <p>{selectedModel.summary}</p>
-                      <p>{selectedModel.note}</p>
-                      {selectedModelFit ? (
-                        <p>{selectedModelFit.detail}</p>
-                      ) : null}
-                      {selectedModel.path ? (
-                        <code className="path-chip">{selectedModel.path}</code>
-                      ) : null}
-                    </div>
+                        <div className="inline-actions model-focus-actions">
+                          {selectedModel.supportsDownload ? (
+                            <ActionButton
+                              className="secondary"
+                              state={buttonFeedback[`model-download:${selectedModel.id}`]}
+                              idleLabel={
+                                selectedModel.path
+                                  ? "Re-download from Hugging Face"
+                                  : "Download from Hugging Face"
+                              }
+                              workingLabel="Downloading"
+                              doneLabel="Downloaded"
+                              idleIcon={<DownloadIcon className="small-icon" />}
+                              workingIcon={<DownloadIcon className="small-icon" />}
+                              doneIcon={<CheckIcon className="small-icon" />}
+                              onClick={() => downloadCatalogModel(selectedModel)}
+                            />
+                          ) : null}
+                          {selectedModel.supportsInstall ? (
+                            <ActionButton
+                              className="secondary"
+                              state={buttonFeedback[`model-link:${selectedModel.id}`]}
+                              idleLabel={
+                                selectedModel.path ? "Use another file" : "Use existing file"
+                              }
+                              workingLabel="Linking"
+                              doneLabel="Linked"
+                              idleIcon={<FolderIcon className="small-icon" />}
+                              doneIcon={<CheckIcon className="small-icon" />}
+                              onClick={() => linkCatalogModel(selectedModel)}
+                            />
+                          ) : null}
+                          {selectedModel.selectable && !selectedModel.active ? (
+                            <button
+                              className="secondary"
+                              onClick={() => {
+                                void activateModel(selectedModel);
+                              }}
+                            >
+                              Use model
+                            </button>
+                          ) : null}
+                          {selectedModel.artifactUrl ? (
+                            <button
+                              className="secondary"
+                              onClick={() => {
+                                void openModelArtifact(selectedModel);
+                              }}
+                            >
+                              Open compatible file
+                            </button>
+                          ) : null}
+                          {selectedModel.hfUrl ? (
+                            <button
+                              className="secondary"
+                              onClick={() => {
+                                void openModelReference(selectedModel);
+                              }}
+                            >
+                              Open Hugging Face
+                            </button>
+                          ) : null}
+                        </div>
 
-                    <div className="inline-actions">
-                      {selectedModel.supportsDownload ? (
-                        <ActionButton
-                          className="secondary"
-                          state={buttonFeedback[`model-download:${selectedModel.id}`]}
-                          idleLabel={
-                            selectedModel.path
-                              ? "Re-download from Hugging Face"
-                              : "Download from Hugging Face"
-                          }
-                          workingLabel="Downloading"
-                          doneLabel="Downloaded"
-                          idleIcon={<DownloadIcon className="small-icon" />}
-                          workingIcon={<DownloadIcon className="small-icon" />}
-                          doneIcon={<CheckIcon className="small-icon" />}
-                          onClick={() => downloadCatalogModel(selectedModel)}
-                        />
-                      ) : null}
-                      {selectedModel.supportsInstall ? (
-                        <ActionButton
-                          className="secondary"
-                          state={buttonFeedback[`model-link:${selectedModel.id}`]}
-                          idleLabel={selectedModel.path ? "Use another file" : "Use existing file"}
-                          workingLabel="Linking"
-                          doneLabel="Linked"
-                          idleIcon={<FolderIcon className="small-icon" />}
-                          doneIcon={<CheckIcon className="small-icon" />}
-                          onClick={() => linkCatalogModel(selectedModel)}
-                        />
-                      ) : null}
-                      {selectedModel.selectable && !selectedModel.active ? (
-                        <button
-                          className="secondary"
-                          onClick={() => {
-                            void activateModel(selectedModel);
-                          }}
-                        >
-                          Use model
-                        </button>
-                      ) : null}
-                      {selectedModel.artifactUrl ? (
-                        <button
-                          className="secondary"
-                          onClick={() => {
-                            void openModelArtifact(selectedModel);
-                          }}
-                        >
-                          Open compatible file
-                        </button>
-                      ) : null}
-                      {selectedModel.hfUrl ? (
-                        <button
-                          className="secondary"
-                          onClick={() => {
-                            void openModelReference(selectedModel);
-                          }}
-                        >
-                          Open Hugging Face
-                        </button>
-                      ) : null}
+                        <ul className="detail-list model-focus-highlights">
+                          {selectedModel.highlights.map((highlight) => (
+                            <li key={highlight}>{highlight}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="model-focus-metrics">
+                        <div className="metric-grid model-focus-metric-grid">
+                          <div className="metric">
+                            <span>Runtime</span>
+                            <strong>{selectedModel.runtime}</strong>
+                          </div>
+                          <div className="metric">
+                            <span>Download size</span>
+                            <strong>
+                              {selectedModel.downloadSizeBytes
+                                ? formatBytes(selectedModel.downloadSizeBytes)
+                                : "Included / n.a."}
+                            </strong>
+                          </div>
+                          <div className="metric">
+                            <span>Size on disk</span>
+                            <strong>{formatBytes(selectedModel.diskSizeBytes)}</strong>
+                          </div>
+                          <div className="metric">
+                            <span>Languages</span>
+                            <strong>{selectedModel.languages}</strong>
+                          </div>
+                          <div className="metric">
+                            <span>Speed</span>
+                            <strong>{selectedModel.speed}</strong>
+                          </div>
+                          <div className="metric">
+                            <span>Quality</span>
+                            <strong>{selectedModel.quality}</strong>
+                          </div>
+                          <div className="metric">
+                            <span>Footprint</span>
+                            <strong>{selectedModel.footprint}</strong>
+                          </div>
+                          <div className="metric">
+                            <span>License</span>
+                            <strong>{selectedModel.license}</strong>
+                          </div>
+                          <div className="metric">
+                            <span>This PC</span>
+                            <strong>{selectedModelFit?.label ?? "Unknown"}</strong>
+                          </div>
+                          <div className="metric">
+                            <span>Hardware</span>
+                            <strong>{formatSystemProfile(snapshot.systemProfile)}</strong>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </article>
-
-                  <article className="surface">
-                    <div className="surface-bar">
-                      <div className="surface-title">
-                        <span className="surface-title-label">Model reference</span>
-                      </div>
-                    </div>
-
-                    <div className="reference-grid">
-                      <div className="info-tile">
-                        <span>Family</span>
-                        <strong>{selectedModel.family}</strong>
-                      </div>
-                      <div className="info-tile">
-                        <span>Provider</span>
-                        <strong>{selectedModel.provider}</strong>
-                      </div>
-                      <div className="info-tile">
-                        <span>Architecture</span>
-                        <strong>{selectedModel.architecture}</strong>
-                      </div>
-                      <div className="info-tile">
-                        <span>Runtime in app</span>
-                        <strong>{selectedModel.runtime}</strong>
-                      </div>
-                      <div className="info-tile">
-                        <span>Model card</span>
-                        <strong>{selectedModel.hfUrl ? "Hugging Face" : "No link"}</strong>
-                      </div>
-                      <div className="info-tile">
-                        <span>Compatible file</span>
-                        <strong>{selectedModel.artifactLabel ?? "No managed artifact"}</strong>
-                      </div>
-                    </div>
-
-                    <div className="detail-copy">
-                      <p>Highlights</p>
-                    </div>
-                    <ul className="detail-list">
-                      {selectedModel.highlights.map((highlight) => (
-                        <li key={highlight}>{highlight}</li>
-                      ))}
-                    </ul>
-
-                    <div className="detail-copy">
-                      <p>
-                        Tap a model row to inspect it. Only models with a ready runtime
-                        can be activated inside Transcribed.
-                      </p>
-                    </div>
-                  </article>
-                </section>
-              ) : null}
+                ) : null}
+              </section>
             </>
           ) : null}
 

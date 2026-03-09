@@ -645,6 +645,68 @@ input::placeholder {
   border-color: rgba(111, 157, 255, 0.2);
 }
 
+.model-library-surface {
+  display: grid;
+  gap: 1rem;
+}
+
+.model-library-head,
+.model-selector-row,
+.model-focus-layout {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.model-library-copy p,
+.model-focus-subtitle,
+.model-selector-footnote {
+  margin: 0.28rem 0 0;
+  color: var(--muted);
+}
+
+.model-type-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.2rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.model-type-tab {
+  padding: 0.56rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.model-type-tab-active {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.model-selector-card {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+.model-selector-meta {
+  display: grid;
+  gap: 0.55rem;
+  justify-items: end;
+  min-width: 220px;
+}
+
+.model-toolbar {
+  margin-bottom: 0;
+}
+
 .table-shell {
   overflow: hidden;
   border-radius: 10px;
@@ -661,7 +723,7 @@ input::placeholder {
 .model-table td {
   padding: 0.82rem 0.9rem;
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
   border-bottom: 1px solid var(--border);
   font-size: 0.92rem;
 }
@@ -694,7 +756,8 @@ input::placeholder {
   opacity: 0.58;
 }
 
-.model-active-dot {
+.model-picker-dot,
+.model-radio {
   display: inline-flex;
   width: 10px;
   height: 10px;
@@ -702,9 +765,189 @@ input::placeholder {
   background: rgba(255, 255, 255, 0.16);
 }
 
-.model-active-dot-on {
+.model-picker-dot {
+  width: 11px;
+  height: 11px;
+}
+
+.model-picker-dot-ready,
+.model-radio-selected {
+  box-shadow: 0 0 0 4px rgba(111, 157, 255, 0.1);
+  background: rgba(111, 157, 255, 0.92);
+}
+
+.model-picker-dot-active,
+.model-radio-active {
   background: var(--success);
   box-shadow: 0 0 0 4px rgba(47, 210, 127, 0.12);
+}
+
+.model-radio-cell {
+  width: 28px;
+}
+
+.model-main-cell {
+  min-width: 240px;
+}
+
+.model-entry {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.model-entry-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.model-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.model-entry-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.model-entry-meta span::before {
+  content: "";
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.model-entry-meta span:first-child::before {
+  display: none;
+}
+
+.model-inline-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(47, 210, 127, 0.14);
+  color: #b8f2cf;
+  font-size: 0.72rem;
+}
+
+.model-feature-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.model-feature-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted-strong);
+}
+
+.score-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  white-space: nowrap;
+}
+
+.score-meter-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.16rem;
+}
+
+.score-bolt,
+.score-dot {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.score-bolt {
+  width: 12px;
+  height: 12px;
+}
+
+.score-bolt-on {
+  color: #f4d24d;
+}
+
+.score-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.score-dot-on {
+  background: #20d46a;
+}
+
+.model-actions-cell {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.model-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  flex-wrap: nowrap;
+}
+
+.model-row-footnote {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.model-focus-card {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.model-focus-head {
+  margin-bottom: 1rem;
+}
+
+.model-focus-copy,
+.model-focus-metrics {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.model-focus-copy {
+  max-width: 520px;
+}
+
+.model-focus-copy-block {
+  margin-top: 0;
+}
+
+.model-focus-actions {
+  margin-top: 1rem;
+}
+
+.model-focus-highlights {
+  margin-top: 1rem;
+}
+
+.model-focus-metric-grid {
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
 }
 
 .model-cell-main strong,
