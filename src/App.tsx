@@ -869,7 +869,7 @@ function SignalBars({
       : phase === "recording"
         ? "live"
         : "idle";
-  const sourceLevels = levels && levels.length > 0 ? levels : [0.14];
+  const sourceLevels = levels && levels.length > 0 ? levels : [0];
 
   if (animationStyle === "spectrum") {
     const width = compact ? 60 : 94;
@@ -893,7 +893,7 @@ function SignalBars({
           className="signal-bars-base"
         />
         {sampled.map((level, index) => {
-          const normalized = Math.max(0, (level - 0.12) / 0.88);
+          const normalized = Math.max(0, level);
           const barHeight = minHeight + normalized * (maxHeight - minHeight);
           const x = index * (barWidth + gap);
           const y = baselineY - barHeight;
@@ -933,7 +933,7 @@ function SignalBars({
         <circle cx={cx} cy={cy} r={baseRadius} className="signal-radial-ring" />
         {sampled.map((level, index) => {
           const angle = (index / pointCount) * Math.PI * 2 - Math.PI / 2;
-          const normalized = Math.max(0, (level - 0.12) / 0.88);
+          const normalized = Math.max(0, level);
           const innerRadius = baseRadius - 0.2;
           const outerRadius = baseRadius + 0.7 + normalized * maxExtension;
           const x1 = cx + Math.cos(angle) * innerRadius;
@@ -966,13 +966,13 @@ function SignalBars({
   const step = smoothedLevels.length > 1 ? width / (smoothedLevels.length - 1) : width;
   const topPoints = smoothedLevels.map((level, index) => {
     const x = index * step;
-    const normalized = Math.max(0, (level - 0.12) / 0.88);
+    const normalized = Math.max(0, level);
     const offset = (compact ? 1.3 : 2) + normalized * amplitude;
     return { x, y: centerY - offset };
   });
   const bottomPoints = smoothedLevels.map((level, index) => {
     const x = index * step;
-    const normalized = Math.max(0, (level - 0.12) / 0.88);
+    const normalized = Math.max(0, level);
     const offset = (compact ? 1.3 : 2) + normalized * amplitude;
     return { x, y: centerY + offset };
   });

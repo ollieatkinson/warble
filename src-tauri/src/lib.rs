@@ -44,6 +44,10 @@ const LIVE_METER_INTERVAL_MS: u64 = 75;
 const LIVE_METER_WINDOW_MS: u64 = 700;
 const LIVE_METER_ANALYSIS_SAMPLES: usize = 2_048;
 const LIVE_METER_BAR_COUNT: usize = 12;
+const LIVE_METER_SILENCE_RMS_THRESHOLD: f32 = 0.0045;
+const LIVE_METER_SILENCE_PEAK_THRESHOLD: f32 = 0.015;
+const LIVE_METER_FULL_RMS: f32 = 0.05;
+const LIVE_METER_FULL_PEAK: f32 = 0.18;
 const BACKGROUND_ARG: &str = "--background";
 const TRAY_ID: &str = "main-tray";
 const TRAY_SHOW_ID: &str = "tray-show";
@@ -935,7 +939,7 @@ impl PreviewStabilizer {
 }
 
 fn default_overlay_levels() -> Vec<f32> {
-    vec![0.14; LIVE_METER_BAR_COUNT]
+    vec![0.0; LIVE_METER_BAR_COUNT]
 }
 
 fn hanning_window(index: usize, length: usize) -> f32 {
@@ -979,6 +983,16 @@ fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
 
     let analysis_len = samples.len().min(LIVE_METER_ANALYSIS_SAMPLES).max(256);
     let window = &samples[samples.len().saturating_sub(analysis_len)..];
+    let (sum_squares, peak) = window.iter().fold((0.0f32, 0.0f32), |(sum, peak), sample| {
+        let magnitude = sample.abs();
+        (sum + sample * sample, peak.max(magnitude))
+    });
+    let rms = (sum_squares / window.len() as f32).sqrt();
+
+    if rms < LIVE_METER_SILENCE_RMS_THRESHOLD && peak < LIVE_METER_SILENCE_PEAK_THRESHOLD {
+        return default_overlay_levels();
+    }
+
     let nyquist = sample_rate as f32 * 0.5;
     let min_frequency = 120.0f32;
     let max_frequency = (nyquist * 0.82).min(5_800.0).max(min_frequency * 1.5);
@@ -996,11 +1010,23 @@ fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
         .copied()
         .fold(0.0f32, f32::max)
         .max(1e-9);
+    let rms_drive = ((rms - LIVE_METER_SILENCE_RMS_THRESHOLD)
+        / (LIVE_METER_FULL_RMS - LIVE_METER_SILENCE_RMS_THRESHOLD))
+        .clamp(0.0, 1.0);
+    let peak_drive = ((peak - LIVE_METER_SILENCE_PEAK_THRESHOLD)
+        / (LIVE_METER_FULL_PEAK - LIVE_METER_SILENCE_PEAK_THRESHOLD))
+        .clamp(0.0, 1.0);
+    let activity = rms_drive.max(peak_drive).powf(0.85);
+
+    if activity <= 0.01 {
+        return default_overlay_levels();
+    }
 
     let mut levels = default_overlay_levels();
     for (index, level) in levels.iter_mut().enumerate() {
         let normalized = (powers[index] / max_power).clamp(0.0, 1.0).sqrt();
-        *level = 0.12 + normalized * 0.88;
+        let gated = (normalized * activity).clamp(0.0, 1.0);
+        *level = if gated < 0.025 { 0.0 } else { gated };
     }
 
     levels
@@ -1985,8 +2011,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        cleanup_transcript_text, default_cleanup_terms, normalize_cleanup_term,
-        normalize_cleanup_terms,
+        cleanup_transcript_text, default_cleanup_terms, measure_overlay_levels,
+        normalize_cleanup_term, normalize_cleanup_terms,
     };
 
     #[test]
@@ -2024,5 +2050,26 @@ mod tests {
             vec![String::from("um"), String::from("you know")]
         );
         assert_eq!(normalize_cleanup_term("   "), None);
+    }
+
+    #[test]
+    fn measure_overlay_levels_stays_still_for_silence() {
+        let silence = vec![0.0f32; 2_048];
+        let levels = measure_overlay_levels(&silence, 16_000);
+
+        assert!(levels.iter().all(|level| *level == 0.0));
+    }
+
+    #[test]
+    fn measure_overlay_levels_reacts_to_spoken_energy() {
+        let voiced = (0..2_048)
+            .map(|index| {
+                let phase = 2.0 * std::f32::consts::PI * 220.0 * index as f32 / 16_000.0;
+                phase.sin() * 0.08
+            })
+            .collect::<Vec<_>>();
+        let levels = measure_overlay_levels(&voiced, 16_000);
+
+        assert!(levels.iter().any(|level| *level > 0.05));
     }
 }
