@@ -1427,6 +1427,7 @@ function TranscriptionPill({
   levels,
   animationStyle,
   showLiveTranscription,
+  onCancel,
 }: {
   phase: AppPhase;
   title: string;
@@ -1434,9 +1435,11 @@ function TranscriptionPill({
   levels: number[];
   animationStyle: OverlayAnimationStyle;
   showLiveTranscription: boolean;
+  onCancel?: (() => void) | null;
 }) {
   const copy = detail.trim() || title;
   const usesRadialCore = animationStyle === "radial";
+  const canCancel = phase === "recording" || phase === "transcribing";
 
   return (
     <div
@@ -1448,13 +1451,59 @@ function TranscriptionPill({
       ].join(" ")}
     >
       <div className="indicator-mark">
-        {usesRadialCore ? null : <div className="indicator-dot" />}
-        <SignalBars
-          phase={phase}
-          levels={levels}
-          compact
-          animationStyle={animationStyle}
-        />
+        {usesRadialCore ? null : (
+          <button
+            type="button"
+            className={[
+              "indicator-status-button",
+              "indicator-status-button-inline",
+              canCancel && onCancel ? "indicator-status-button-cancelable" : "",
+              `indicator-status-button-${phase}`,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => onCancel?.()}
+            disabled={!canCancel || !onCancel}
+            aria-label={canCancel ? "Cancel current dictation" : "Dictation status"}
+            title={canCancel ? "Cancel current dictation" : "Dictation status"}
+          >
+            <span className="indicator-dot" />
+          </button>
+        )}
+        <div
+          className={[
+            "indicator-signal",
+            usesRadialCore ? "indicator-signal-radial" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <SignalBars
+            phase={phase}
+            levels={levels}
+            compact
+            animationStyle={animationStyle}
+          />
+          {usesRadialCore ? (
+            <button
+              type="button"
+              className={[
+                "indicator-status-button",
+                "indicator-status-button-radial",
+                canCancel && onCancel ? "indicator-status-button-cancelable" : "",
+                `indicator-status-button-${phase}`,
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={() => onCancel?.()}
+              disabled={!canCancel || !onCancel}
+              aria-label={canCancel ? "Cancel current dictation" : "Dictation status"}
+              title={canCancel ? "Cancel current dictation" : "Dictation status"}
+            >
+              <span className="indicator-dot" />
+            </button>
+          ) : null}
+        </div>
       </div>
       {showLiveTranscription ? (
         <div className="indicator-copy">
@@ -1466,6 +1515,14 @@ function TranscriptionPill({
 }
 
 function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
+  async function cancelFromOverlay() {
+    try {
+      await invoke("cancel_current_operation_command");
+    } catch {
+      // Keep the overlay interaction quiet if cancel fails.
+    }
+  }
+
   if (!snapshot || !snapshot.overlay.visible) {
     return <div className="indicator-root indicator-root-hidden" />;
   }
@@ -1479,6 +1536,7 @@ function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
         levels={snapshot.overlay.levels}
         animationStyle={snapshot.settings.overlayAnimationStyle}
         showLiveTranscription={snapshot.settings.showLiveTranscription}
+        onCancel={cancelFromOverlay}
       />
     </main>
   );
@@ -2050,6 +2108,18 @@ function ControlApp({
     }
   }
 
+  async function cancelCurrentOperation() {
+    try {
+      setMessage(null);
+      await invoke("cancel_current_operation_command");
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
   async function copyHistory(id: string, text: string) {
     const actionId = `copy:${id}`;
     setMessage(null);
@@ -2340,7 +2410,7 @@ function ControlApp({
       }
 
       event.preventDefault();
-      void invoke("cancel_current_operation_command");
+      void cancelCurrentOperation();
     }
 
     document.addEventListener("keydown", handleCancelEscape);
@@ -2544,6 +2614,9 @@ function ControlApp({
                     levels={snapshot.overlay.levels}
                     animationStyle={draft.overlayAnimationStyle}
                     showLiveTranscription={draft.showLiveTranscription}
+                    onCancel={() => {
+                      void cancelCurrentOperation();
+                    }}
                   />
                 </div>
 
@@ -3310,6 +3383,9 @@ function ControlApp({
                       levels={snapshot.overlay.levels}
                       animationStyle={draft.overlayAnimationStyle}
                       showLiveTranscription={draft.showLiveTranscription}
+                      onCancel={() => {
+                        void cancelCurrentOperation();
+                      }}
                     />
                   </div>
                 </article>

@@ -1531,6 +1531,52 @@ input::placeholder {
   flex: 0 0 auto;
 }
 
+.indicator-signal {
+  display: flex;
+  align-items: center;
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.indicator-signal-radial {
+  justify-content: center;
+}
+
+.indicator-status-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  min-width: 0;
+}
+
+.indicator-status-button:disabled {
+  opacity: 1;
+}
+
+.indicator-status-button-inline {
+  width: 18px;
+  height: 18px;
+  cursor: default;
+}
+
+.indicator-status-button-radial {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  cursor: default;
+}
+
+.indicator-status-button-cancelable {
+  cursor: pointer;
+}
+
 .indicator-dot {
   width: 9px;
   height: 9px;
@@ -1540,6 +1586,14 @@ input::placeholder {
     0 0 0 4px rgba(255, 93, 110, 0.12),
     0 0 12px rgba(255, 93, 110, 0.26);
   animation: indicator-pulse 1.2s ease-in-out infinite;
+}
+
+.indicator-status-button-recording .indicator-dot,
+.indicator-status-button-transcribing .indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  animation: none;
 }
 
 .indicator-shell-transcribing .indicator-dot {
@@ -1667,7 +1721,7 @@ input::placeholder {
 }
 
 .signal-radial-core {
-  fill: var(--danger);
+  fill: transparent;
 }
 
 .signal-radial-warm .signal-radial-ring {
@@ -1683,7 +1737,7 @@ input::placeholder {
 }
 
 .signal-radial-warm .signal-radial-core {
-  fill: var(--warning);
+  fill: transparent;
 }
 
 .signal-radial-idle {
