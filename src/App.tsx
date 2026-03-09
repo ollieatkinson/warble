@@ -82,9 +82,11 @@ type SettingsDraft = {
 };
 
 type FlashMessage = {
-  kind: "success" | "error";
+  kind: "error";
   text: string;
 } | null;
+
+type ButtonFeedbackState = "working" | "done";
 
 type StoredModelEntry = {
   id: string;
@@ -726,6 +728,17 @@ function SearchIcon(props: IconProps) {
   );
 }
 
+function RefreshIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <path d="M19.5 11.5A7.5 7.5 0 0 0 6.7 6.2" />
+      <path d="M6.5 4.5v3.8h3.8" />
+      <path d="M4.5 12.5a7.5 7.5 0 0 0 12.8 5.3" />
+      <path d="M17.5 19.5v-3.8h-3.8" />
+    </GlyphBase>
+  );
+}
+
 function FolderIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
@@ -1027,6 +1040,72 @@ function SignalBars({
   );
 }
 
+function ActionButton({
+  className,
+  state,
+  idleLabel,
+  workingLabel,
+  doneLabel,
+  idleIcon,
+  workingIcon,
+  doneIcon,
+  onClick,
+  disabled,
+}: {
+  className?: string;
+  state?: ButtonFeedbackState;
+  idleLabel: string;
+  workingLabel?: string;
+  doneLabel?: string;
+  idleIcon?: ReactNode;
+  workingIcon?: ReactNode;
+  doneIcon?: ReactNode;
+  onClick: () => void | Promise<void>;
+  disabled?: boolean;
+}) {
+  const label =
+    state === "working"
+      ? (workingLabel ?? idleLabel)
+      : state === "done"
+        ? (doneLabel ?? idleLabel)
+        : idleLabel;
+  const icon =
+    state === "done"
+      ? (doneIcon ?? idleIcon)
+      : state === "working"
+        ? (workingIcon ?? idleIcon)
+        : idleIcon;
+
+  return (
+    <button
+      className={[
+        className,
+        icon ? "icon-button" : "",
+        state === "working" ? "action-button-working" : "",
+        state === "done" ? "action-button-done" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {icon ? (
+        <span
+          className={[
+            "action-button-icon",
+            state === "working" ? "action-button-icon-spin" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {icon}
+        </span>
+      ) : null}
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function TranscriptionPill({
   phase,
   title,
@@ -1306,7 +1385,11 @@ function ControlApp({
   const [selectedModelId, setSelectedModelId] = useState(() =>
     loadSelectedModelId(),
   );
+  const [buttonFeedback, setButtonFeedback] = useState<
+    Record<string, ButtonFeedbackState>
+  >({});
   const pendingSettingsSaves = useRef(0);
+  const buttonFeedbackTimersRef = useRef<Record<string, number>>({});
   const [draft, setDraft] = useState<SettingsDraft>({
     holdShortcut: "",
     toggleShortcut: "",
@@ -1321,6 +1404,14 @@ function ControlApp({
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(buttonFeedbackTimersRef.current).forEach((timer) =>
+        window.clearTimeout(timer),
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (!snapshot) {
@@ -1357,6 +1448,44 @@ function ControlApp({
     setSnapshot(current);
   }
 
+  function clearButtonFeedback(actionId: string) {
+    const timer = buttonFeedbackTimersRef.current[actionId];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete buttonFeedbackTimersRef.current[actionId];
+    }
+
+    setButtonFeedback((current) => {
+      if (!(actionId in current)) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[actionId];
+      return next;
+    });
+  }
+
+  function setButtonFeedbackState(actionId: string, state: ButtonFeedbackState) {
+    const timer = buttonFeedbackTimersRef.current[actionId];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete buttonFeedbackTimersRef.current[actionId];
+    }
+
+    setButtonFeedback((current) => ({
+      ...current,
+      [actionId]: state,
+    }));
+  }
+
+  function finishButtonFeedback(actionId: string, holdMs = 1200) {
+    setButtonFeedbackState(actionId, "done");
+    buttonFeedbackTimersRef.current[actionId] = window.setTimeout(() => {
+      clearButtonFeedback(actionId);
+    }, holdMs);
+  }
+
   async function applySettings(update: Partial<SettingsDraft>) {
     if (!snapshot) {
       return;
@@ -1387,15 +1516,14 @@ function ControlApp({
 
   async function refreshDevices() {
     setMessage(null);
+    setButtonFeedbackState("refresh-inputs", "working");
 
     try {
       await invoke("refresh_devices");
       await refreshSnapshot();
-      setMessage({
-        kind: "success",
-        text: "Inputs refreshed.",
-      });
+      finishButtonFeedback("refresh-inputs");
     } catch (error) {
+      clearButtonFeedback("refresh-inputs");
       setMessage({
         kind: "error",
         text: formatInvokeError(error),
@@ -1427,12 +1555,21 @@ function ControlApp({
     }
   }
 
-  async function copyHistory(text: string) {
-    await navigator.clipboard.writeText(text);
-    setMessage({
-      kind: "success",
-      text: "Copied.",
-    });
+  async function copyHistory(id: string, text: string) {
+    const actionId = `copy:${id}`;
+    setMessage(null);
+    setButtonFeedbackState(actionId, "working");
+
+    try {
+      await navigator.clipboard.writeText(text);
+      finishButtonFeedback(actionId, 1000);
+    } catch (error) {
+      clearButtonFeedback(actionId);
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
   }
 
   async function addCustomModel() {
@@ -1444,6 +1581,9 @@ function ControlApp({
       });
       return;
     }
+
+    setMessage(null);
+    setButtonFeedbackState("add-model", "working");
 
     try {
       const inspected = await inspectModelPath(trimmed);
@@ -1462,11 +1602,9 @@ function ControlApp({
       setSelectedModelId(entry.id);
       setCustomModelPath("");
       setModelFilter("local");
-      setMessage({
-        kind: "success",
-        text: entry.ready ? "Local model added." : "Path added to library.",
-      });
+      finishButtonFeedback("add-model");
     } catch (error) {
+      clearButtonFeedback("add-model");
       setMessage({
         kind: "error",
         text: formatInvokeError(error),
@@ -1475,12 +1613,11 @@ function ControlApp({
   }
 
   function removeCustomModel(id: string) {
+    const actionId = `remove-model:${id}`;
     setCustomModels((current) => current.filter((model) => model.id !== id));
     setSelectedModelId("parakeet");
-    setMessage({
-      kind: "success",
-      text: "Removed local model.",
-    });
+    setMessage(null);
+    finishButtonFeedback(actionId);
   }
 
   const modelRows = snapshot ? buildModelRows(snapshot, customModels) : [];
@@ -1812,12 +1949,14 @@ function ControlApp({
 
                     {selectedModel.source === "local" ? (
                       <div className="inline-actions">
-                        <button
+                        <ActionButton
                           className="secondary"
+                          state={buttonFeedback[`remove-model:${selectedModel.id}`]}
+                          idleLabel="Remove"
+                          doneLabel="Removed"
+                          doneIcon={<CheckIcon className="small-icon" />}
                           onClick={() => removeCustomModel(selectedModel.id)}
-                        >
-                          Remove
-                        </button>
+                        />
                       </div>
                     ) : null}
                   </article>
@@ -1839,7 +1978,14 @@ function ControlApp({
                       />
                     </div>
                     <div className="inline-actions">
-                      <button onClick={addCustomModel}>Add local</button>
+                      <ActionButton
+                        state={buttonFeedback["add-model"]}
+                        idleLabel="Add local"
+                        workingLabel="Adding"
+                        doneLabel="Added"
+                        doneIcon={<CheckIcon className="small-icon" />}
+                        onClick={addCustomModel}
+                      />
                     </div>
                   </article>
                 </section>
@@ -1966,9 +2112,17 @@ function ControlApp({
                   </div>
 
                   <div className="inline-actions">
-                    <button className="secondary" onClick={refreshDevices}>
-                      Refresh
-                    </button>
+                    <ActionButton
+                      className="secondary"
+                      state={buttonFeedback["refresh-inputs"]}
+                      idleLabel="Refresh"
+                      workingLabel="Refreshing"
+                      doneLabel="Updated"
+                      idleIcon={<RefreshIcon className="small-icon" />}
+                      workingIcon={<RefreshIcon className="small-icon" />}
+                      doneIcon={<CheckIcon className="small-icon" />}
+                      onClick={refreshDevices}
+                    />
                     {snapshot.phase === "recording" ? (
                       <button className="secondary" onClick={stopRecording}>
                         Stop
@@ -2044,13 +2198,15 @@ function ControlApp({
                           <span>{item.mode}</span>
                           <span>{formatDuration(item.durationMs)}</span>
                         </div>
-                        <button
-                          className="secondary small icon-button"
-                          onClick={() => copyHistory(item.text)}
-                        >
-                          <CopyIcon className="small-icon" />
-                          Copy
-                        </button>
+                        <ActionButton
+                          className="secondary small"
+                          state={buttonFeedback[`copy:${item.id}`]}
+                          idleLabel="Copy"
+                          doneLabel="Copied"
+                          idleIcon={<CopyIcon className="small-icon" />}
+                          doneIcon={<CheckIcon className="small-icon" />}
+                          onClick={() => copyHistory(item.id, item.text)}
+                        />
                       </div>
                       <p>{item.text}</p>
                     </article>

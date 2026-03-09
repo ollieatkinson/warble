@@ -112,6 +112,39 @@ input::placeholder {
   box-shadow: none;
 }
 
+.action-button-working,
+.action-button-done {
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.action-button-working {
+  border-color: rgba(111, 157, 255, 0.34);
+  background: rgba(111, 157, 255, 0.08);
+  color: #d9e6ff;
+}
+
+.action-button-done {
+  border-color: rgba(47, 210, 127, 0.38);
+  background: rgba(47, 210, 127, 0.14);
+  color: #cbf5db;
+  box-shadow: 0 0 0 1px rgba(47, 210, 127, 0.08);
+}
+
+.action-button-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-button-icon-spin svg {
+  animation: action-spin 0.9s linear infinite;
+}
+
 .small {
   padding: 0.62rem 0.82rem;
 }
@@ -1048,6 +1081,16 @@ input::placeholder {
   50% {
     transform: scale(0.88);
     opacity: 0.78;
+  }
+}
+
+@keyframes action-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
   }
 }
 
