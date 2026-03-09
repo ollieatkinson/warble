@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, SVGProps } from "react";
@@ -36,6 +37,7 @@ type Settings = {
   selectedModelId: string;
   selectedModelKind: TranscriptionModelKind;
   selectedModelPath: string | null;
+  installedModelPaths: Record<string, string>;
   cleanupEnabled: boolean;
   cleanupTerms: string[];
   audioRetentionPolicy: AudioRetentionPolicy;
@@ -126,6 +128,7 @@ type ModelRow = {
   hfUrl?: string;
   path?: string;
   tags: string[];
+  supportsInstall: boolean;
 };
 
 type ChoiceOption = {
@@ -411,7 +414,9 @@ function deriveDisplayNameFromPath(path: string) {
   const lastSegment = path.replace(/\\/g, "/").split("/").pop() || "Local model";
   return lastSegment.replace(/\.[^.]+$/, "") || lastSegment;
 }
-const MODEL_CATALOG: Array<Omit<ModelRow, "state" | "source" | "active" | "selectable">> = [
+const MODEL_CATALOG: Array<
+  Omit<ModelRow, "state" | "source" | "active" | "selectable" | "path">
+> = [
   {
     id: "parakeet",
     name: "Parakeet TDT",
@@ -434,6 +439,7 @@ const MODEL_CATALOG: Array<Omit<ModelRow, "state" | "source" | "active" | "selec
     ],
     hfUrl: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2",
     tags: ["english", "nvidia", "available"],
+    supportsInstall: false,
   },
   {
     id: "whisper-small",
@@ -457,6 +463,7 @@ const MODEL_CATALOG: Array<Omit<ModelRow, "state" | "source" | "active" | "selec
     ],
     hfUrl: "https://huggingface.co/openai/whisper-small",
     tags: ["multilingual", "openai", "future"],
+    supportsInstall: true,
   },
   {
     id: "whisper-large-v3-turbo",
@@ -480,6 +487,7 @@ const MODEL_CATALOG: Array<Omit<ModelRow, "state" | "source" | "active" | "selec
     ],
     hfUrl: "https://huggingface.co/openai/whisper-large-v3-turbo",
     tags: ["multilingual", "openai", "future"],
+    supportsInstall: true,
   },
   {
     id: "canary-1b",
@@ -503,6 +511,7 @@ const MODEL_CATALOG: Array<Omit<ModelRow, "state" | "source" | "active" | "selec
     ],
     hfUrl: "https://huggingface.co/nvidia/canary-1b",
     tags: ["multilingual", "nvidia", "future"],
+    supportsInstall: false,
   },
 ];
 
@@ -538,6 +547,7 @@ function buildImportedModelRow(snapshot: Snapshot): ModelRow | null {
     ],
     path: snapshot.settings.selectedModelPath,
     tags: ["imported", snapshot.modelStatus === "ready" ? "available" : "future"],
+    supportsInstall: false,
   };
 }
 
@@ -565,12 +575,26 @@ function buildModelRows(snapshot: Snapshot): ModelRow[] {
       };
     }
 
+    const installedPath = snapshot.settings.installedModelPaths[entry.id] ?? null;
+    const isSelectedEngine =
+      activeModelId === entry.id &&
+      snapshot.settings.selectedModelKind === entry.modelKind;
+    const isReady = Boolean(installedPath);
+
     return {
       ...entry,
-      state: "planned",
+      state: isReady ? "ready" : "planned",
       source: "catalog",
-      active: false,
-      selectable: false,
+      active: isSelectedEngine && snapshot.modelStatus === "ready",
+      selectable: isReady,
+      runtime: isReady ? "Ready in app" : entry.runtime,
+      note: isReady
+        ? "Linked to a local model file. You can activate it from this catalog entry."
+        : "Download the model from Hugging Face, then link the local file here.",
+      path: installedPath,
+      tags: isReady
+        ? Array.from(new Set([...entry.tags, "available"]))
+        : entry.tags,
     };
   });
 
@@ -1749,6 +1773,45 @@ function ControlApp({
     }
   }
 
+  async function linkCatalogModel(row: ModelRow) {
+    if (!row.supportsInstall) {
+      return;
+    }
+
+    const actionId = `model-link:${row.id}`;
+    setMessage(null);
+    setButtonFeedbackState(actionId, "working");
+
+    try {
+      const selected = await openDialog({
+        directory: false,
+        multiple: false,
+        filters:
+          row.modelKind === "whisper"
+            ? [{ name: "Whisper model", extensions: ["bin"] }]
+            : undefined,
+      });
+
+      if (!selected || Array.isArray(selected)) {
+        clearButtonFeedback(actionId);
+        return;
+      }
+
+      await invoke("install_catalog_model", {
+        modelId: row.id,
+        modelKind: row.modelKind,
+        path: selected,
+      });
+      finishButtonFeedback(actionId);
+    } catch (error) {
+      clearButtonFeedback(actionId);
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
   async function openModelReference(row: ModelRow) {
     if (!row.hfUrl) {
       return;
@@ -2131,6 +2194,8 @@ function ControlApp({
                           label={
                             selectedModel.active
                               ? "Active"
+                              : selectedModel.selectable
+                                ? "Ready"
                               : selectedModel.source === "catalog"
                                 ? "Catalog"
                                 : selectedModel.source === "imported"
@@ -2142,6 +2207,8 @@ function ControlApp({
                           tone={
                             selectedModel.active
                               ? "success"
+                              : selectedModel.selectable
+                                ? "success"
                               : selectedModel.source === "catalog"
                                 ? "warning"
                                 : selectedModel.state === "incomplete"
@@ -2196,6 +2263,18 @@ function ControlApp({
                     </div>
 
                     <div className="inline-actions">
+                      {selectedModel.supportsInstall ? (
+                        <ActionButton
+                          className="secondary"
+                          state={buttonFeedback[`model-link:${selectedModel.id}`]}
+                          idleLabel={selectedModel.path ? "Replace model file" : "Locate model file"}
+                          workingLabel="Linking"
+                          doneLabel="Linked"
+                          idleIcon={<FolderIcon className="small-icon" />}
+                          doneIcon={<CheckIcon className="small-icon" />}
+                          onClick={() => linkCatalogModel(selectedModel)}
+                        />
+                      ) : null}
                       {selectedModel.selectable && !selectedModel.active ? (
                         <button
                           className="secondary"

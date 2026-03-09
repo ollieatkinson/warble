@@ -8,6 +8,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig, SupportedStreamConfig};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -145,6 +146,7 @@ struct Settings {
     selected_model_id: String,
     selected_model_kind: TranscriptionModelKind,
     selected_model_path: Option<String>,
+    installed_model_paths: BTreeMap<String, String>,
     cleanup_enabled: bool,
     cleanup_terms: Vec<String>,
     audio_retention_policy: AudioRetentionPolicy,
@@ -163,6 +165,7 @@ impl Default for Settings {
             selected_model_id: "parakeet".to_string(),
             selected_model_kind: TranscriptionModelKind::Parakeet,
             selected_model_path: None,
+            installed_model_paths: BTreeMap::new(),
             cleanup_enabled: true,
             cleanup_terms: default_cleanup_terms(),
             audio_retention_policy: AudioRetentionPolicy::OneDay,
@@ -566,20 +569,27 @@ fn parakeet_status_for_path(path: &Path) -> ModelStatus {
     }
 }
 
+fn resolved_selected_model_path(settings: &Settings) -> Option<String> {
+    settings.selected_model_path.clone().or_else(|| {
+        settings
+            .installed_model_paths
+            .get(&settings.selected_model_id)
+            .cloned()
+    })
+}
+
 fn selected_model_cache_key(settings: &Settings) -> String {
     match settings.selected_model_kind {
         TranscriptionModelKind::Parakeet => format!(
             "parakeet:{}",
-            settings
-                .selected_model_path
+            resolved_selected_model_path(settings)
                 .as_deref()
                 .unwrap_or("builtin")
                 .to_ascii_lowercase()
         ),
         TranscriptionModelKind::Whisper => format!(
             "whisper:{}",
-            settings
-                .selected_model_path
+            resolved_selected_model_path(settings)
                 .as_deref()
                 .unwrap_or("missing")
                 .to_ascii_lowercase()
@@ -598,14 +608,13 @@ fn built_in_parakeet_status(app: &AppHandle) -> ModelStatus {
 fn current_model_status(app: &AppHandle, settings: &Settings) -> ModelStatus {
     match settings.selected_model_kind {
         TranscriptionModelKind::Parakeet => {
-            if let Some(path) = settings.selected_model_path.as_ref() {
-                parakeet_status_for_path(Path::new(path))
+            if let Some(path) = resolved_selected_model_path(settings) {
+                parakeet_status_for_path(Path::new(&path))
             } else {
                 built_in_parakeet_status(app)
             }
         }
-        TranscriptionModelKind::Whisper => settings
-            .selected_model_path
+        TranscriptionModelKind::Whisper => resolved_selected_model_path(settings)
             .as_ref()
             .map(PathBuf::from)
             .filter(|path| whisper::model_ready_at(path))
@@ -879,7 +888,7 @@ fn transcribe_audio(
     if guard.selected_key.as_ref() != Some(&selected_key) {
         let engine = match settings.selected_model_kind {
             TranscriptionModelKind::Parakeet => {
-                let model = if let Some(path) = settings.selected_model_path.as_ref() {
+                let model = if let Some(path) = resolved_selected_model_path(settings) {
                     let path = PathBuf::from(path);
                     if parakeet::model_ready_in_dir(&path) {
                         parakeet::ParakeetTdt::load_from_dir(&path)?
@@ -893,9 +902,7 @@ fn transcribe_audio(
                 TranscriberEngine::Parakeet(model)
             }
             TranscriptionModelKind::Whisper => {
-                let model_path = settings
-                    .selected_model_path
-                    .as_ref()
+                let model_path = resolved_selected_model_path(settings)
                     .map(PathBuf::from)
                     .ok_or_else(|| anyhow!("Whisper model path is not configured"))?;
                 TranscriberEngine::Whisper(whisper::WhisperTranscriber::load(&model_path)?)
@@ -1816,6 +1823,10 @@ fn refresh_devices(app: AppHandle, shared: tauri::State<'_, SharedState>) {
 
 #[tauri::command]
 fn inspect_model_path(path: String) -> Result<ModelPathInspection, String> {
+    inspect_model_candidate(&path)
+}
+
+fn inspect_model_candidate(path: &str) -> Result<ModelPathInspection, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Err("Enter a local model file or folder path.".to_string());
@@ -1861,6 +1872,53 @@ fn inspect_model_path(path: String) -> Result<ModelPathInspection, String> {
         compatible: ready,
         ready,
     })
+}
+
+#[tauri::command]
+fn install_catalog_model(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+    model_id: String,
+    model_kind: TranscriptionModelKind,
+    path: String,
+) -> Result<(), String> {
+    let inspection = inspect_model_candidate(&path)?;
+    if !inspection.ready || !inspection.compatible {
+        return Err(match model_kind {
+            TranscriptionModelKind::Whisper => {
+                "That file is not a usable Whisper model. Choose a local `.bin` Whisper file."
+                    .to_string()
+            }
+            TranscriptionModelKind::Parakeet => {
+                "That folder is not a usable Parakeet model.".to_string()
+            }
+        });
+    }
+
+    if inspection.model_kind != model_kind {
+        return Err(match model_kind {
+            TranscriptionModelKind::Whisper => {
+                "Choose a local Whisper `.bin` file for this catalog entry.".to_string()
+            }
+            TranscriptionModelKind::Parakeet => {
+                "Choose a compatible Parakeet model folder for this entry.".to_string()
+            }
+        });
+    }
+
+    {
+        let mut core = shared.lock();
+        core.settings
+            .installed_model_paths
+            .insert(model_id.clone(), inspection.path.clone());
+        core.settings.selected_model_id = model_id;
+        core.settings.selected_model_kind = model_kind;
+        core.settings.selected_model_path = Some(inspection.path.clone());
+        core.status_message = format!("Using {}", inspection.name);
+        core.error_message = None;
+    }
+
+    persist_and_emit_settings_change(&app, &shared)
 }
 
 fn persist_and_emit_settings_change(app: &AppHandle, shared: &SharedState) -> Result<(), String> {
@@ -2074,6 +2132,7 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![BACKGROUND_ARG]),
         ))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main_window(app);
@@ -2187,6 +2246,7 @@ pub fn run() {
             get_snapshot,
             refresh_devices,
             inspect_model_path,
+            install_catalog_model,
             update_settings_command,
             add_cleanup_term,
             remove_cleanup_term,
