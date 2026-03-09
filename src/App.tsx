@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, SVGProps } from "react";
 
@@ -23,7 +24,7 @@ type SectionId =
   | "inputs"
   | "history"
   | "about";
-type ModelFilter = "all" | "ready" | "multilingual" | "local";
+type ModelFilter = "all" | "available" | "multilingual" | "future";
 type EditableOverlayPosition = Exclude<OverlayPosition, "caret">;
 
 type Settings = {
@@ -98,38 +99,27 @@ type FlashMessage = {
 
 type ButtonFeedbackState = "working" | "done";
 
-type StoredModelEntry = {
-  id: string;
-  name: string;
-  path: string;
-  modelKind: TranscriptionModelKind;
-  compatible: boolean;
-  ready: boolean;
-};
-
-type ModelPathInspection = {
-  name: string;
-  path: string;
-  modelKind: TranscriptionModelKind;
-  compatible: boolean;
-  ready: boolean;
-};
-
 type ModelRow = {
   id: string;
   name: string;
   modelKind: TranscriptionModelKind;
   family: string;
+  provider: string;
+  architecture: string;
   languages: string;
   speed: string;
   quality: string;
   footprint: string;
+  runtime: string;
+  license: string;
   state: "ready" | "planned" | "incomplete";
-  source: "built-in" | "planned" | "local";
+  source: "built-in" | "catalog" | "imported";
   active: boolean;
   selectable: boolean;
   summary: string;
   note: string;
+  highlights: string[];
+  hfUrl?: string;
   path?: string;
   tags: string[];
 };
@@ -143,7 +133,6 @@ type ChoiceOption = {
 type IconProps = SVGProps<SVGSVGElement>;
 
 const SNAPSHOT_EVENT = "transcribed://snapshot";
-const MODEL_LIBRARY_STORAGE_KEY = "transcribed:model-library";
 const isIndicatorWindow = new URLSearchParams(window.location.search).has(
   "indicator",
 );
@@ -167,9 +156,9 @@ const modelFilters: Array<{
   label: string;
 }> = [
   { id: "all", label: "All" },
-  { id: "ready", label: "Ready" },
+  { id: "available", label: "Available" },
   { id: "multilingual", label: "Multilingual" },
-  { id: "local", label: "Local" },
+  { id: "future", label: "Future" },
 ];
 
 const overlayPositionOptions: Array<{
@@ -196,10 +185,6 @@ const CLEANUP_SUGGESTIONS = ["um", "uh", "erm", "uhm", "hmm", "you know"];
 
 async function getSnapshot() {
   return invoke<Snapshot>("get_snapshot");
-}
-
-async function inspectModelPath(path: string) {
-  return invoke<ModelPathInspection>("inspect_model_path", { path });
 }
 
 function formatDuration(durationMs: number) {
@@ -396,295 +381,179 @@ function smoothLevels(levels: number[]) {
   });
 }
 
-function makeCustomModelId(
-  path: string,
-  modelKind = inferModelKindFromPath(path),
-) {
-  return `custom:${modelKind}:${normalizeStoredPath(path)}`;
-}
-
-function normalizeStoredPath(path: string) {
-  return path.toLowerCase().replace(/\\/g, "/");
-}
-
-function inferModelKindFromPath(path: string): TranscriptionModelKind {
-  return path.trim().toLowerCase().endsWith(".bin") ? "whisper" : "parakeet";
-}
-
 function deriveDisplayNameFromPath(path: string) {
   const lastSegment = path.replace(/\\/g, "/").split("/").pop() || "Local model";
   return lastSegment.replace(/\.[^.]+$/, "") || lastSegment;
 }
-
-function loadStoredModels() {
-  try {
-    const raw = window.localStorage.getItem(MODEL_LIBRARY_STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(raw) as StoredModelEntry[];
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed
-      .filter(
-        (entry) =>
-          entry &&
-          typeof entry === "object" &&
-          typeof entry.name === "string" &&
-          typeof entry.path === "string",
-      )
-      .map((entry) => {
-        const modelKind =
-          entry.modelKind === "whisper" || entry.modelKind === "parakeet"
-            ? entry.modelKind
-            : inferModelKindFromPath(entry.path);
-        return {
-          id: makeCustomModelId(entry.path, modelKind),
-          name: entry.name,
-          path: entry.path,
-          modelKind,
-          compatible: Boolean(entry.compatible),
-          ready: Boolean(entry.ready),
-        } satisfies StoredModelEntry;
-      });
-  } catch {
-    return [];
-  }
-}
-
-function describeWhisperModel(name: string) {
-  const normalized = name.toLowerCase();
-  const englishOnly =
-    normalized.includes(".en") ||
-    normalized.includes("-en") ||
-    normalized.includes("_en") ||
-    normalized.includes("english");
-
-  if (normalized.includes("tiny")) {
-    return {
-      languages: englishOnly ? "English" : "Multilingual",
-      speed: "Fastest",
-      quality: "Basic",
-      footprint: "Tiny",
-    };
-  }
-
-  if (normalized.includes("base")) {
-    return {
-      languages: englishOnly ? "English" : "Multilingual",
-      speed: "Fast",
-      quality: "Good",
-      footprint: "Base",
-    };
-  }
-
-  if (normalized.includes("small")) {
-    return {
-      languages: englishOnly ? "English" : "Multilingual",
-      speed: "Medium",
-      quality: "Balanced",
-      footprint: "Small",
-    };
-  }
-
-  if (normalized.includes("medium")) {
-    return {
-      languages: englishOnly ? "English" : "Multilingual",
-      speed: "Medium",
-      quality: "High",
-      footprint: "Medium",
-    };
-  }
-
-  if (normalized.includes("turbo")) {
-    return {
-      languages: "Multilingual",
-      speed: "Fast",
-      quality: "High",
-      footprint: "Turbo",
-    };
-  }
-
-  if (normalized.includes("large")) {
-    return {
-      languages: "Multilingual",
-      speed: "Slow",
-      quality: "Best",
-      footprint: "Large",
-    };
-  }
-
-  return {
-    languages: englishOnly ? "English" : "Multilingual",
-    speed: "Medium",
-    quality: "Good",
-    footprint: "Local file",
-  };
-}
-
-function describeStoredModel(entry: StoredModelEntry) {
-  if (entry.modelKind === "whisper") {
-    const whisper = describeWhisperModel(entry.name);
-    return {
-      family: "Whisper",
-      languages: whisper.languages,
-      speed: whisper.speed,
-      quality: whisper.quality,
-      footprint: whisper.footprint,
-      summary: entry.ready
-        ? "Rust-native whisper.cpp runtime."
-        : "Whisper file saved locally.",
-      note: entry.ready
-        ? "Uses a local Whisper .bin model."
-        : "Provide a supported Whisper .bin file to use it.",
-      tags: [
-        "local",
-        "whisper",
-        whisper.languages === "Multilingual" ? "multilingual" : "english",
-        entry.ready ? "ready" : "incomplete",
-      ],
-    };
-  }
-
-  return {
+const MODEL_CATALOG: Array<Omit<ModelRow, "state" | "source" | "active" | "selectable">> = [
+  {
+    id: "parakeet",
+    name: "Parakeet TDT",
+    modelKind: "parakeet",
     family: "Parakeet",
-    languages: "English-first",
+    provider: "NVIDIA",
+    architecture: "FastConformer + TDT",
+    languages: "English",
     speed: "Fast",
     quality: "High",
-    footprint: "Folder",
-    summary: entry.ready
-      ? "Rust-native Parakeet runtime."
-      : "Parakeet folder saved locally.",
-    note: entry.ready
-      ? "Uses a local Parakeet model folder."
-      : "Required Parakeet files are incomplete.",
-    tags: ["local", "parakeet", "english", entry.ready ? "ready" : "incomplete"],
+    footprint: "0.6B",
+    runtime: "Ready in app",
+    license: "See model card",
+    summary: "English-first local ASR tuned for fast dictation.",
+    note: "Best current in-app path for low-latency desktop dictation.",
+    highlights: [
+      "Optimized for quick local transcription",
+      "Current default engine in Transcribed",
+      "Best fit today for English-heavy dictation",
+    ],
+    hfUrl: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2",
+    tags: ["english", "nvidia", "available"],
+  },
+  {
+    id: "whisper-small",
+    name: "Whisper Small",
+    modelKind: "whisper",
+    family: "Whisper",
+    provider: "OpenAI",
+    architecture: "Transformer encoder-decoder",
+    languages: "Multilingual",
+    speed: "Medium",
+    quality: "Balanced",
+    footprint: "Small",
+    runtime: "Backend ready",
+    license: "Apache-2.0",
+    summary: "Balanced Whisper checkpoint with broad language coverage.",
+    note: "A strong general fallback when Parakeet misses mixed-language or non-English dictation.",
+    highlights: [
+      "Better multilingual coverage than Parakeet",
+      "Good balance between speed and accuracy",
+      "Useful for many Asian and European languages",
+    ],
+    hfUrl: "https://huggingface.co/openai/whisper-small",
+    tags: ["multilingual", "openai", "future"],
+  },
+  {
+    id: "whisper-large-v3-turbo",
+    name: "Whisper Large V3 Turbo",
+    modelKind: "whisper",
+    family: "Whisper",
+    provider: "OpenAI",
+    architecture: "Transformer encoder-decoder",
+    languages: "Multilingual",
+    speed: "Fast",
+    quality: "High",
+    footprint: "Large turbo",
+    runtime: "Backend ready",
+    license: "MIT",
+    summary: "High-quality multilingual Whisper model aimed at faster large-model inference.",
+    note: "Best catalog fit for multilingual quality once model installation is wired into the app.",
+    highlights: [
+      "Best Whisper quality path in this catalog",
+      "Good target for future live/final dual-lane setups",
+      "Strong choice when language coverage matters most",
+    ],
+    hfUrl: "https://huggingface.co/openai/whisper-large-v3-turbo",
+    tags: ["multilingual", "openai", "future"],
+  },
+  {
+    id: "canary-1b",
+    name: "Canary 1B",
+    modelKind: "whisper",
+    family: "Canary",
+    provider: "NVIDIA",
+    architecture: "FastConformer encoder-decoder",
+    languages: "25 EU languages",
+    speed: "Medium",
+    quality: "High",
+    footprint: "1B",
+    runtime: "Not supported",
+    license: "CC-BY-4.0",
+    summary: "NVIDIA multilingual ASR model with broad European language support.",
+    note: "Worth tracking as a future multilingual option, but not wired into the Rust runtime yet.",
+    highlights: [
+      "Strong multilingual catalog candidate",
+      "Useful benchmark against Whisper for EU languages",
+      "Not yet supported in-app",
+    ],
+    hfUrl: "https://huggingface.co/nvidia/canary-1b",
+    tags: ["multilingual", "nvidia", "future"],
+  },
+];
+
+function buildImportedModelRow(snapshot: Snapshot): ModelRow | null {
+  if (!snapshot.settings.selectedModelPath || snapshot.settings.selectedModelId === "parakeet") {
+    return null;
+  }
+
+  const isWhisper = snapshot.settings.selectedModelKind === "whisper";
+  return {
+    id: snapshot.settings.selectedModelId,
+    name: deriveDisplayNameFromPath(snapshot.settings.selectedModelPath),
+    modelKind: snapshot.settings.selectedModelKind,
+    family: isWhisper ? "Whisper" : "Parakeet",
+    provider: "Imported",
+    architecture: isWhisper ? "whisper.cpp local model" : "Parakeet local export",
+    languages: isWhisper ? "Depends on imported model" : "English-first",
+    speed: isWhisper ? "Varies" : "Fast",
+    quality: isWhisper ? "Varies" : "High",
+    footprint: isWhisper ? "Local file" : "Local folder",
+    runtime: snapshot.modelStatus === "ready" ? "Imported" : "Imported",
+    license: "Local asset",
+    state: snapshot.modelStatus === "ready" ? "ready" : "incomplete",
+    source: "imported",
+    active: true,
+    selectable: snapshot.modelStatus === "ready",
+    summary: "Previously imported model retained for compatibility.",
+    note: "Imported-model management is hidden from the main catalog for now.",
+    highlights: [
+      "Still supported by the Rust backend",
+      "Shown here so the current engine stays visible",
+      "Will eventually move into a cleaner install flow",
+    ],
+    path: snapshot.settings.selectedModelPath,
+    tags: ["imported", snapshot.modelStatus === "ready" ? "available" : "future"],
   };
 }
 
-function ensureSelectedModelEntry(
-  snapshot: Snapshot,
-  customModels: StoredModelEntry[],
-) {
-  if (
-    !snapshot.settings.selectedModelPath ||
-    snapshot.settings.selectedModelId === "parakeet" ||
-    customModels.some((entry) => entry.id === snapshot.settings.selectedModelId)
-  ) {
-    return customModels;
+function buildModelRows(snapshot: Snapshot): ModelRow[] {
+  const activeModelId = snapshot.settings.selectedModelId;
+  const rows = MODEL_CATALOG.map<ModelRow>((entry) => {
+    if (entry.id === "parakeet") {
+      return {
+        ...entry,
+        state: snapshot.parakeetModelStatus === "ready" ? "ready" : "incomplete",
+        source: "built-in",
+        active:
+          activeModelId === "parakeet" &&
+          snapshot.settings.selectedModelKind === "parakeet" &&
+          !snapshot.settings.selectedModelPath,
+        selectable: snapshot.parakeetModelStatus === "ready",
+        runtime:
+          snapshot.parakeetModelStatus === "ready"
+            ? "Ready in app"
+            : "Missing locally",
+        note:
+          snapshot.parakeetModelStatus === "ready"
+            ? entry.note
+            : "Built-in runtime is present in the catalog but missing local model files.",
+      };
+    }
+
+    return {
+      ...entry,
+      state: "planned",
+      source: "catalog",
+      active: false,
+      selectable: false,
+    };
+  });
+
+  const imported = buildImportedModelRow(snapshot);
+  if (imported && !rows.some((row) => row.id === imported.id)) {
+    rows.unshift(imported);
   }
 
-  return [
-    {
-      id:
-        snapshot.settings.selectedModelId ||
-        makeCustomModelId(
-          snapshot.settings.selectedModelPath,
-          snapshot.settings.selectedModelKind,
-        ),
-      name: deriveDisplayNameFromPath(snapshot.settings.selectedModelPath),
-      path: snapshot.settings.selectedModelPath,
-      modelKind: snapshot.settings.selectedModelKind,
-      compatible: snapshot.modelStatus === "ready",
-      ready: snapshot.modelStatus === "ready",
-    },
-    ...customModels,
-  ];
-}
-
-function buildModelRows(
-  snapshot: Snapshot,
-  customModels: StoredModelEntry[],
-): ModelRow[] {
-  const activeModelId = snapshot.settings.selectedModelId;
-  const builtIns: ModelRow[] = [
-    {
-      id: "parakeet",
-      name: "Parakeet TDT",
-      modelKind: "parakeet",
-      family: "Parakeet",
-      languages: "English-first",
-      speed: "Fast",
-      quality: "High",
-      footprint: "0.6B int8",
-      state: snapshot.parakeetModelStatus === "ready" ? "ready" : "incomplete",
-      source: "built-in",
-      active:
-        activeModelId === "parakeet" &&
-        snapshot.settings.selectedModelKind === "parakeet" &&
-        !snapshot.settings.selectedModelPath,
-      selectable: snapshot.parakeetModelStatus === "ready",
-      summary: "Current Rust-native runtime.",
-      note:
-        snapshot.parakeetModelStatus === "ready"
-          ? "Live now."
-          : "Built-in runtime missing model files.",
-      tags: ["ready", "local", "english"],
-    },
-    {
-      id: "whisper-small",
-      name: "Whisper Small",
-      modelKind: "whisper",
-      family: "Whisper",
-      languages: "Broad multilingual",
-      speed: "Medium",
-      quality: "Balanced",
-      footprint: "244M",
-      state: "planned",
-      source: "planned",
-      active: false,
-      selectable: false,
-      summary: "Planned multilingual fallback.",
-      note: "Add a local Whisper .bin model to use this family today.",
-      tags: ["planned", "multilingual"],
-    },
-    {
-      id: "whisper-large",
-      name: "Whisper Large",
-      modelKind: "whisper",
-      family: "Whisper",
-      languages: "Broad multilingual",
-      speed: "Slow",
-      quality: "Best",
-      footprint: "1.5B+",
-      state: "planned",
-      source: "planned",
-      active: false,
-      selectable: false,
-      summary: "Highest-quality lane for later.",
-      note: "Add a local Whisper .bin model to use this family today.",
-      tags: ["planned", "multilingual"],
-    },
-  ];
-
-  const locals = ensureSelectedModelEntry(snapshot, customModels).map<ModelRow>(
-    (entry) => {
-      const details = describeStoredModel(entry);
-      return {
-        id: entry.id,
-        name: entry.name,
-        modelKind: entry.modelKind,
-        family: details.family,
-        languages: details.languages,
-        speed: details.speed,
-        quality: details.quality,
-        footprint: details.footprint,
-        state: entry.ready ? "ready" : "incomplete",
-        source: "local",
-        active: activeModelId === entry.id,
-        selectable: entry.ready,
-        summary: details.summary,
-        note: details.note,
-        path: entry.path,
-        tags: details.tags,
-      };
-    },
-  );
-
-  return [...builtIns, ...locals];
+  return rows;
 }
 
 function matchesModel(row: ModelRow, query: string, filter: ModelFilter) {
@@ -693,11 +562,17 @@ function matchesModel(row: ModelRow, query: string, filter: ModelFilter) {
     const haystack = [
       row.name,
       row.family,
+      row.provider,
+      row.architecture,
       row.languages,
       row.speed,
       row.quality,
+      row.runtime,
+      row.license,
       row.source,
+      row.summary,
       row.note,
+      ...row.highlights,
     ]
       .join(" ")
       .toLowerCase();
@@ -707,12 +582,12 @@ function matchesModel(row: ModelRow, query: string, filter: ModelFilter) {
   }
 
   switch (filter) {
-    case "ready":
+    case "available":
       return row.state === "ready";
     case "multilingual":
       return row.tags.includes("multilingual");
-    case "local":
-      return row.source === "local";
+    case "future":
+      return row.state !== "ready";
     case "all":
     default:
       return true;
@@ -1566,11 +1441,7 @@ function ControlApp({
   const [historyQuery, setHistoryQuery] = useState("");
   const [modelQuery, setModelQuery] = useState("");
   const [modelFilter, setModelFilter] = useState<ModelFilter>("all");
-  const [customModelPath, setCustomModelPath] = useState("");
   const [cleanupInput, setCleanupInput] = useState("");
-  const [customModels, setCustomModels] = useState<StoredModelEntry[]>(() =>
-    loadStoredModels(),
-  );
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [buttonFeedback, setButtonFeedback] = useState<
     Record<string, ButtonFeedbackState>
@@ -1620,13 +1491,6 @@ function ControlApp({
       showLiveTranscription: snapshot.settings.showLiveTranscription,
     });
   }, [snapshot]);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      MODEL_LIBRARY_STORAGE_KEY,
-      JSON.stringify(customModels),
-    );
-  }, [customModels]);
 
   async function refreshSnapshot() {
     const current = await getSnapshot();
@@ -1764,91 +1628,37 @@ function ControlApp({
     }
   }
 
-  async function addCustomModel() {
-    const trimmed = customModelPath.trim();
-    if (!trimmed) {
-      setMessage({
-        kind: "error",
-        text: "Enter a local model file or folder path.",
-      });
-      return;
-    }
-
-    setMessage(null);
-    setButtonFeedbackState("add-model", "working");
-
-    try {
-      const inspected = await inspectModelPath(trimmed);
-      const entry: StoredModelEntry = {
-        id: makeCustomModelId(inspected.path, inspected.modelKind),
-        name: inspected.name,
-        path: inspected.path,
-        modelKind: inspected.modelKind,
-        compatible: inspected.compatible,
-        ready: inspected.ready,
-      };
-
-      setCustomModels((current) => [
-        entry,
-        ...current.filter((model) => model.id !== entry.id),
-      ]);
-      setSelectedModelId(entry.id);
-      setCustomModelPath("");
-      setModelFilter("local");
-      if (entry.ready) {
-        await sendSettingsUpdate({
-          selectedModelId: entry.id,
-          selectedModelKind: entry.modelKind,
-          selectedModelPath: entry.path,
-        });
-      }
-      finishButtonFeedback("add-model");
-    } catch (error) {
-      clearButtonFeedback("add-model");
-      setMessage({
-        kind: "error",
-        text: formatInvokeError(error),
-      });
-    }
-  }
-
-  async function removeCustomModel(id: string) {
-    const actionId = `remove-model:${id}`;
-    setButtonFeedbackState(actionId, "working");
-    setMessage(null);
-    setCustomModels((current) => current.filter((model) => model.id !== id));
-    setSelectedModelId((current) => (current === id ? "parakeet" : current));
-
-    try {
-      if (snapshot?.settings.selectedModelId === id) {
-        await sendSettingsUpdate({
-          selectedModelId: "parakeet",
-          selectedModelKind: "parakeet",
-          selectedModelPath: null,
-        });
-      }
-      finishButtonFeedback(actionId);
-    } catch (error) {
-      clearButtonFeedback(actionId);
-      setMessage({
-        kind: "error",
-        text: formatInvokeError(error),
-      });
-    }
-  }
-
-  async function selectModel(row: ModelRow) {
+  function selectModel(row: ModelRow) {
     setSelectedModelId(row.id);
+  }
+
+  async function activateModel(row: ModelRow) {
     if (!row.selectable || row.active) {
       return;
     }
 
+    setMessage(null);
     try {
       await sendSettingsUpdate({
         selectedModelId: row.id,
         selectedModelKind: row.modelKind,
         selectedModelPath: row.source === "built-in" ? null : row.path ?? null,
       });
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
+  async function openModelReference(row: ModelRow) {
+    if (!row.hfUrl) {
+      return;
+    }
+
+    try {
+      await openUrl(row.hfUrl);
     } catch (error) {
       setMessage({
         kind: "error",
@@ -1916,7 +1726,7 @@ function ControlApp({
     }
   }
 
-  const modelRows = snapshot ? buildModelRows(snapshot, customModels) : [];
+  const modelRows = snapshot ? buildModelRows(snapshot) : [];
   const activeModelId = snapshot?.settings.selectedModelId ?? "parakeet";
   const selectedRowExists = selectedModelId
     ? modelRows.some((row) => row.id === selectedModelId)
@@ -2159,9 +1969,9 @@ function ControlApp({
                       <tr>
                         <th />
                         <th>Model</th>
+                        <th>Provider</th>
                         <th>Lang</th>
-                        <th>Speed</th>
-                        <th>Quality</th>
+                        <th>Runtime</th>
                         <th>Status</th>
                       </tr>
                     </thead>
@@ -2180,7 +1990,7 @@ function ControlApp({
                             .filter(Boolean)
                             .join(" ")}
                           onClick={() => {
-                            void selectModel(row);
+                            selectModel(row);
                           }}
                         >
                           <td>
@@ -2194,9 +2004,9 @@ function ControlApp({
                               <span>{row.family}</span>
                             </div>
                           </td>
+                          <td>{row.provider}</td>
                           <td>{row.languages}</td>
-                          <td>{row.speed}</td>
-                          <td>{row.quality}</td>
+                          <td>{row.runtime}</td>
                           <td>
                             <StatusChip
                               label={row.state}
@@ -2224,24 +2034,44 @@ function ControlApp({
                           label={
                             selectedModel.active
                               ? "Active"
-                              : selectedModel.source === "planned"
-                                ? "Planned"
-                                : selectedModel.selectable
+                              : selectedModel.source === "catalog"
+                                ? "Catalog"
+                                : selectedModel.source === "imported"
+                                  ? "Imported"
+                                  : selectedModel.selectable
                                   ? "Ready"
-                                  : "Library"
+                                  : "Missing"
                           }
                           tone={
                             selectedModel.active
                               ? "success"
-                              : selectedModel.source === "planned"
+                              : selectedModel.source === "catalog"
                                 ? "warning"
-                                : "accent"
+                                : selectedModel.state === "incomplete"
+                                  ? "warning"
+                                  : "accent"
                           }
                         />
                       </div>
                     </div>
 
                     <div className="metric-grid">
+                      <div className="metric">
+                        <span>Provider</span>
+                        <strong>{selectedModel.provider}</strong>
+                      </div>
+                      <div className="metric">
+                        <span>Architecture</span>
+                        <strong>{selectedModel.architecture}</strong>
+                      </div>
+                      <div className="metric">
+                        <span>Runtime</span>
+                        <strong>{selectedModel.runtime}</strong>
+                      </div>
+                      <div className="metric">
+                        <span>Languages</span>
+                        <strong>{selectedModel.languages}</strong>
+                      </div>
                       <div className="metric">
                         <span>Speed</span>
                         <strong>{selectedModel.speed}</strong>
@@ -2255,8 +2085,8 @@ function ControlApp({
                         <strong>{selectedModel.footprint}</strong>
                       </div>
                       <div className="metric">
-                        <span>Languages</span>
-                        <strong>{selectedModel.languages}</strong>
+                        <span>License</span>
+                        <strong>{selectedModel.license}</strong>
                       </div>
                     </div>
 
@@ -2268,63 +2098,70 @@ function ControlApp({
                       ) : null}
                     </div>
 
-                    {selectedModel.selectable && !selectedModel.active ? (
-                      <div className="inline-actions">
+                    <div className="inline-actions">
+                      {selectedModel.selectable && !selectedModel.active ? (
                         <button
                           className="secondary"
                           onClick={() => {
-                            void selectModel(selectedModel);
+                            void activateModel(selectedModel);
                           }}
                         >
                           Use model
                         </button>
-                      </div>
-                    ) : null}
-
-                    {selectedModel.source === "local" ? (
-                      <div className="inline-actions">
-                        <ActionButton
+                      ) : null}
+                      {selectedModel.hfUrl ? (
+                        <button
                           className="secondary"
-                          state={buttonFeedback[`remove-model:${selectedModel.id}`]}
-                          idleLabel="Remove"
-                          doneLabel="Removed"
-                          doneIcon={<CheckIcon className="small-icon" />}
                           onClick={() => {
-                            void removeCustomModel(selectedModel.id);
+                            void openModelReference(selectedModel);
                           }}
-                        />
-                      </div>
-                    ) : null}
+                        >
+                          Open Hugging Face
+                        </button>
+                      ) : null}
+                    </div>
                   </article>
 
                   <article className="surface">
                     <div className="surface-bar">
                       <div className="surface-title">
-                        <span className="surface-title-label">Add local model</span>
+                        <span className="surface-title-label">Model reference</span>
                       </div>
                     </div>
-                    <div className="field">
-                      <span>File or folder path</span>
-                      <input
-                        value={customModelPath}
-                        onChange={(event) =>
-                          setCustomModelPath(event.currentTarget.value)
-                        }
-                        placeholder="C:\\models\\whisper-small.bin"
-                      />
+
+                    <div className="reference-grid">
+                      <div className="info-tile">
+                        <span>Family</span>
+                        <strong>{selectedModel.family}</strong>
+                      </div>
+                      <div className="info-tile">
+                        <span>Provider</span>
+                        <strong>{selectedModel.provider}</strong>
+                      </div>
+                      <div className="info-tile">
+                        <span>Architecture</span>
+                        <strong>{selectedModel.architecture}</strong>
+                      </div>
+                      <div className="info-tile">
+                        <span>Runtime in app</span>
+                        <strong>{selectedModel.runtime}</strong>
+                      </div>
                     </div>
-                    <div className="mini-meta-row">
-                      <span>Parakeet folders or Whisper .bin files</span>
+
+                    <div className="detail-copy">
+                      <p>Highlights</p>
                     </div>
-                    <div className="inline-actions">
-                      <ActionButton
-                        state={buttonFeedback["add-model"]}
-                        idleLabel="Add local"
-                        workingLabel="Adding"
-                        doneLabel="Added"
-                        doneIcon={<CheckIcon className="small-icon" />}
-                        onClick={addCustomModel}
-                      />
+                    <ul className="detail-list">
+                      {selectedModel.highlights.map((highlight) => (
+                        <li key={highlight}>{highlight}</li>
+                      ))}
+                    </ul>
+
+                    <div className="detail-copy">
+                      <p>
+                        Tap a model row to inspect it. Only models with a ready runtime
+                        can be activated inside Transcribed.
+                      </p>
                     </div>
                   </article>
                 </section>
