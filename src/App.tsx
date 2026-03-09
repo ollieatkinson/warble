@@ -914,8 +914,10 @@ function SignalBars({
     const height = compact ? 18 : 26;
     const baselineY = height - (compact ? 1.5 : 2);
     const barCount = compact ? 12 : 16;
+    const inset = compact ? 3.5 : 0;
     const gap = compact ? 1.8 : 2.2;
-    const barWidth = (width - gap * (barCount - 1)) / barCount;
+    const innerWidth = width - inset * 2;
+    const barWidth = (innerWidth - gap * (barCount - 1)) / barCount;
     const minHeight = compact ? 2.2 : 3;
     const maxHeight = compact ? 14 : 21;
     const sampled = resampleLevels(sourceLevels, barCount);
@@ -927,13 +929,13 @@ function SignalBars({
         aria-hidden="true"
       >
         <path
-          d={`M 0 ${baselineY} L ${width} ${baselineY}`}
+          d={`M ${inset} ${baselineY} L ${width - inset} ${baselineY}`}
           className="signal-bars-base"
         />
         {sampled.map((level, index) => {
           const normalized = Math.max(0, level);
           const barHeight = minHeight + normalized * (maxHeight - minHeight);
-          const x = index * (barWidth + gap);
+          const x = inset + index * (barWidth + gap);
           const y = baselineY - barHeight;
 
           return (
@@ -999,17 +1001,22 @@ function SignalBars({
   );
   const width = compact ? 62 : 108;
   const height = compact ? 20 : 34;
+  const inset = compact ? 3 : 0;
   const centerY = height / 2;
   const amplitude = compact ? 5.3 : 8.6;
-  const step = smoothedLevels.length > 1 ? width / (smoothedLevels.length - 1) : width;
+  const drawableWidth = width - inset * 2;
+  const step =
+    smoothedLevels.length > 1
+      ? drawableWidth / (smoothedLevels.length - 1)
+      : drawableWidth;
   const topPoints = smoothedLevels.map((level, index) => {
-    const x = index * step;
+    const x = inset + index * step;
     const normalized = Math.max(0, level);
     const offset = (compact ? 1.3 : 2) + normalized * amplitude;
     return { x, y: centerY - offset };
   });
   const bottomPoints = smoothedLevels.map((level, index) => {
-    const x = index * step;
+    const x = inset + index * step;
     const normalized = Math.max(0, level);
     const offset = (compact ? 1.3 : 2) + normalized * amplitude;
     return { x, y: centerY + offset };
