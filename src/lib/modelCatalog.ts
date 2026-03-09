@@ -29,8 +29,8 @@ const MODEL_CATALOG: Array<
       "Best current in-app path for local dictation, auto language detection, and broader language support.",
     highlights: [
       "Current default engine in Transcribed",
-      "Uses parakeet-rs in the Rust backend",
-      "Supports timestamps and DirectML-capable ONNX execution",
+      "Uses the stable local Rust ONNX backend",
+      "Supports timestamps and local offline dictation",
     ],
     hfUrl: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3",
     artifactUrl: "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8",
@@ -55,24 +55,24 @@ const MODEL_CATALOG: Array<
     speed: "Very fast",
     quality: "High",
     footprint: "0.6B",
-    runtime: "Backend ready",
+    runtime: "Stable runtime pending",
     license: "See model card",
     summary:
-      "English-only CTC model with punctuation and capitalization through parakeet-rs.",
+      "English-only CTC variant in the catalog, held back until the stable local runtime is ready.",
     note:
-      "Good fit when you want a simpler English-first Parakeet path without the TDT multilingual stack.",
+      "Shown here for comparison, but not currently enabled in the stable Transcribed runtime.",
     highlights: [
-      "Uses parakeet-rs in the Rust backend",
-      "Strong English punctuation and capitalization",
-      "Timestamp-capable via the underlying crate",
+      "English-focused Parakeet family variant",
+      "Stronger punctuation-oriented CTC path",
+      "Kept catalog-only until the runtime is re-enabled",
     ],
     hfUrl: "https://huggingface.co/nvidia/parakeet-ctc-0.6b",
     artifactUrl:
       "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/tree/main/onnx",
     artifactLabel: "ONNX export bundle",
     tags: ["english", "nvidia", "available", "timestamps"],
-    supportsInstall: true,
-    supportsDownload: true,
+    supportsInstall: false,
+    supportsDownload: false,
     downloadSizeBytes: 1_240_000_000,
     minimumMemoryBytes: 4 * 1024 ** 3,
     recommendedMemoryBytes: 8 * 1024 ** 3,
@@ -195,23 +195,32 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
     const isSelectedEngine =
       activeModelId === entry.id &&
       snapshot.settings.selectedModelKind === entry.modelKind;
+    const runtimeDisabled = entry.id === "parakeet-ctc";
     const isReady = Boolean(installedPath);
     const supportsDownload = Boolean(entry.supportsDownload);
     const isManaged = Boolean(installedPath && isManagedModelPath(installedPath));
 
     return {
       ...entry,
-      state: isReady ? "ready" : supportsDownload ? "downloadable" : "planned",
+      state: runtimeDisabled
+        ? "planned"
+        : isReady
+          ? "ready"
+          : supportsDownload
+            ? "downloadable"
+            : "planned",
       source: "catalog",
       managed: isManaged,
-      active: isSelectedEngine && snapshot.modelStatus === "ready",
-      selectable: isReady,
+      active: !runtimeDisabled && isSelectedEngine && snapshot.modelStatus === "ready",
+      selectable: !runtimeDisabled && isReady,
       runtime: isReady
         ? "Ready in app"
         : supportsDownload
           ? "Download in app"
           : entry.runtime,
-      note: isReady
+      note: runtimeDisabled
+        ? "Catalog reference only for now. The stable runtime currently falls back to Parakeet TDT."
+        : isReady
         ? isManaged
           ? "Downloaded into Transcribed and ready to use locally."
           : "Linked to a local Parakeet model folder. You can activate it from this catalog entry."

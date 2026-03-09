@@ -36,9 +36,3 @@ pub(crate) const PARAKEET_DECODER_DOWNLOAD_URL: &str =
     "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/decoder_joint-model.int8.onnx";
 pub(crate) const PARAKEET_VOCAB_DOWNLOAD_URL: &str =
     "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/vocab.txt";
-pub(crate) const PARAKEET_CTC_MODEL_DOWNLOAD_URL: &str =
-    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/onnx/model_int8.onnx";
-pub(crate) const PARAKEET_CTC_MODEL_DATA_DOWNLOAD_URL: &str =
-    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/onnx/model_int8.onnx_data";
-pub(crate) const PARAKEET_CTC_TOKENIZER_DOWNLOAD_URL: &str =
-    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/tokenizer.json";

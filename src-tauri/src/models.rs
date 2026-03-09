@@ -6,9 +6,8 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 use crate::constants::{
-    PARAKEET_CTC_MODEL_DATA_DOWNLOAD_URL, PARAKEET_CTC_MODEL_DOWNLOAD_URL,
-    PARAKEET_CTC_TOKENIZER_DOWNLOAD_URL, PARAKEET_DECODER_DOWNLOAD_URL,
-    PARAKEET_ENCODER_DOWNLOAD_URL, PARAKEET_VOCAB_DOWNLOAD_URL,
+    PARAKEET_DECODER_DOWNLOAD_URL, PARAKEET_ENCODER_DOWNLOAD_URL,
+    PARAKEET_VOCAB_DOWNLOAD_URL,
 };
 use crate::parakeet;
 use crate::state::{
@@ -47,21 +46,6 @@ pub(crate) fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpe
             download_url: PARAKEET_VOCAB_DOWNLOAD_URL,
         },
     ];
-    const PARAKEET_CTC_FILES: &[CatalogDownloadFile] = &[
-        CatalogDownloadFile {
-            file_name: "model_int8.onnx",
-            download_url: PARAKEET_CTC_MODEL_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "model_int8.onnx_data",
-            download_url: PARAKEET_CTC_MODEL_DATA_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "tokenizer.json",
-            download_url: PARAKEET_CTC_TOKENIZER_DOWNLOAD_URL,
-        },
-    ];
-
     match model_id {
         "parakeet" => Some(CatalogDownloadSpec {
             model_id: "parakeet",
@@ -70,27 +54,12 @@ pub(crate) fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpe
             files: PARAKEET_FILES,
             model_dir_name: parakeet::MODEL_ID,
         }),
-        "parakeet-ctc" => Some(CatalogDownloadSpec {
-            model_id: "parakeet-ctc",
-            model_kind: TranscriptionModelKind::ParakeetCtc,
-            display_name: "Parakeet CTC",
-            files: PARAKEET_CTC_FILES,
-            model_dir_name: parakeet::CTC_MODEL_ID,
-        }),
         _ => None,
     }
 }
 
 pub(crate) fn parakeet_status_for_path(path: &Path) -> ModelStatus {
     if parakeet::model_ready_in_dir(path) || parakeet::model_ready_at(path) {
-        ModelStatus::Ready
-    } else {
-        ModelStatus::Missing
-    }
-}
-
-pub(crate) fn parakeet_ctc_status_for_path(path: &Path) -> ModelStatus {
-    if parakeet::ctc_model_ready_in_dir(path) || parakeet::ctc_model_ready_at(path) {
         ModelStatus::Ready
     } else {
         ModelStatus::Missing
@@ -183,7 +152,7 @@ pub(crate) fn choose_fallback_model_selection(app: &AppHandle, settings: &mut Se
         return;
     }
 
-    let preferred_ids = ["parakeet", "parakeet-ctc"];
+    let preferred_ids = ["parakeet"];
     for model_id in preferred_ids {
         if let Some(path) = settings.installed_model_paths.get(model_id) {
             settings.selected_model_id = model_id.to_string();
@@ -241,13 +210,7 @@ pub(crate) fn current_model_status(app: &AppHandle, settings: &Settings) -> Mode
                 built_in_parakeet_status(app)
             }
         }
-        TranscriptionModelKind::ParakeetCtc => resolved_selected_model_path(settings)
-            .as_ref()
-            .map(PathBuf::from)
-            .map(|path| parakeet_ctc_status_for_path(&path))
-            .filter(|status| *status == ModelStatus::Ready)
-            .map(|_| ModelStatus::Ready)
-            .unwrap_or(ModelStatus::Missing),
+        TranscriptionModelKind::ParakeetCtc => ModelStatus::Missing,
     }
 }
 

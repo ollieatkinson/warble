@@ -889,6 +889,16 @@ fn spawn_live_meter(
     });
 }
 
+fn panic_payload_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    match payload.downcast::<String>() {
+        Ok(message) => *message,
+        Err(payload) => match payload.downcast::<&'static str>() {
+            Ok(message) => (*message).to_string(),
+            Err(_) => "unknown panic".to_string(),
+        },
+    }
+}
+
 fn complete_transcription(
     app: AppHandle,
     shared: SharedState,
@@ -898,60 +908,60 @@ fn complete_transcription(
     completed: CompletedRecording,
 ) {
     std::thread::spawn(move || {
-        if preview_control.current_generation() != generation {
-            return;
-        }
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if preview_control.current_generation() != generation {
+                return;
+            }
 
-        let settings = {
-            let core = shared.lock();
-            core.settings.clone()
-        };
-        let result = transcribe_audio(&app, &transcriber, &settings, &completed.samples);
+            let settings = {
+                let core = shared.lock();
+                core.settings.clone()
+            };
+            let result = transcribe_audio(&app, &transcriber, &settings, &completed.samples);
 
-        if preview_control.current_generation() != generation {
-            return;
-        }
+            if preview_control.current_generation() != generation {
+                return;
+            }
 
-        match result {
-            Ok(text) => {
-                let text = cleanup_transcript_text(
-                    text.trim(),
-                    settings.cleanup_enabled,
-                    &settings.cleanup_terms,
-                );
-                if text.is_empty() {
-                    let mut core = shared.lock();
-                    core.phase = AppPhase::Idle;
-                    core.status_message = "Nothing intelligible was detected".to_string();
-                    core.error_message = None;
-                    core.model_status = current_model_status(&app, &core.settings);
-                    core.parakeet_model_status = built_in_parakeet_status(&app);
-                    core.overlay.visible = false;
-                    core.overlay.detail.clear();
-                    core.overlay.levels = default_overlay_levels();
-                    drop(core);
-                    update_indicator_window(&app, &shared);
-                    emit_snapshot(&app, &shared);
-                    return;
-                }
-
-                let pasted = {
-                    if settings.auto_paste {
-                        platform::paste_text(&text).is_ok()
-                    } else {
-                        false
+            match result {
+                Ok(text) => {
+                    let text = cleanup_transcript_text(
+                        text.trim(),
+                        settings.cleanup_enabled,
+                        &settings.cleanup_terms,
+                    );
+                    if text.is_empty() {
+                        let mut core = shared.lock();
+                        core.phase = AppPhase::Idle;
+                        core.status_message = "Nothing intelligible was detected".to_string();
+                        core.error_message = None;
+                        core.model_status = current_model_status(&app, &core.settings);
+                        core.parakeet_model_status = built_in_parakeet_status(&app);
+                        core.overlay.visible = false;
+                        core.overlay.detail.clear();
+                        core.overlay.levels = default_overlay_levels();
+                        drop(core);
+                        update_indicator_window(&app, &shared);
+                        emit_snapshot(&app, &shared);
+                        return;
                     }
-                };
-                let item_id = Uuid::new_v4().to_string();
-                let audio_path = save_history_audio(
-                    &app,
-                    &item_id,
-                    &completed.captured_samples,
-                    completed.captured_sample_rate,
-                )
-                .ok();
 
-                {
+                    let pasted = {
+                        if settings.auto_paste {
+                            platform::paste_text(&text).is_ok()
+                        } else {
+                            false
+                        }
+                    };
+                    let item_id = Uuid::new_v4().to_string();
+                    let audio_path = save_history_audio(
+                        &app,
+                        &item_id,
+                        &completed.captured_samples,
+                        completed.captured_sample_rate,
+                    )
+                    .ok();
+
                     let mut core = shared.lock();
                     core.history.insert(
                         0,
@@ -983,25 +993,44 @@ fn complete_transcription(
                     core.overlay.visible = false;
                     core.overlay.detail.clear();
                     core.overlay.levels = default_overlay_levels();
+                    drop(core);
+
+                    let _ = save_persisted_state(&app, &shared);
                 }
+                Err(error) => {
+                    let mut core = shared.lock();
+                    core.phase = AppPhase::Error;
+                    core.status_message = "Transcription failed".to_string();
+                    core.error_message = Some(error.to_string());
+                    core.model_status = current_model_status(&app, &core.settings);
+                    core.parakeet_model_status = built_in_parakeet_status(&app);
+                    core.overlay.visible = false;
+                    core.overlay.detail.clear();
+                    core.overlay.levels = default_overlay_levels();
+                }
+            }
 
-                let _ = save_persisted_state(&app, &shared);
-            }
-            Err(error) => {
-                let mut core = shared.lock();
-                core.phase = AppPhase::Error;
-                core.status_message = "Transcription failed".to_string();
-                core.error_message = Some(error.to_string());
-                core.model_status = current_model_status(&app, &core.settings);
-                core.parakeet_model_status = built_in_parakeet_status(&app);
-                core.overlay.visible = false;
-                core.overlay.detail.clear();
-                core.overlay.levels = default_overlay_levels();
-            }
+            update_indicator_window(&app, &shared);
+            emit_snapshot(&app, &shared);
+        }));
+
+        if let Err(error) = outcome {
+            let mut core = shared.lock();
+            core.phase = AppPhase::Error;
+            core.status_message = "Transcription worker failed".to_string();
+            core.error_message = Some(format!(
+                "The transcription worker crashed unexpectedly: {}",
+                panic_payload_message(error)
+            ));
+            core.model_status = current_model_status(&app, &core.settings);
+            core.parakeet_model_status = built_in_parakeet_status(&app);
+            core.overlay.visible = false;
+            core.overlay.detail.clear();
+            core.overlay.levels = default_overlay_levels();
+            drop(core);
+            update_indicator_window(&app, &shared);
+            emit_snapshot(&app, &shared);
         }
-
-        update_indicator_window(&app, &shared);
-        emit_snapshot(&app, &shared);
     });
 }
 
@@ -1545,6 +1574,15 @@ pub fn run() {
                 let mut core = shared.lock();
                 core.settings = persisted.settings;
                 core.history = persisted.history;
+                if matches!(
+                    core.settings.selected_model_kind,
+                    TranscriptionModelKind::ParakeetCtc
+                ) {
+                    choose_fallback_model_selection(app.handle(), &mut core.settings);
+                    core.status_message =
+                        "Fell back to Parakeet TDT because CTC is not enabled in the stable runtime"
+                            .to_string();
+                }
                 core.sources = enumerate_sources();
                 core.model_status = current_model_status(app.handle(), &core.settings);
                 core.parakeet_model_status = built_in_parakeet_status(app.handle());
