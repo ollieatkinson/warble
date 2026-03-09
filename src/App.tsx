@@ -335,16 +335,16 @@ function matchesHistory(item: HistoryItem, query: string) {
   return terms.every((term) => haystack.includes(term));
 }
 
-function hasUnsavedChanges(snapshot: Snapshot, draft: SettingsDraft) {
-  return (
-    snapshot.settings.holdShortcut !== draft.holdShortcut ||
-    snapshot.settings.toggleShortcut !== draft.toggleShortcut ||
-    (snapshot.settings.selectedSourceId ?? "") !== draft.selectedSourceId ||
-    snapshot.settings.autoPaste !== draft.autoPaste ||
-    snapshot.settings.overlayPosition !== draft.overlayPosition ||
-    snapshot.settings.overlayAnimationStyle !== draft.overlayAnimationStyle ||
-    snapshot.settings.showLiveTranscription !== draft.showLiveTranscription
-  );
+function buildSettingsUpdate(draft: SettingsDraft) {
+  return {
+    holdShortcut: draft.holdShortcut,
+    toggleShortcut: draft.toggleShortcut,
+    selectedSourceId: draft.selectedSourceId || undefined,
+    autoPaste: draft.autoPaste,
+    overlayPosition: draft.overlayPosition,
+    overlayAnimationStyle: draft.overlayAnimationStyle,
+    showLiveTranscription: draft.showLiveTranscription,
+  };
 }
 
 function resampleLevels(sourceLevels: number[], count: number) {
@@ -1312,6 +1312,7 @@ function ControlApp({
   const [selectedModelId, setSelectedModelId] = useState(() =>
     loadSelectedModelId(),
   );
+  const pendingSettingsSaves = useRef(0);
   const [draft, setDraft] = useState<SettingsDraft>({
     holdShortcut: "",
     toggleShortcut: "",
@@ -1321,6 +1322,11 @@ function ControlApp({
     overlayAnimationStyle: "spectrum",
     showLiveTranscription: false,
   });
+  const draftRef = useRef(draft);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   useEffect(() => {
     if (!snapshot) {
@@ -1357,30 +1363,21 @@ function ControlApp({
     setSnapshot(current);
   }
 
-  async function saveSettings() {
+  async function applySettings(update: Partial<SettingsDraft>) {
     if (!snapshot) {
       return;
     }
 
+    const nextDraft = { ...draftRef.current, ...update };
+    setDraft(nextDraft);
+    draftRef.current = nextDraft;
+    pendingSettingsSaves.current += 1;
     setSaving(true);
     setMessage(null);
 
     try {
       await invoke("update_settings_command", {
-        update: {
-          holdShortcut: draft.holdShortcut,
-          toggleShortcut: draft.toggleShortcut,
-          selectedSourceId: draft.selectedSourceId || undefined,
-          autoPaste: draft.autoPaste,
-          overlayPosition: draft.overlayPosition,
-          overlayAnimationStyle: draft.overlayAnimationStyle,
-          showLiveTranscription: draft.showLiveTranscription,
-        },
-      });
-      await refreshSnapshot();
-      setMessage({
-        kind: "success",
-        text: "Saved.",
+        update: buildSettingsUpdate(nextDraft),
       });
     } catch (error) {
       await refreshSnapshot();
@@ -1389,7 +1386,8 @@ function ControlApp({
         text: formatInvokeError(error),
       });
     } finally {
-      setSaving(false);
+      pendingSettingsSaves.current = Math.max(0, pendingSettingsSaves.current - 1);
+      setSaving(pendingSettingsSaves.current > 0);
     }
   }
 
@@ -1530,7 +1528,6 @@ function ControlApp({
         ? "Transcribing"
         : "Ready";
   const previewDetail = snapshot.overlay.detail || previewTitle;
-  const unsavedChanges = hasUnsavedChanges(snapshot, draft);
   const filteredModels = modelRows.filter((row) =>
     matchesModel(row, modelQuery, modelFilter),
   );
@@ -1586,9 +1583,7 @@ function ControlApp({
               label={snapshot.shortcutsActive ? "Keys active" : "Keys off"}
               tone={snapshot.shortcutsActive ? "accent" : "warning"}
             />
-            <button onClick={saveSettings} disabled={saving || !unsavedChanges}>
-              {saving ? "Saving..." : unsavedChanges ? "Save" : "Saved"}
-            </button>
+            <StatusChip label={saving ? "Syncing" : "Auto"} tone="muted" />
           </div>
         </header>
 
@@ -1868,7 +1863,7 @@ function ControlApp({
                     armed={capturing === "holdShortcut"}
                     onArm={() => setCapturing("holdShortcut")}
                     onCapture={(value) => {
-                      setDraft((current) => ({ ...current, holdShortcut: value }));
+                      void applySettings({ holdShortcut: value });
                       setCapturing(null);
                     }}
                     onCancel={() => setCapturing(null)}
@@ -1879,7 +1874,7 @@ function ControlApp({
                     armed={capturing === "toggleShortcut"}
                     onArm={() => setCapturing("toggleShortcut")}
                     onCapture={(value) => {
-                      setDraft((current) => ({ ...current, toggleShortcut: value }));
+                      void applySettings({ toggleShortcut: value });
                       setCapturing(null);
                     }}
                     onCancel={() => setCapturing(null)}
@@ -1893,10 +1888,9 @@ function ControlApp({
                     type="checkbox"
                     checked={draft.autoPaste}
                     onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
+                      void applySettings({
                         autoPaste: event.currentTarget.checked,
-                      }))
+                      })
                     }
                   />
                   <div>
@@ -1910,10 +1904,9 @@ function ControlApp({
                   value={draft.overlayPosition}
                   options={overlayPositionOptions}
                   onChange={(value) =>
-                    setDraft((current) => ({
-                      ...current,
+                    void applySettings({
                       overlayPosition: value as EditableOverlayPosition,
-                    }))
+                    })
                   }
                 />
 
@@ -1922,10 +1915,9 @@ function ControlApp({
                   value={draft.overlayAnimationStyle}
                   options={overlayAnimationOptions}
                   onChange={(value) =>
-                    setDraft((current) => ({
-                      ...current,
+                    void applySettings({
                       overlayAnimationStyle: value as OverlayAnimationStyle,
-                    }))
+                    })
                   }
                 />
 
@@ -1934,10 +1926,9 @@ function ControlApp({
                     type="checkbox"
                     checked={draft.showLiveTranscription}
                     onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
+                      void applySettings({
                         showLiveTranscription: event.currentTarget.checked,
-                      }))
+                      })
                     }
                   />
                   <div>
@@ -1968,10 +1959,9 @@ function ControlApp({
                     options={sourceOptions}
                     placeholder="No source"
                     onChange={(value) =>
-                      setDraft((current) => ({
-                        ...current,
+                      void applySettings({
                         selectedSourceId: value,
-                      }))
+                      })
                     }
                   />
 
