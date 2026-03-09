@@ -72,6 +72,11 @@ type OverlaySnapshot = {
   levels: number[];
 };
 
+type SystemProfile = {
+  logicalCores: number;
+  totalMemoryBytes: number;
+};
+
 type Snapshot = {
   phase: AppPhase;
   settings: Settings;
@@ -79,6 +84,8 @@ type Snapshot = {
   history: HistoryItem[];
   modelStatus: ModelStatus;
   parakeetModelStatus: ModelStatus;
+  installedModelSizes: Record<string, number>;
+  systemProfile: SystemProfile;
   shortcutsActive: boolean;
   shortcutMessage: string;
   statusMessage: string;
@@ -104,6 +111,8 @@ type FlashMessage = {
 } | null;
 
 type ButtonFeedbackState = "working" | "done";
+type ModelRowState = "ready" | "downloadable" | "planned" | "incomplete";
+type StatusTone = "success" | "warning" | "danger" | "muted" | "accent";
 
 type ModelRow = {
   id: string;
@@ -118,7 +127,7 @@ type ModelRow = {
   footprint: string;
   runtime: string;
   license: string;
-  state: "ready" | "planned" | "incomplete";
+  state: ModelRowState;
   source: "built-in" | "catalog";
   active: boolean;
   selectable: boolean;
@@ -126,9 +135,18 @@ type ModelRow = {
   note: string;
   highlights: string[];
   hfUrl?: string;
+  artifactUrl?: string;
+  artifactLabel?: string;
   path?: string;
   tags: string[];
   supportsInstall: boolean;
+  supportsDownload: boolean;
+  downloadSizeBytes?: number;
+  diskSizeBytes?: number;
+  minimumMemoryBytes?: number;
+  recommendedMemoryBytes?: number;
+  minimumCores?: number;
+  recommendedCores?: number;
 };
 
 type ChoiceOption = {
@@ -258,6 +276,118 @@ function formatAudioRetentionPolicy(policy: AudioRetentionPolicy) {
     default:
       return "24 hours";
   }
+}
+
+function formatBytes(bytes?: number | null) {
+  if (!bytes || bytes <= 0) {
+    return "Not installed";
+  }
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const decimals = value >= 100 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(decimals)} ${units[unitIndex]}`;
+}
+
+function formatSystemProfile(profile: SystemProfile) {
+  const memoryLabel =
+    profile.totalMemoryBytes > 0
+      ? `${formatBytes(profile.totalMemoryBytes)} RAM`
+      : "RAM unknown";
+  const coreLabel = `${profile.logicalCores} threads`;
+  return `${memoryLabel} · ${coreLabel}`;
+}
+
+function formatHardwareTarget(row: ModelRow) {
+  const memoryLabel = row.recommendedMemoryBytes
+    ? formatBytes(row.recommendedMemoryBytes)
+    : row.minimumMemoryBytes
+      ? formatBytes(row.minimumMemoryBytes)
+      : null;
+  const coreLabel = row.recommendedCores ?? row.minimumCores ?? null;
+
+  if (memoryLabel && coreLabel) {
+    return `${memoryLabel} RAM and ${coreLabel}+ threads`;
+  }
+
+  if (memoryLabel) {
+    return `${memoryLabel} RAM`;
+  }
+
+  if (coreLabel) {
+    return `${coreLabel}+ threads`;
+  }
+
+  return "unknown hardware target";
+}
+
+function describeHardwareFit(row: ModelRow, profile: SystemProfile) {
+  if (!row.minimumMemoryBytes && !row.minimumCores) {
+    return {
+      label: row.supportsDownload || row.selectable ? "Unknown" : "Planned",
+      tone: row.supportsDownload || row.selectable ? "muted" : "warning",
+      detail:
+        row.supportsDownload || row.selectable
+          ? "No hardware estimate for this model yet."
+          : "This catalog entry is reference-only for now.",
+    } as const;
+  }
+
+  if (profile.totalMemoryBytes <= 0) {
+    return {
+      label: "Unknown",
+      tone: "muted",
+      detail: `Need RAM info to estimate fit. Target: ${formatHardwareTarget(row)}.`,
+    } as const;
+  }
+
+  const memory = profile.totalMemoryBytes;
+  const cores = profile.logicalCores;
+  const minimumMemory = row.minimumMemoryBytes ?? 0;
+  const recommendedMemory = row.recommendedMemoryBytes ?? minimumMemory;
+  const minimumCores = row.minimumCores ?? 1;
+  const recommendedCores = row.recommendedCores ?? minimumCores;
+
+  if (memory >= recommendedMemory && cores >= recommendedCores) {
+    return {
+      label: "Great fit",
+      tone: "success",
+      detail: `${formatSystemProfile(profile)} should run ${row.name} comfortably.`,
+    } as const;
+  }
+
+  if (memory >= minimumMemory && cores >= minimumCores) {
+    return {
+      label: "Should work",
+      tone: "accent",
+      detail: `${formatSystemProfile(profile)} should handle ${row.name}, but expect heavier CPU/RAM use than the recommended target of ${formatHardwareTarget(row)}.`,
+    } as const;
+  }
+
+  return {
+    label: "Heavy",
+    tone: "warning",
+    detail: `${formatSystemProfile(profile)} is below the recommended target of ${formatHardwareTarget(row)}.`,
+  } as const;
+}
+
+function formatModelSizeLabel(row: ModelRow) {
+  if (row.diskSizeBytes && row.diskSizeBytes > 0) {
+    return formatBytes(row.diskSizeBytes);
+  }
+
+  if (row.downloadSizeBytes && row.downloadSizeBytes > 0) {
+    return formatBytes(row.downloadSizeBytes);
+  }
+
+  return row.footprint;
 }
 
 function normalizeEditableOverlayPosition(
@@ -436,6 +566,11 @@ const MODEL_CATALOG: Array<
     hfUrl: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2",
     tags: ["english", "nvidia", "available"],
     supportsInstall: false,
+    supportsDownload: false,
+    minimumMemoryBytes: 4 * 1024 ** 3,
+    recommendedMemoryBytes: 8 * 1024 ** 3,
+    minimumCores: 4,
+    recommendedCores: 8,
   },
   {
     id: "whisper-small",
@@ -458,8 +593,16 @@ const MODEL_CATALOG: Array<
       "Useful for many Asian and European languages",
     ],
     hfUrl: "https://huggingface.co/openai/whisper-small",
+    artifactUrl: "https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-small.bin",
+    artifactLabel: "ggml-small.bin",
     tags: ["multilingual", "openai", "future"],
     supportsInstall: true,
+    supportsDownload: true,
+    downloadSizeBytes: 487_601_967,
+    minimumMemoryBytes: 4 * 1024 ** 3,
+    recommendedMemoryBytes: 8 * 1024 ** 3,
+    minimumCores: 4,
+    recommendedCores: 8,
   },
   {
     id: "whisper-large-v3-turbo",
@@ -482,8 +625,17 @@ const MODEL_CATALOG: Array<
       "Strong choice when language coverage matters most",
     ],
     hfUrl: "https://huggingface.co/openai/whisper-large-v3-turbo",
+    artifactUrl:
+      "https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-large-v3-turbo.bin",
+    artifactLabel: "ggml-large-v3-turbo.bin",
     tags: ["multilingual", "openai", "future"],
     supportsInstall: true,
+    supportsDownload: true,
+    downloadSizeBytes: 1_624_555_275,
+    minimumMemoryBytes: 8 * 1024 ** 3,
+    recommendedMemoryBytes: 16 * 1024 ** 3,
+    minimumCores: 8,
+    recommendedCores: 12,
   },
   {
     id: "canary-1b",
@@ -508,6 +660,11 @@ const MODEL_CATALOG: Array<
     hfUrl: "https://huggingface.co/nvidia/canary-1b",
     tags: ["multilingual", "nvidia", "future"],
     supportsInstall: false,
+    supportsDownload: false,
+    minimumMemoryBytes: 12 * 1024 ** 3,
+    recommendedMemoryBytes: 16 * 1024 ** 3,
+    minimumCores: 8,
+    recommendedCores: 12,
   },
 ];
 
@@ -515,6 +672,7 @@ function buildModelRows(snapshot: Snapshot): ModelRow[] {
   const activeModelId = snapshot.settings.selectedModelId;
   const rows = MODEL_CATALOG.map<ModelRow>((entry) => {
     if (entry.id === "parakeet") {
+      const diskSizeBytes = snapshot.installedModelSizes.parakeet ?? 0;
       return {
         ...entry,
         state: snapshot.parakeetModelStatus === "ready" ? "ready" : "incomplete",
@@ -532,6 +690,7 @@ function buildModelRows(snapshot: Snapshot): ModelRow[] {
           snapshot.parakeetModelStatus === "ready"
             ? entry.note
             : "Built-in runtime is present in the catalog but missing local model files.",
+        diskSizeBytes,
       };
     }
 
@@ -540,18 +699,22 @@ function buildModelRows(snapshot: Snapshot): ModelRow[] {
       activeModelId === entry.id &&
       snapshot.settings.selectedModelKind === entry.modelKind;
     const isReady = Boolean(installedPath);
+    const supportsDownload = Boolean(entry.supportsDownload);
 
     return {
       ...entry,
-      state: isReady ? "ready" : "planned",
+      state: isReady ? "ready" : supportsDownload ? "downloadable" : "planned",
       source: "catalog",
       active: isSelectedEngine && snapshot.modelStatus === "ready",
       selectable: isReady,
-      runtime: isReady ? "Ready in app" : entry.runtime,
+      runtime: isReady ? "Ready in app" : supportsDownload ? "Download in app" : entry.runtime,
       note: isReady
         ? "Linked to a local model file. You can activate it from this catalog entry."
-        : "Download the model from Hugging Face, then link the local file here.",
+        : supportsDownload
+          ? "Download a compatible Whisper binary from Hugging Face or point Transcribed at an existing local `.bin` file."
+          : "Reference-only for now. Browse the model card, but the runtime is not wired into Transcribed yet.",
       path: installedPath,
+      diskSizeBytes: snapshot.installedModelSizes[entry.id] ?? 0,
       tags: isReady
         ? Array.from(new Set([...entry.tags, "available"]))
         : entry.tags,
@@ -572,11 +735,14 @@ function matchesModel(row: ModelRow, query: string, filter: ModelFilter) {
       row.languages,
       row.speed,
       row.quality,
+      row.footprint,
+      formatModelSizeLabel(row),
       row.runtime,
       row.license,
       row.source,
       row.summary,
       row.note,
+      row.artifactLabel ?? "",
       ...row.highlights,
     ]
       .join(" ")
@@ -588,11 +754,11 @@ function matchesModel(row: ModelRow, query: string, filter: ModelFilter) {
 
   switch (filter) {
     case "available":
-      return row.state === "ready";
+      return row.state === "ready" || row.state === "downloadable";
     case "multilingual":
       return row.tags.includes("multilingual");
     case "future":
-      return row.state !== "ready";
+      return row.state === "planned";
     case "all":
     default:
       return true;
@@ -774,6 +940,16 @@ function RefreshIcon(props: IconProps) {
   );
 }
 
+function DownloadIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <path d="M12 4.5v10" />
+      <path d="m8.5 11 3.5 3.5 3.5-3.5" />
+      <path d="M5 18.5h14" />
+    </GlyphBase>
+  );
+}
+
 function FolderIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
@@ -841,7 +1017,7 @@ function SectionIcon({
   }
 }
 
-function toneForPhase(phase: AppPhase) {
+function toneForPhase(phase: AppPhase): StatusTone {
   switch (phase) {
     case "recording":
       return "danger";
@@ -855,10 +1031,12 @@ function toneForPhase(phase: AppPhase) {
   }
 }
 
-function toneForModelState(row: ModelRow) {
+function toneForModelState(row: ModelRow): StatusTone {
   switch (row.state) {
     case "ready":
       return "success";
+    case "downloadable":
+      return "accent";
     case "planned":
       return "warning";
     case "incomplete":
@@ -1760,6 +1938,29 @@ function ControlApp({
     }
   }
 
+  async function downloadCatalogModel(row: ModelRow) {
+    if (!row.supportsDownload) {
+      return;
+    }
+
+    const actionId = `model-download:${row.id}`;
+    setMessage(null);
+    setButtonFeedbackState(actionId, "working");
+
+    try {
+      await invoke("download_catalog_model", {
+        modelId: row.id,
+      });
+      finishButtonFeedback(actionId, 1500);
+    } catch (error) {
+      clearButtonFeedback(actionId);
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
   async function openModelReference(row: ModelRow) {
     if (!row.hfUrl) {
       return;
@@ -1767,6 +1968,21 @@ function ControlApp({
 
     try {
       await openUrl(row.hfUrl);
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
+  async function openModelArtifact(row: ModelRow) {
+    if (!row.artifactUrl) {
+      return;
+    }
+
+    try {
+      await openUrl(row.artifactUrl);
     } catch (error) {
       setMessage({
         kind: "error",
@@ -1850,6 +2066,9 @@ function ControlApp({
     modelRows.find((row) => row.active) ??
     modelRows.find((row) => row.id === activeModelId) ??
     null;
+  const selectedModelFit = snapshot && selectedModel
+    ? describeHardwareFit(selectedModel, snapshot.systemProfile)
+    : null;
 
   useEffect(() => {
     if (!selectedRowExists && modelRows[0]) {
@@ -2096,52 +2315,71 @@ function ControlApp({
                       <tr>
                         <th />
                         <th>Model</th>
-                        <th>Provider</th>
                         <th>Lang</th>
-                        <th>Runtime</th>
+                        <th>Size</th>
+                        <th>This PC</th>
                         <th>Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredModels.map((row) => (
-                        <tr
-                          key={row.id}
-                          className={[
-                            "model-row",
-                            row.id === resolvedSelectedModelId
-                              ? "model-row-selected"
-                              : "",
-                            row.active ? "model-row-active" : "",
-                            row.state !== "ready" ? "model-row-dim" : "",
-                          ]
-                            .filter(Boolean)
-                            .join(" ")}
-                          onClick={() => {
-                            selectModel(row);
-                          }}
-                        >
-                          <td>
-                            <span
-                              className={`model-active-dot ${row.active ? "model-active-dot-on" : ""}`}
-                            />
-                          </td>
-                          <td>
-                            <div className="model-cell-main">
-                              <strong>{row.name}</strong>
-                              <span>{row.family}</span>
-                            </div>
-                          </td>
-                          <td>{row.provider}</td>
-                          <td>{row.languages}</td>
-                          <td>{row.runtime}</td>
-                          <td>
-                            <StatusChip
-                              label={row.state}
-                              tone={toneForModelState(row)}
-                            />
-                          </td>
-                        </tr>
-                      ))}
+                      {filteredModels.map((row) => {
+                        const hardwareFit = describeHardwareFit(
+                          row,
+                          snapshot.systemProfile,
+                        );
+
+                        return (
+                          <tr
+                            key={row.id}
+                            className={[
+                              "model-row",
+                              row.id === resolvedSelectedModelId
+                                ? "model-row-selected"
+                                : "",
+                              row.active ? "model-row-active" : "",
+                              row.state === "planned" || row.state === "incomplete"
+                                ? "model-row-dim"
+                                : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            onClick={() => {
+                              selectModel(row);
+                            }}
+                          >
+                            <td>
+                              <span
+                                className={`model-active-dot ${row.active ? "model-active-dot-on" : ""}`}
+                              />
+                            </td>
+                            <td>
+                              <div className="model-cell-main">
+                                <strong>{row.name}</strong>
+                                <span>{row.family}</span>
+                              </div>
+                            </td>
+                            <td>{row.languages}</td>
+                            <td>{formatModelSizeLabel(row)}</td>
+                            <td>{hardwareFit.label}</td>
+                            <td>
+                              <StatusChip
+                                label={
+                                  row.active
+                                    ? "Active"
+                                    : row.state === "downloadable"
+                                      ? "Download"
+                                      : row.state === "ready"
+                                        ? "Ready"
+                                        : row.state === "planned"
+                                          ? "Planned"
+                                          : "Missing"
+                                }
+                                tone={toneForModelState(row)}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
 
@@ -2157,14 +2395,18 @@ function ControlApp({
                     <div className="surface-bar">
                       <div className="surface-title">
                         <span className="surface-title-label">{selectedModel.name}</span>
+                      </div>
+                      <div className="header-actions">
                         <StatusChip
                           label={
                             selectedModel.active
                               ? "Active"
                               : selectedModel.selectable
                                 ? "Ready"
+                              : selectedModel.state === "downloadable"
+                                ? "Downloadable"
                               : selectedModel.source === "catalog"
-                                ? "Catalog"
+                                ? "Planned"
                                   : "Missing"
                           }
                           tone={
@@ -2172,6 +2414,8 @@ function ControlApp({
                               ? "success"
                               : selectedModel.selectable
                                 ? "success"
+                              : selectedModel.state === "downloadable"
+                                ? "accent"
                               : selectedModel.source === "catalog"
                                 ? "warning"
                                 : selectedModel.state === "incomplete"
@@ -2179,6 +2423,12 @@ function ControlApp({
                                   : "accent"
                           }
                         />
+                        {selectedModelFit ? (
+                          <StatusChip
+                            label={selectedModelFit.label}
+                            tone={selectedModelFit.tone}
+                          />
+                        ) : null}
                       </div>
                     </div>
 
@@ -2194,6 +2444,18 @@ function ControlApp({
                       <div className="metric">
                         <span>Runtime</span>
                         <strong>{selectedModel.runtime}</strong>
+                      </div>
+                      <div className="metric">
+                        <span>Download size</span>
+                        <strong>
+                          {selectedModel.downloadSizeBytes
+                            ? formatBytes(selectedModel.downloadSizeBytes)
+                            : "Included / n.a."}
+                        </strong>
+                      </div>
+                      <div className="metric">
+                        <span>Size on disk</span>
+                        <strong>{formatBytes(selectedModel.diskSizeBytes)}</strong>
                       </div>
                       <div className="metric">
                         <span>Languages</span>
@@ -2215,22 +2477,50 @@ function ControlApp({
                         <span>License</span>
                         <strong>{selectedModel.license}</strong>
                       </div>
+                      <div className="metric">
+                        <span>This PC</span>
+                        <strong>{selectedModelFit?.label ?? "Unknown"}</strong>
+                      </div>
+                      <div className="metric">
+                        <span>Hardware</span>
+                        <strong>{formatSystemProfile(snapshot.systemProfile)}</strong>
+                      </div>
                     </div>
 
                     <div className="detail-copy">
                       <p>{selectedModel.summary}</p>
                       <p>{selectedModel.note}</p>
+                      {selectedModelFit ? (
+                        <p>{selectedModelFit.detail}</p>
+                      ) : null}
                       {selectedModel.path ? (
                         <code className="path-chip">{selectedModel.path}</code>
                       ) : null}
                     </div>
 
                     <div className="inline-actions">
+                      {selectedModel.supportsDownload ? (
+                        <ActionButton
+                          className="secondary"
+                          state={buttonFeedback[`model-download:${selectedModel.id}`]}
+                          idleLabel={
+                            selectedModel.path
+                              ? "Re-download from Hugging Face"
+                              : "Download from Hugging Face"
+                          }
+                          workingLabel="Downloading"
+                          doneLabel="Downloaded"
+                          idleIcon={<DownloadIcon className="small-icon" />}
+                          workingIcon={<DownloadIcon className="small-icon" />}
+                          doneIcon={<CheckIcon className="small-icon" />}
+                          onClick={() => downloadCatalogModel(selectedModel)}
+                        />
+                      ) : null}
                       {selectedModel.supportsInstall ? (
                         <ActionButton
                           className="secondary"
                           state={buttonFeedback[`model-link:${selectedModel.id}`]}
-                          idleLabel={selectedModel.path ? "Replace model file" : "Locate model file"}
+                          idleLabel={selectedModel.path ? "Use another file" : "Use existing file"}
                           workingLabel="Linking"
                           doneLabel="Linked"
                           idleIcon={<FolderIcon className="small-icon" />}
@@ -2246,6 +2536,16 @@ function ControlApp({
                           }}
                         >
                           Use model
+                        </button>
+                      ) : null}
+                      {selectedModel.artifactUrl ? (
+                        <button
+                          className="secondary"
+                          onClick={() => {
+                            void openModelArtifact(selectedModel);
+                          }}
+                        >
+                          Open compatible file
                         </button>
                       ) : null}
                       {selectedModel.hfUrl ? (
@@ -2284,6 +2584,14 @@ function ControlApp({
                       <div className="info-tile">
                         <span>Runtime in app</span>
                         <strong>{selectedModel.runtime}</strong>
+                      </div>
+                      <div className="info-tile">
+                        <span>Model card</span>
+                        <strong>{selectedModel.hfUrl ? "Hugging Face" : "No link"}</strong>
+                      </div>
+                      <div className="info-tile">
+                        <span>Compatible file</span>
+                        <strong>{selectedModel.artifactLabel ?? "No managed artifact"}</strong>
                       </div>
                     </div>
 

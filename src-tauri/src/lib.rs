@@ -7,8 +7,10 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig, SupportedStreamConfig};
 use regex::{Regex, RegexBuilder};
+use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::io::{Read, Write};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -25,6 +27,8 @@ use tauri::{
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_autostart::ManagerExt as AutostartExt;
 use uuid::Uuid;
+#[cfg(target_os = "windows")]
+use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
 const EVENT_SNAPSHOT: &str = "transcribed://snapshot";
 const PERSISTED_STATE_FILE: &str = "state.json";
@@ -57,6 +61,11 @@ const TRAY_ID: &str = "main-tray";
 const TRAY_SHOW_ID: &str = "tray-show";
 const TRAY_HIDE_ID: &str = "tray-hide";
 const TRAY_QUIT_ID: &str = "tray-quit";
+const MANAGED_MODELS_DIR: &str = "catalog-models";
+const WHISPER_SMALL_DOWNLOAD_URL: &str =
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
+const WHISPER_LARGE_V3_TURBO_DOWNLOAD_URL: &str =
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -244,11 +253,20 @@ struct Snapshot {
     history: Vec<HistoryItem>,
     model_status: ModelStatus,
     parakeet_model_status: ModelStatus,
+    installed_model_sizes: BTreeMap<String, u64>,
+    system_profile: SystemProfile,
     shortcuts_active: bool,
     shortcut_message: String,
     status_message: String,
     error_message: Option<String>,
     overlay: OverlaySnapshot,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemProfile {
+    logical_cores: usize,
+    total_memory_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -297,6 +315,7 @@ struct AppCore {
     settings: Settings,
     history: Vec<HistoryItem>,
     sources: Vec<SourceInfo>,
+    system_profile: SystemProfile,
     phase: AppPhase,
     status_message: String,
     shortcuts_active: bool,
@@ -313,6 +332,7 @@ impl AppCore {
             settings,
             history,
             sources: Vec::new(),
+            system_profile: detect_system_profile(),
             phase: AppPhase::Idle,
             status_message: "Ready".to_string(),
             shortcuts_active: false,
@@ -400,6 +420,34 @@ struct PreviewStabilizer {
     divergence_count: usize,
 }
 
+struct CatalogDownloadSpec {
+    model_id: &'static str,
+    model_kind: TranscriptionModelKind,
+    display_name: &'static str,
+    file_name: &'static str,
+    download_url: &'static str,
+}
+
+fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpec> {
+    match model_id {
+        "whisper-small" => Some(CatalogDownloadSpec {
+            model_id: "whisper-small",
+            model_kind: TranscriptionModelKind::Whisper,
+            display_name: "Whisper Small",
+            file_name: "ggml-small.bin",
+            download_url: WHISPER_SMALL_DOWNLOAD_URL,
+        }),
+        "whisper-large-v3-turbo" => Some(CatalogDownloadSpec {
+            model_id: "whisper-large-v3-turbo",
+            model_kind: TranscriptionModelKind::Whisper,
+            display_name: "Whisper Large V3 Turbo",
+            file_name: "ggml-large-v3-turbo.bin",
+            download_url: WHISPER_LARGE_V3_TURBO_DOWNLOAD_URL,
+        }),
+        _ => None,
+    }
+}
+
 fn normalize_shortcut(shortcut: &str) -> String {
     shortcut.to_ascii_lowercase().replace(' ', "")
 }
@@ -440,6 +488,90 @@ fn recordings_dir(app: &AppHandle) -> Result<PathBuf> {
     let dir = app_data_dir(app)?.join(RECORDINGS_DIR);
     fs::create_dir_all(&dir)?;
     Ok(dir)
+}
+
+fn managed_models_dir(app: &AppHandle) -> Result<PathBuf> {
+    let dir = model_root_dir(app)?.join(MANAGED_MODELS_DIR);
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+fn path_size_bytes(path: &Path) -> u64 {
+    let Ok(metadata) = fs::metadata(path) else {
+        return 0;
+    };
+
+    if metadata.is_file() {
+        return metadata.len();
+    }
+
+    if !metadata.is_dir() {
+        return 0;
+    }
+
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+
+    entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| path_size_bytes(&entry.path()))
+        .sum()
+}
+
+fn installed_model_sizes(app: &AppHandle, settings: &Settings) -> BTreeMap<String, u64> {
+    let mut sizes = BTreeMap::new();
+
+    if let Ok(root) = model_root_dir(app) {
+        if parakeet::model_ready_at(&root) {
+            sizes.insert("parakeet".to_string(), path_size_bytes(&root));
+        }
+    }
+
+    for (model_id, path) in &settings.installed_model_paths {
+        let size = path_size_bytes(Path::new(path));
+        if size > 0 {
+            sizes.insert(model_id.clone(), size);
+        }
+    }
+
+    if let Some(selected_path) = resolved_selected_model_path(settings) {
+        let selected_size = path_size_bytes(Path::new(&selected_path));
+        if selected_size > 0 {
+            sizes
+                .entry(settings.selected_model_id.clone())
+                .or_insert(selected_size);
+        }
+    }
+
+    sizes
+}
+
+fn detect_system_profile() -> SystemProfile {
+    let logical_cores = std::thread::available_parallelism()
+        .map(|value| value.get())
+        .unwrap_or(4);
+
+    #[cfg(target_os = "windows")]
+    let total_memory_bytes = {
+        let mut status = MEMORYSTATUSEX::default();
+        status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+        unsafe {
+            if GlobalMemoryStatusEx(&mut status).is_ok() {
+                status.ullTotalPhys
+            } else {
+                0
+            }
+        }
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let total_memory_bytes = 0;
+
+    SystemProfile {
+        logical_cores,
+        total_memory_bytes,
+    }
 }
 
 fn path_if_not_empty(value: Option<String>) -> Option<String> {
@@ -634,6 +766,8 @@ fn emit_snapshot(app: &AppHandle, shared: &SharedState) {
             history: core.history.clone(),
             model_status: core.model_status.clone(),
             parakeet_model_status: core.parakeet_model_status.clone(),
+            installed_model_sizes: installed_model_sizes(app, &core.settings),
+            system_profile: core.system_profile.clone(),
             shortcuts_active: core.shortcuts_active,
             shortcut_message: core.shortcut_message.clone(),
             status_message: core.status_message.clone(),
@@ -1899,6 +2033,8 @@ fn get_snapshot(app: AppHandle, shared: tauri::State<'_, SharedState>) -> Result
         history: core.history.clone(),
         model_status: core.model_status.clone(),
         parakeet_model_status: core.parakeet_model_status.clone(),
+        installed_model_sizes: installed_model_sizes(&app, &core.settings),
+        system_profile: core.system_profile.clone(),
         shortcuts_active: core.shortcuts_active,
         shortcut_message: core.shortcut_message.clone(),
         status_message: core.status_message.clone(),
@@ -1965,6 +2101,28 @@ fn inspect_model_candidate(path: &str) -> Result<ModelPathInspection, String> {
     })
 }
 
+fn activate_catalog_model(
+    app: &AppHandle,
+    shared: &SharedState,
+    model_id: String,
+    model_kind: TranscriptionModelKind,
+    inspection: ModelPathInspection,
+) -> Result<(), String> {
+    {
+        let mut core = shared.lock();
+        core.settings
+            .installed_model_paths
+            .insert(model_id.clone(), inspection.path.clone());
+        core.settings.selected_model_id = model_id;
+        core.settings.selected_model_kind = model_kind;
+        core.settings.selected_model_path = Some(inspection.path.clone());
+        core.status_message = format!("Using {}", inspection.name);
+        core.error_message = None;
+    }
+
+    persist_and_emit_settings_change(app, shared)
+}
+
 #[tauri::command]
 fn install_catalog_model(
     app: AppHandle,
@@ -1997,19 +2155,72 @@ fn install_catalog_model(
         });
     }
 
+    activate_catalog_model(&app, &shared, model_id, model_kind, inspection)
+}
+
+#[tauri::command]
+fn download_catalog_model(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+    model_id: String,
+) -> Result<(), String> {
+    let spec = catalog_download_spec(&model_id)
+        .ok_or_else(|| format!("No managed download is configured for {model_id}"))?;
+
     {
         let mut core = shared.lock();
-        core.settings
-            .installed_model_paths
-            .insert(model_id.clone(), inspection.path.clone());
-        core.settings.selected_model_id = model_id;
-        core.settings.selected_model_kind = model_kind;
-        core.settings.selected_model_path = Some(inspection.path.clone());
-        core.status_message = format!("Using {}", inspection.name);
+        core.status_message = format!("Downloading {} from Hugging Face…", spec.display_name);
         core.error_message = None;
     }
+    emit_snapshot(&app, &shared);
 
-    persist_and_emit_settings_change(&app, &shared)
+    let model_dir = managed_models_dir(&app)
+        .map_err(|error| error.to_string())?
+        .join(spec.model_id);
+    fs::create_dir_all(&model_dir).map_err(|error| error.to_string())?;
+    let destination = model_dir.join(spec.file_name);
+    let partial = destination.with_extension("part");
+    let _ = fs::remove_file(&partial);
+
+    if !whisper::model_ready_at(&destination) {
+        let client = Client::builder()
+            .build()
+            .map_err(|error| format!("Couldn't prepare download client: {error}"))?;
+        let mut response = client
+            .get(spec.download_url)
+            .send()
+            .map_err(|error| format!("Couldn't download model: {error}"))?;
+        if !response.status().is_success() {
+            return Err(format!("Download failed with status {}", response.status()));
+        }
+
+        let mut file =
+            fs::File::create(&partial).map_err(|error| format!("Couldn't create file: {error}"))?;
+        let mut buffer = [0u8; 64 * 1024];
+        loop {
+            let read = response
+                .read(&mut buffer)
+                .map_err(|error| format!("Download interrupted: {error}"))?;
+            if read == 0 {
+                break;
+            }
+            file.write_all(&buffer[..read])
+                .map_err(|error| format!("Couldn't write model file: {error}"))?;
+        }
+        file.flush()
+            .map_err(|error| format!("Couldn't finalize model file: {error}"))?;
+        fs::rename(&partial, &destination)
+            .map_err(|error| format!("Couldn't move downloaded model into place: {error}"))?;
+    }
+
+    let inspection = inspect_model_candidate(&destination.display().to_string())?;
+    activate_catalog_model(
+        &app,
+        &shared,
+        spec.model_id.to_string(),
+        spec.model_kind,
+        inspection,
+    )
 }
 
 fn persist_and_emit_settings_change(app: &AppHandle, shared: &SharedState) -> Result<(), String> {
@@ -2358,6 +2569,7 @@ pub fn run() {
             refresh_devices,
             inspect_model_path,
             install_catalog_model,
+            download_catalog_model,
             update_settings_command,
             add_cleanup_term,
             remove_cleanup_term,
