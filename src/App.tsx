@@ -30,6 +30,7 @@ type Settings = {
   autoPaste: boolean;
   overlayPosition: OverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
+  showLiveTranscription: boolean;
 };
 
 type SourceInfo = {
@@ -53,6 +54,7 @@ type HistoryItem = {
 type OverlaySnapshot = {
   visible: boolean;
   title: string;
+  detail: string;
   levels: number[];
 };
 
@@ -76,6 +78,7 @@ type SettingsDraft = {
   autoPaste: boolean;
   overlayPosition: OverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
+  showLiveTranscription: boolean;
 };
 
 type FlashMessage = {
@@ -312,7 +315,8 @@ function hasUnsavedChanges(snapshot: Snapshot, draft: SettingsDraft) {
     (snapshot.settings.selectedSourceId ?? "") !== draft.selectedSourceId ||
     snapshot.settings.autoPaste !== draft.autoPaste ||
     snapshot.settings.overlayPosition !== draft.overlayPosition ||
-    snapshot.settings.overlayAnimationStyle !== draft.overlayAnimationStyle
+    snapshot.settings.overlayAnimationStyle !== draft.overlayAnimationStyle ||
+    snapshot.settings.showLiveTranscription !== draft.showLiveTranscription
   );
 }
 
@@ -727,19 +731,19 @@ function SignalBars({
         : "idle";
   const sourceLevels = levels && levels.length > 0 ? levels : [0.14];
   if (animationStyle === "spectrum") {
-    const width = compact ? 74 : 96;
-    const height = compact ? 28 : 36;
-    const barCount = compact ? 13 : 16;
-    const barWidth = compact ? 3.1 : 3.4;
-    const barGap = compact ? 2.2 : 2.45;
+    const width = compact ? 56 : 96;
+    const height = compact ? 20 : 36;
+    const barCount = compact ? 11 : 16;
+    const barWidth = compact ? 2.5 : 3.4;
+    const barGap = compact ? 1.8 : 2.45;
     const innerWidth = barCount * barWidth + (barCount - 1) * barGap;
     const xOffset = (width - innerWidth) / 2;
     const centerY = height / 2;
-    const amplitude = compact ? 10.5 : 13.5;
+    const amplitude = compact ? 7.2 : 13.5;
     const bars = smoothLevels(resampleLevels(sourceLevels, barCount)).map(
       (level, index) => {
         const eased = Math.pow(Math.max(0.08, level), 0.88);
-        const barHeight = 4 + eased * amplitude;
+        const barHeight = (compact ? 3 : 4) + eased * amplitude;
         return {
           x: xOffset + index * (barWidth + barGap),
           y: centerY - barHeight / 2,
@@ -779,19 +783,19 @@ function SignalBars({
   }
 
   const smoothedLevels = smoothLevels(resampleLevels(sourceLevels, count));
-  const width = compact ? 82 : 114;
-  const height = compact ? 28 : 36;
+  const width = compact ? 60 : 114;
+  const height = compact ? 20 : 36;
   const centerY = height / 2;
-  const amplitude = compact ? 8 : 10;
+  const amplitude = compact ? 5.8 : 10;
   const step = smoothedLevels.length > 1 ? width / (smoothedLevels.length - 1) : width;
   const topPoints = smoothedLevels.map((level, index) => {
     const x = index * step;
-    const offset = 1.8 + level * amplitude;
+    const offset = (compact ? 1.25 : 1.8) + level * amplitude;
     return { x, y: centerY - offset };
   });
   const bottomPoints = smoothedLevels.map((level, index) => {
     const x = index * step;
-    const offset = 1.8 + level * amplitude;
+    const offset = (compact ? 1.25 : 1.8) + level * amplitude;
     return { x, y: centerY + offset };
   });
   const areaPath = [
@@ -833,16 +837,29 @@ function SignalBars({
 function TranscriptionPill({
   phase,
   title,
+  detail,
   levels,
   animationStyle,
+  showLiveTranscription,
 }: {
   phase: AppPhase;
   title: string;
+  detail: string;
   levels: number[];
   animationStyle: OverlayAnimationStyle;
+  showLiveTranscription: boolean;
 }) {
+  const copy = detail.trim() || title;
+
   return (
-    <div className={`indicator-shell indicator-shell-${phase} indicator-shell-inline`}>
+    <div
+      className={[
+        "indicator-shell",
+        `indicator-shell-${phase}`,
+        "indicator-shell-inline",
+        showLiveTranscription ? "indicator-shell-detail" : "indicator-shell-compact",
+      ].join(" ")}
+    >
       <div className="indicator-mark">
         <div className="indicator-dot" />
         <SignalBars
@@ -852,9 +869,11 @@ function TranscriptionPill({
           animationStyle={animationStyle}
         />
       </div>
-      <div className="indicator-copy">
-        <strong>{title}</strong>
-      </div>
+      {showLiveTranscription ? (
+        <div className="indicator-copy">
+          <span>{copy}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -869,8 +888,10 @@ function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
       <TranscriptionPill
         phase={snapshot.phase}
         title={snapshot.overlay.title}
+        detail={snapshot.overlay.detail}
         levels={snapshot.overlay.levels}
         animationStyle={snapshot.settings.overlayAnimationStyle}
+        showLiveTranscription={snapshot.settings.showLiveTranscription}
       />
     </main>
   );
@@ -1003,6 +1024,7 @@ function ControlApp({
     autoPaste: true,
     overlayPosition: "bottom-center",
     overlayAnimationStyle: "spectrum",
+    showLiveTranscription: false,
   });
 
   useEffect(() => {
@@ -1020,6 +1042,7 @@ function ControlApp({
         snapshot.settings.overlayPosition,
       ),
       overlayAnimationStyle: snapshot.settings.overlayAnimationStyle,
+      showLiveTranscription: snapshot.settings.showLiveTranscription,
     });
   }, [snapshot]);
 
@@ -1056,6 +1079,7 @@ function ControlApp({
           autoPaste: draft.autoPaste,
           overlayPosition: draft.overlayPosition,
           overlayAnimationStyle: draft.overlayAnimationStyle,
+          showLiveTranscription: draft.showLiveTranscription,
         },
       });
       await refreshSnapshot();
@@ -1205,6 +1229,7 @@ function ControlApp({
       : snapshot.phase === "transcribing"
         ? "Transcribing"
         : "Ready";
+  const previewDetail = snapshot.overlay.detail || previewTitle;
   const unsavedChanges = hasUnsavedChanges(snapshot, draft);
   const filteredModels = modelRows.filter((row) =>
     matchesModel(row, modelQuery, modelFilter),
@@ -1341,8 +1366,10 @@ function ControlApp({
                   <TranscriptionPill
                     phase={snapshot.phase}
                     title={snapshot.overlay.title || previewTitle}
+                    detail={previewDetail}
                     levels={snapshot.overlay.levels}
                     animationStyle={draft.overlayAnimationStyle}
+                    showLiveTranscription={draft.showLiveTranscription}
                   />
                 </div>
 
@@ -1613,6 +1640,23 @@ function ControlApp({
                   </select>
                 </label>
 
+                <label className="toggle-row toggle-row-card">
+                  <input
+                    type="checkbox"
+                    checked={draft.showLiveTranscription}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        showLiveTranscription: event.currentTarget.checked,
+                      }))
+                    }
+                  />
+                  <div>
+                    <strong>Show live transcription</strong>
+                    <span>Show draft text in the HUD while speaking.</span>
+                  </div>
+                </label>
+
                 <div className="mini-meta-row">
                   <span>{snapshot.shortcutMessage}</span>
                   <span>{formatOverlayPosition(draft.overlayPosition)}</span>
@@ -1692,8 +1736,10 @@ function ControlApp({
                     <TranscriptionPill
                       phase={snapshot.phase}
                       title={snapshot.overlay.title || previewTitle}
+                      detail={previewDetail}
                       levels={snapshot.overlay.levels}
                       animationStyle={draft.overlayAnimationStyle}
+                      showLiveTranscription={draft.showLiveTranscription}
                     />
                   </div>
                 </article>
@@ -1775,6 +1821,16 @@ function ControlApp({
 
 export default function App() {
   const [snapshot, setSnapshot] = useSnapshotState();
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("indicator-window", isIndicatorWindow);
+    document.body.classList.toggle("indicator-window", isIndicatorWindow);
+
+    return () => {
+      document.documentElement.classList.remove("indicator-window");
+      document.body.classList.remove("indicator-window");
+    };
+  }, []);
 
   return isIndicatorWindow ? (
     <IndicatorApp snapshot={snapshot} />

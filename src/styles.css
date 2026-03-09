@@ -49,6 +49,12 @@ body {
   overflow: hidden;
 }
 
+html.indicator-window,
+body.indicator-window,
+body.indicator-window #root {
+  background: transparent;
+}
+
 button,
 input,
 select {
@@ -700,16 +706,17 @@ input::placeholder {
 .indicator-shell {
   display: flex;
   align-items: center;
-  gap: 0.9rem;
-  min-width: 360px;
-  max-width: 440px;
-  padding: 0.8rem 0.95rem;
+  gap: 0.5rem;
+  width: fit-content;
+  min-width: 0;
+  max-width: min(100%, 300px);
+  padding: 0.44rem 0.56rem;
   border-radius: 999px;
-  background: rgba(8, 11, 18, 0.96);
-  border-color: rgba(111, 157, 255, 0.18);
+  background: rgba(8, 11, 18, 0.92);
+  border-color: rgba(111, 157, 255, 0.14);
   box-shadow:
-    0 0 0 1px rgba(111, 157, 255, 0.06),
-    0 12px 30px rgba(0, 0, 0, 0.28);
+    0 0 0 1px rgba(111, 157, 255, 0.03),
+    0 8px 18px rgba(0, 0, 0, 0.2);
 }
 
 .indicator-shell-recording {
@@ -721,48 +728,57 @@ input::placeholder {
 }
 
 .indicator-shell-inline {
-  width: min(100%, 540px);
+  width: fit-content;
   min-width: 0;
+  max-width: 100%;
+}
+
+.indicator-shell-compact {
+  padding: 0.38rem 0.48rem;
+  gap: 0.42rem;
+  max-width: none;
+}
+
+.indicator-shell-detail {
+  padding-right: 0.68rem;
 }
 
 .indicator-mark {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.42rem;
   flex: 0 0 auto;
 }
 
 .indicator-dot {
-  width: 11px;
-  height: 11px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
   background: var(--danger);
   box-shadow:
-    0 0 0 5px rgba(255, 93, 110, 0.14),
-    0 0 16px rgba(255, 93, 110, 0.32);
+    0 0 0 4px rgba(255, 93, 110, 0.12),
+    0 0 12px rgba(255, 93, 110, 0.26);
   animation: indicator-pulse 1.2s ease-in-out infinite;
 }
 
 .indicator-shell-transcribing .indicator-dot {
   background: var(--warning);
   box-shadow:
-    0 0 0 5px rgba(243, 180, 92, 0.12),
-    0 0 16px rgba(243, 180, 92, 0.28);
+    0 0 0 4px rgba(243, 180, 92, 0.1),
+    0 0 12px rgba(243, 180, 92, 0.22);
 }
 
 .indicator-copy {
   display: flex;
   align-items: center;
-  max-width: 100%;
+  max-width: 170px;
   min-width: 0;
   flex: 1 1 auto;
-  min-height: 28px;
+  min-height: 0;
 }
 
-.indicator-copy strong {
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 0.76rem;
+.indicator-copy span {
+  font-size: 0.72rem;
   color: #dce7ff;
   white-space: nowrap;
   overflow: hidden;
@@ -771,16 +787,16 @@ input::placeholder {
 
 .signal-spectrum {
   display: block;
-  width: 74px;
-  min-width: 74px;
-  height: 28px;
+  width: 56px;
+  min-width: 56px;
+  height: 20px;
   overflow: visible;
 }
 
 .signal-spectrum-compact {
-  width: 74px;
-  min-width: 74px;
-  height: 28px;
+  width: 56px;
+  min-width: 56px;
+  height: 20px;
 }
 
 .signal-spectrum-bar,
@@ -826,16 +842,16 @@ input::placeholder {
 
 .signal-wave {
   display: block;
-  width: 82px;
-  min-width: 82px;
-  height: 28px;
+  width: 60px;
+  min-width: 60px;
+  height: 20px;
   overflow: visible;
 }
 
 .signal-wave-compact {
-  width: 82px;
-  min-width: 82px;
-  height: 28px;
+  width: 60px;
+  min-width: 60px;
+  height: 20px;
 }
 
 .signal-wave-fill,

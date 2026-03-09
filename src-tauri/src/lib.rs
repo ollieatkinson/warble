@@ -31,9 +31,14 @@ const DEFAULT_HOLD_SHORTCUT: &str = "F8";
 const DEFAULT_TOGGLE_SHORTCUT: &str = "F9";
 const LEGACY_HOLD_SHORTCUT: &str = "Ctrl+Alt+Space";
 const LEGACY_TOGGLE_SHORTCUT: &str = "Ctrl+Alt+Shift+Space";
-const INDICATOR_WIDTH: i32 = 420;
-const INDICATOR_HEIGHT: i32 = 108;
+const INDICATOR_WIDTH: i32 = 320;
+const INDICATOR_HEIGHT: i32 = 76;
 const INDICATOR_MARGIN: i32 = 24;
+const LIVE_PREVIEW_INTERVAL_MS: u64 = 1_500;
+const LIVE_PREVIEW_MIN_MS: u64 = 900;
+const LIVE_PREVIEW_WINDOW_SECONDS: usize = 12;
+const LIVE_PREVIEW_MAX_WORDS: usize = 18;
+const LIVE_PREVIEW_RESET_AFTER_DIVERGENCE: usize = 2;
 const LIVE_METER_INTERVAL_MS: u64 = 75;
 const LIVE_METER_WINDOW_MS: u64 = 700;
 const LIVE_METER_BAR_COUNT: usize = 12;
@@ -103,6 +108,7 @@ struct Settings {
     auto_paste: bool,
     overlay_position: OverlayPosition,
     overlay_animation_style: OverlayAnimationStyle,
+    show_live_transcription: bool,
 }
 
 impl Default for Settings {
@@ -114,6 +120,7 @@ impl Default for Settings {
             auto_paste: true,
             overlay_position: OverlayPosition::BottomCenter,
             overlay_animation_style: OverlayAnimationStyle::Spectrum,
+            show_live_transcription: false,
         }
     }
 }
@@ -146,6 +153,7 @@ struct SettingsUpdate {
     auto_paste: Option<bool>,
     overlay_position: Option<OverlayPosition>,
     overlay_animation_style: Option<OverlayAnimationStyle>,
+    show_live_transcription: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -163,6 +171,7 @@ struct SourceInfo {
 struct OverlaySnapshot {
     visible: bool,
     title: String,
+    detail: String,
     levels: Vec<f32>,
     anchor: Option<platform::CaretAnchor>,
 }
@@ -251,6 +260,7 @@ impl AppCore {
             overlay: OverlaySnapshot {
                 visible: false,
                 title: String::new(),
+                detail: String::new(),
                 levels: default_overlay_levels(),
                 anchor: None,
             },
@@ -305,6 +315,13 @@ struct CompletedRecording {
     source_name: String,
     mode: RecordingMode,
     anchor: Option<platform::CaretAnchor>,
+}
+
+#[derive(Default)]
+struct PreviewStabilizer {
+    last_partial: Option<Vec<String>>,
+    stable_words: Vec<String>,
+    divergence_count: usize,
 }
 
 fn normalize_shortcut(shortcut: &str) -> String {
@@ -521,6 +538,7 @@ fn begin_recording(app: &AppHandle, shared: &SharedState, mode: RecordingMode) -
     }
 
     let recorder = app.state::<RecorderHandle>();
+    let transcriber = app.state::<TranscriberHandle>();
     let preview_control = app.state::<PreviewControl>();
     let preview_generation = preview_control.next_generation();
     let (response_tx, response_rx) = mpsc::channel();
@@ -539,22 +557,35 @@ fn begin_recording(app: &AppHandle, shared: &SharedState, mode: RecordingMode) -
         .map_err(|_| anyhow!("Recording worker did not respond"))?
         .map_err(|error| anyhow!(error))?;
 
-    {
+    let should_spawn_preview = {
         let mut core = shared.lock();
         core.phase = AppPhase::Recording;
         core.status_message = format!("Recording from {}", started.source_name);
         core.error_message = None;
         core.overlay.visible = true;
         core.overlay.title = "Listening".to_string();
+        core.overlay.detail = String::new();
         core.overlay.levels = default_overlay_levels();
         core.overlay.anchor = anchor;
         core.settings.selected_source_id = Some(started.source_id);
         core.sources = enumerate_sources();
-    }
+        core.settings.show_live_transcription
+    };
 
     let _ = save_persisted_state(app, shared);
     update_indicator_window(app, shared);
     emit_snapshot(app, shared);
+    if should_spawn_preview {
+        spawn_live_preview(
+            app.clone(),
+            shared.clone(),
+            transcriber.inner().clone(),
+            preview_control.inner().clone(),
+            preview_generation,
+            started.preview_buffer.clone(),
+            started.preview_sample_rate,
+        );
+    }
     spawn_live_meter(
         app.clone(),
         shared.clone(),
@@ -603,6 +634,92 @@ fn transcribe_audio(
         .as_mut()
         .expect("transcriber initialized")
         .transcribe_audio(audio)
+}
+
+fn condense_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn live_preview_text(text: &str) -> String {
+    let cleaned = condense_whitespace(text);
+    if cleaned.is_empty() {
+        return String::new();
+    }
+
+    let sentences = cleaned
+        .split_inclusive(['.', '!', '?'])
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+
+    let candidate = sentences
+        .last()
+        .copied()
+        .unwrap_or(cleaned.as_str());
+    let words = candidate.split_whitespace().collect::<Vec<_>>();
+
+    if words.len() <= LIVE_PREVIEW_MAX_WORDS {
+        return candidate.to_string();
+    }
+
+    words[words.len().saturating_sub(LIVE_PREVIEW_MAX_WORDS)..].join(" ")
+}
+
+fn preview_words(text: &str) -> Vec<String> {
+    text.split_whitespace().map(ToString::to_string).collect()
+}
+
+fn common_prefix_len(left: &[String], right: &[String]) -> usize {
+    left.iter()
+        .zip(right.iter())
+        .take_while(|(lhs, rhs)| lhs == rhs)
+        .count()
+}
+
+fn render_preview_words(words: &[String]) -> String {
+    if words.is_empty() {
+        return String::new();
+    }
+
+    let start = words.len().saturating_sub(LIVE_PREVIEW_MAX_WORDS);
+    words[start..].join(" ")
+}
+
+impl PreviewStabilizer {
+    fn observe(&mut self, partial: &str) -> Option<String> {
+        let current_words = preview_words(partial);
+        if current_words.is_empty() {
+            return None;
+        }
+
+        let previous_words = self.last_partial.clone();
+        if let Some(previous_words) = previous_words.as_ref() {
+            let stable_prefix_len = common_prefix_len(&self.stable_words, &current_words);
+            if !self.stable_words.is_empty() && stable_prefix_len == 0 {
+                self.divergence_count += 1;
+                if self.divergence_count >= LIVE_PREVIEW_RESET_AFTER_DIVERGENCE {
+                    self.stable_words.clear();
+                    self.last_partial = Some(current_words);
+                    self.divergence_count = 0;
+                    return None;
+                }
+            } else {
+                self.divergence_count = 0;
+            }
+
+            let shared_len = common_prefix_len(previous_words, &current_words);
+            if shared_len > self.stable_words.len() {
+                self.stable_words = current_words[..shared_len].to_vec();
+            }
+        }
+
+        self.last_partial = Some(current_words);
+        if self.stable_words.is_empty() {
+            None
+        } else {
+            Some(render_preview_words(&self.stable_words))
+        }
+    }
 }
 
 fn default_overlay_levels() -> Vec<f32> {
@@ -793,6 +910,86 @@ fn update_indicator_window(app: &AppHandle, shared: &SharedState) {
     }
 }
 
+fn spawn_live_preview(
+    app: AppHandle,
+    shared: SharedState,
+    transcriber: TranscriberHandle,
+    preview_control: PreviewControl,
+    generation: u64,
+    preview_buffer: Arc<Mutex<Vec<f32>>>,
+    preview_sample_rate: u32,
+) {
+    std::thread::spawn(move || {
+        let mut last_sample_count = 0usize;
+        let mut last_preview = String::new();
+        let mut stabilizer = PreviewStabilizer::default();
+        let preview_window_samples = preview_sample_rate as usize * LIVE_PREVIEW_WINDOW_SECONDS;
+        let preview_min_samples =
+            (preview_sample_rate as u64 * LIVE_PREVIEW_MIN_MS / 1_000) as usize;
+
+        loop {
+            std::thread::sleep(Duration::from_millis(LIVE_PREVIEW_INTERVAL_MS));
+
+            if preview_control.current_generation() != generation {
+                break;
+            }
+
+            {
+                let core = shared.lock();
+                if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
+                    break;
+                }
+            }
+
+            let chunk = {
+                let samples = preview_buffer.lock().expect("preview buffer poisoned");
+                if samples.len() <= last_sample_count || samples.len() < preview_min_samples {
+                    None
+                } else {
+                    last_sample_count = samples.len();
+                    let start = samples.len().saturating_sub(preview_window_samples);
+                    Some(samples[start..].to_vec())
+                }
+            };
+
+            let Some(chunk) = chunk else {
+                continue;
+            };
+
+            let preview_audio = parakeet::resample_to_16khz(&chunk, preview_sample_rate);
+            let preview = match transcribe_audio(&app, &transcriber, &preview_audio) {
+                Ok(text) => stabilizer.observe(&live_preview_text(&text)),
+                Err(_) => continue,
+            };
+            let Some(preview) = preview else {
+                continue;
+            };
+
+            if preview_control.current_generation() != generation {
+                break;
+            }
+
+            if preview.is_empty() || preview == last_preview {
+                continue;
+            }
+            last_preview = preview.clone();
+
+            {
+                let mut core = shared.lock();
+                if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
+                    break;
+                }
+                core.overlay.visible = true;
+                core.overlay.title = "Listening".to_string();
+                core.overlay.detail = preview;
+            }
+
+            update_indicator_window(&app, &shared);
+            emit_snapshot(&app, &shared);
+        }
+    });
+}
+
 fn spawn_live_meter(
     app: AppHandle,
     shared: SharedState,
@@ -871,6 +1068,7 @@ fn complete_transcription(
                     core.error_message = None;
                     core.model_status = detect_model_status(&app);
                     core.overlay.visible = false;
+                    core.overlay.detail.clear();
                     core.overlay.levels = default_overlay_levels();
                     drop(core);
                     update_indicator_window(&app, &shared);
@@ -915,6 +1113,7 @@ fn complete_transcription(
                     core.error_message = None;
                     core.model_status = detect_model_status(&app);
                     core.overlay.visible = false;
+                    core.overlay.detail.clear();
                     core.overlay.levels = default_overlay_levels();
                 }
 
@@ -927,6 +1126,7 @@ fn complete_transcription(
                 core.error_message = Some(error.to_string());
                 core.model_status = detect_model_status(&app);
                 core.overlay.visible = false;
+                core.overlay.detail.clear();
                 core.overlay.levels = default_overlay_levels();
             }
         }
@@ -958,6 +1158,7 @@ fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()> {
             core.status_message = "Capture was too short".to_string();
             core.error_message = None;
             core.overlay.visible = false;
+            core.overlay.detail.clear();
             core.overlay.levels = default_overlay_levels();
         }
         update_indicator_window(app, shared);
@@ -972,6 +1173,7 @@ fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()> {
         core.error_message = None;
         core.overlay.visible = true;
         core.overlay.title = "Transcribing".to_string();
+        core.overlay.detail.clear();
         core.overlay.anchor = completed.anchor;
     }
 
@@ -1203,6 +1405,12 @@ fn update_settings_command(
         }
         if let Some(overlay_animation_style) = update.overlay_animation_style {
             core.settings.overlay_animation_style = overlay_animation_style;
+        }
+        if let Some(show_live_transcription) = update.show_live_transcription {
+            core.settings.show_live_transcription = show_live_transcription;
+            if !show_live_transcription {
+                core.overlay.detail.clear();
+            }
         }
     }
 
