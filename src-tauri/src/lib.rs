@@ -5,6 +5,7 @@ use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig, SupportedStreamConfig};
+use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -29,6 +30,7 @@ const HOLD_MIN_DURATION_MS: u64 = 250;
 const HISTORY_LIMIT: usize = 50;
 const DEFAULT_HOLD_SHORTCUT: &str = "F8";
 const DEFAULT_TOGGLE_SHORTCUT: &str = "F9";
+const DEFAULT_CLEANUP_TERMS: &[&str] = &["um", "uh", "erm", "uhm", "hmm"];
 const LEGACY_HOLD_SHORTCUT: &str = "Ctrl+Alt+Space";
 const LEGACY_TOGGLE_SHORTCUT: &str = "Ctrl+Alt+Shift+Space";
 const INDICATOR_MARGIN: i32 = 24;
@@ -106,6 +108,8 @@ struct Settings {
     toggle_shortcut: String,
     selected_source_id: Option<String>,
     auto_paste: bool,
+    cleanup_enabled: bool,
+    cleanup_terms: Vec<String>,
     overlay_position: OverlayPosition,
     overlay_animation_style: OverlayAnimationStyle,
     show_live_transcription: bool,
@@ -118,6 +122,8 @@ impl Default for Settings {
             toggle_shortcut: DEFAULT_TOGGLE_SHORTCUT.to_string(),
             selected_source_id: None,
             auto_paste: true,
+            cleanup_enabled: true,
+            cleanup_terms: default_cleanup_terms(),
             overlay_position: OverlayPosition::BottomCenter,
             overlay_animation_style: OverlayAnimationStyle::Spectrum,
             show_live_transcription: false,
@@ -151,6 +157,8 @@ struct SettingsUpdate {
     toggle_shortcut: Option<String>,
     selected_source_id: Option<String>,
     auto_paste: Option<bool>,
+    cleanup_enabled: Option<bool>,
+    cleanup_terms: Option<Vec<String>>,
     overlay_position: Option<OverlayPosition>,
     overlay_animation_style: Option<OverlayAnimationStyle>,
     show_live_transcription: Option<bool>,
@@ -636,12 +644,91 @@ fn transcribe_audio(
         .transcribe_audio(audio)
 }
 
+fn default_cleanup_terms() -> Vec<String> {
+    DEFAULT_CLEANUP_TERMS
+        .iter()
+        .map(|term| term.to_string())
+        .collect()
+}
+
+fn normalize_cleanup_term(term: &str) -> Option<String> {
+    let normalized = term
+        .split_whitespace()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_lowercase();
+
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn normalize_cleanup_terms(terms: &[String]) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for term in terms {
+        let Some(term) = normalize_cleanup_term(term) else {
+            continue;
+        };
+
+        if normalized.iter().any(|existing| existing == &term) {
+            continue;
+        }
+
+        normalized.push(term);
+    }
+
+    normalized
+}
+
 fn condense_whitespace(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn live_preview_text(text: &str) -> String {
-    let cleaned = condense_whitespace(text);
+fn cleanup_patterns_from_terms(terms: &[String]) -> Vec<Regex> {
+    let mut ordered = normalize_cleanup_terms(terms);
+    ordered.sort_by(|left, right| right.len().cmp(&left.len()));
+
+    ordered
+        .into_iter()
+        .filter_map(|term| {
+            let escaped = regex::escape(&term).replace("\\ ", r"\s+");
+            let pattern = format!(
+                r#"(?i)(^|[\s\(\[\{{"'“”‘’,.;:!?]+){escaped}([\s\)\]\}}"'“”‘’,.;:!?]+|$)"#
+            );
+            RegexBuilder::new(&pattern).case_insensitive(true).build().ok()
+        })
+        .collect()
+}
+
+fn cleanup_transcript_text(text: &str, cleanup_enabled: bool, cleanup_terms: &[String]) -> String {
+    let mut cleaned = condense_whitespace(text);
+    if cleaned.is_empty() || !cleanup_enabled {
+        return cleaned;
+    }
+
+    for pattern in cleanup_patterns_from_terms(cleanup_terms) {
+        cleaned = pattern.replace_all(&cleaned, " ").into_owned();
+    }
+
+    let cleaned = condense_whitespace(&cleaned);
+    let punctuation_spacing =
+        Regex::new(r#"\s+([,.;:!?])"#).expect("punctuation spacing regex is valid");
+    let cleaned = punctuation_spacing.replace_all(&cleaned, "$1").into_owned();
+    let repeated_commas = Regex::new(r#"(,\s*){2,}"#).expect("repeated comma regex is valid");
+    let cleaned = repeated_commas.replace_all(&cleaned, ", ").into_owned();
+
+    cleaned
+        .trim_matches(|character: char| character.is_whitespace() || [',', ';', ':'].contains(&character))
+        .trim()
+        .to_string()
+}
+
+fn live_preview_text(text: &str, cleanup_enabled: bool, cleanup_terms: &[String]) -> String {
+    let cleaned = cleanup_transcript_text(text, cleanup_enabled, cleanup_terms);
     if cleaned.is_empty() {
         return String::new();
     }
@@ -1029,8 +1116,19 @@ fn spawn_live_preview(
             };
 
             let preview_audio = parakeet::resample_to_16khz(&chunk, preview_sample_rate);
+            let (cleanup_enabled, cleanup_terms) = {
+                let core = shared.lock();
+                (
+                    core.settings.cleanup_enabled,
+                    core.settings.cleanup_terms.clone(),
+                )
+            };
             let preview = match transcribe_audio(&app, &transcriber, &preview_audio) {
-                Ok(text) => stabilizer.observe(&live_preview_text(&text)),
+                Ok(text) => stabilizer.observe(&live_preview_text(
+                    &text,
+                    cleanup_enabled,
+                    &cleanup_terms,
+                )),
                 Err(_) => continue,
             };
             let Some(preview) = preview else {
@@ -1132,7 +1230,15 @@ fn complete_transcription(
 
         match result {
             Ok(text) => {
-                let text = text.trim().to_string();
+                let settings = {
+                    let core = shared.lock();
+                    core.settings.clone()
+                };
+                let text = cleanup_transcript_text(
+                    text.trim(),
+                    settings.cleanup_enabled,
+                    &settings.cleanup_terms,
+                );
                 if text.is_empty() {
                     let mut core = shared.lock();
                     core.phase = AppPhase::Idle;
@@ -1149,11 +1255,6 @@ fn complete_transcription(
                 }
 
                 let pasted = {
-                    let settings = {
-                        let core = shared.lock();
-                        core.settings.clone()
-                    };
-
                     if settings.auto_paste {
                         platform::paste_text(&text).is_ok()
                     } else {
@@ -1440,6 +1541,13 @@ fn inspect_model_path(path: String) -> Result<ModelPathInspection, String> {
     })
 }
 
+fn persist_and_emit_settings_change(app: &AppHandle, shared: &SharedState) -> Result<(), String> {
+    save_persisted_state(app, shared).map_err(|error| error.to_string())?;
+    update_indicator_window(app, shared);
+    emit_snapshot(app, shared);
+    Ok(())
+}
+
 #[tauri::command]
 fn update_settings_command(
     app: AppHandle,
@@ -1473,6 +1581,12 @@ fn update_settings_command(
         if let Some(auto_paste) = update.auto_paste {
             core.settings.auto_paste = auto_paste;
         }
+        if let Some(cleanup_enabled) = update.cleanup_enabled {
+            core.settings.cleanup_enabled = cleanup_enabled;
+        }
+        if let Some(cleanup_terms) = update.cleanup_terms {
+            core.settings.cleanup_terms = normalize_cleanup_terms(&cleanup_terms);
+        }
         if let Some(overlay_position) = update.overlay_position {
             core.settings.overlay_position = overlay_position;
         }
@@ -1499,10 +1613,64 @@ fn update_settings_command(
         let _ = register_shortcuts(&app, &shared);
         return Err(error.to_string());
     }
-    save_persisted_state(&app, &shared).map_err(|error| error.to_string())?;
-    update_indicator_window(&app, &shared);
+    persist_and_emit_settings_change(&app, &shared)?;
     refresh_sources(&app, &shared);
     Ok(())
+}
+
+#[tauri::command]
+fn add_cleanup_term(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+    term: String,
+) -> Result<(), String> {
+    let normalized = normalize_cleanup_term(&term)
+        .ok_or_else(|| "Enter a filler word or phrase to remove.".to_string())?;
+
+    {
+        let mut core = shared.lock();
+        if core.settings.cleanup_terms.iter().any(|existing| existing == &normalized) {
+            return Ok(());
+        }
+        core.settings.cleanup_terms.push(normalized);
+        core.settings.cleanup_terms = normalize_cleanup_terms(&core.settings.cleanup_terms);
+    }
+
+    persist_and_emit_settings_change(&app, &shared)
+}
+
+#[tauri::command]
+fn remove_cleanup_term(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+    term: String,
+) -> Result<(), String> {
+    let Some(normalized) = normalize_cleanup_term(&term) else {
+        return Ok(());
+    };
+
+    {
+        let mut core = shared.lock();
+        core.settings
+            .cleanup_terms
+            .retain(|existing| existing != &normalized);
+    }
+
+    persist_and_emit_settings_change(&app, &shared)
+}
+
+#[tauri::command]
+fn restore_default_cleanup_terms(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    {
+        let mut core = shared.lock();
+        core.settings.cleanup_enabled = true;
+        core.settings.cleanup_terms = default_cleanup_terms();
+    }
+
+    persist_and_emit_settings_change(&app, &shared)
 }
 
 #[tauri::command]
@@ -1651,9 +1819,57 @@ pub fn run() {
             refresh_devices,
             inspect_model_path,
             update_settings_command,
+            add_cleanup_term,
+            remove_cleanup_term,
+            restore_default_cleanup_terms,
             start_manual_recording,
             stop_manual_recording
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        cleanup_transcript_text, default_cleanup_terms, normalize_cleanup_term,
+        normalize_cleanup_terms,
+    };
+
+    #[test]
+    fn cleanup_transcript_removes_common_fillers() {
+        let cleaned = cleanup_transcript_text(
+            "Um, I think uh this should work.",
+            true,
+            &default_cleanup_terms(),
+        );
+
+        assert_eq!(cleaned, "I think this should work.");
+    }
+
+    #[test]
+    fn cleanup_transcript_removes_multi_word_fillers() {
+        let cleaned = cleanup_transcript_text(
+            "You know I think this is fine.",
+            true,
+            &[String::from("you know")],
+        );
+
+        assert_eq!(cleaned, "I think this is fine.");
+    }
+
+    #[test]
+    fn normalize_cleanup_terms_deduplicates_and_trims() {
+        let normalized = normalize_cleanup_terms(&[
+            String::from(" um "),
+            String::from("UM"),
+            String::from("you   know"),
+        ]);
+
+        assert_eq!(
+            normalized,
+            vec![String::from("um"), String::from("you know")]
+        );
+        assert_eq!(normalize_cleanup_term("   "), None);
+    }
 }

@@ -18,6 +18,7 @@ type SectionId =
   | "models"
   | "keybindings"
   | "interface"
+  | "cleanup"
   | "inputs"
   | "history"
   | "about";
@@ -29,6 +30,8 @@ type Settings = {
   toggleShortcut: string;
   selectedSourceId: string | null;
   autoPaste: boolean;
+  cleanupEnabled: boolean;
+  cleanupTerms: string[];
   overlayPosition: OverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
   showLiveTranscription: boolean;
@@ -77,6 +80,7 @@ type SettingsDraft = {
   toggleShortcut: string;
   selectedSourceId: string;
   autoPaste: boolean;
+  cleanupEnabled: boolean;
   overlayPosition: EditableOverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
   showLiveTranscription: boolean;
@@ -144,6 +148,7 @@ const sections: Array<{
   { id: "models", label: "Models" },
   { id: "keybindings", label: "Keys" },
   { id: "interface", label: "Interface" },
+  { id: "cleanup", label: "Cleanup" },
   { id: "inputs", label: "Input" },
   { id: "history", label: "History" },
   { id: "about", label: "About" },
@@ -179,6 +184,7 @@ const overlayAnimationOptions: Array<{
 ];
 
 const DEMO_LEVELS = [0.18, 0.34, 0.62, 0.28, 0.82, 0.46, 0.24, 0.58, 0.38, 0.22, 0.48, 0.26];
+const CLEANUP_SUGGESTIONS = ["um", "uh", "erm", "uhm", "hmm", "you know"];
 
 async function getSnapshot() {
   return invoke<Snapshot>("get_snapshot");
@@ -347,6 +353,7 @@ function buildSettingsUpdate(draft: SettingsDraft) {
     toggleShortcut: draft.toggleShortcut,
     selectedSourceId: draft.selectedSourceId || undefined,
     autoPaste: draft.autoPaste,
+    cleanupEnabled: draft.cleanupEnabled,
     overlayPosition: draft.overlayPosition,
     overlayAnimationStyle: draft.overlayAnimationStyle,
     showLiveTranscription: draft.showLiveTranscription,
@@ -617,6 +624,17 @@ function InputIcon(props: IconProps) {
   );
 }
 
+function CleanupIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <path d="M5 18.5h11.5" />
+      <path d="M8 18.5 15.5 5" />
+      <path d="M12 18.5 18.5 9" />
+      <path d="M14.5 5h4" />
+    </GlyphBase>
+  );
+}
+
 function InterfaceIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
@@ -732,6 +750,8 @@ function SectionIcon({
       return <KeysIcon className={className} />;
     case "interface":
       return <InterfaceIcon className={className} />;
+    case "cleanup":
+      return <CleanupIcon className={className} />;
     case "inputs":
       return <InputIcon className={className} />;
     case "history":
@@ -1362,6 +1382,7 @@ function ControlApp({
   const [modelQuery, setModelQuery] = useState("");
   const [modelFilter, setModelFilter] = useState<ModelFilter>("all");
   const [customModelPath, setCustomModelPath] = useState("");
+  const [cleanupInput, setCleanupInput] = useState("");
   const [customModels, setCustomModels] = useState<StoredModelEntry[]>(() =>
     loadStoredModels(),
   );
@@ -1378,6 +1399,7 @@ function ControlApp({
     toggleShortcut: "",
     selectedSourceId: "",
     autoPaste: true,
+    cleanupEnabled: true,
     overlayPosition: "bottom-center",
     overlayAnimationStyle: "spectrum",
     showLiveTranscription: false,
@@ -1407,6 +1429,7 @@ function ControlApp({
       selectedSourceId:
         snapshot.settings.selectedSourceId ?? snapshot.sources[0]?.id ?? "",
       autoPaste: snapshot.settings.autoPaste,
+      cleanupEnabled: snapshot.settings.cleanupEnabled,
       overlayPosition: normalizeEditableOverlayPosition(
         snapshot.settings.overlayPosition,
       ),
@@ -1603,6 +1626,65 @@ function ControlApp({
     finishButtonFeedback(actionId);
   }
 
+  async function addCleanupTerm(term = cleanupInput) {
+    const trimmed = term.trim();
+    if (!trimmed) {
+      setMessage({
+        kind: "error",
+        text: "Enter a filler word or phrase to remove.",
+      });
+      return;
+    }
+
+    setMessage(null);
+    setButtonFeedbackState("cleanup-add", "working");
+
+    try {
+      await invoke("add_cleanup_term", { term: trimmed });
+      setCleanupInput("");
+      finishButtonFeedback("cleanup-add");
+    } catch (error) {
+      clearButtonFeedback("cleanup-add");
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
+  async function removeCleanupTerm(term: string) {
+    const actionId = `cleanup-remove:${term}`;
+    setMessage(null);
+    setButtonFeedbackState(actionId, "working");
+
+    try {
+      await invoke("remove_cleanup_term", { term });
+      finishButtonFeedback(actionId, 900);
+    } catch (error) {
+      clearButtonFeedback(actionId);
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
+  async function restoreCleanupDefaults() {
+    setMessage(null);
+    setButtonFeedbackState("cleanup-restore", "working");
+
+    try {
+      await invoke("restore_default_cleanup_terms");
+      finishButtonFeedback("cleanup-restore");
+    } catch (error) {
+      clearButtonFeedback("cleanup-restore");
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
   const modelRows = snapshot ? buildModelRows(snapshot, customModels) : [];
   const selectedRowExists = modelRows.some((row) => row.id === selectedModelId);
   const resolvedSelectedModelId = selectedRowExists
@@ -1644,6 +1726,10 @@ function ControlApp({
   const previewDetail = snapshot.overlay.detail || previewTitle;
   const filteredModels = modelRows.filter((row) =>
     matchesModel(row, modelQuery, modelFilter),
+  );
+  const cleanupTerms = snapshot.settings.cleanupTerms;
+  const availableCleanupSuggestions = CLEANUP_SUGGESTIONS.filter(
+    (term) => !cleanupTerms.includes(term),
   );
 
   return (
@@ -2148,6 +2234,122 @@ function ControlApp({
                     />
                   </div>
                 </div>
+              </article>
+            </section>
+          ) : null}
+
+          {activeSection === "cleanup" ? (
+            <section className="compact-grid-two">
+              <article className="surface preference-surface">
+                <div className="surface-bar">
+                  <div className="surface-title">
+                    <span className="surface-title-label">Transcript cleanup</span>
+                  </div>
+                </div>
+
+                <div className="setting-list">
+                  <label className="toggle-row toggle-row-card setting-toggle">
+                    <input
+                      type="checkbox"
+                      checked={draft.cleanupEnabled}
+                      onChange={(event) =>
+                        void applySettings({
+                          cleanupEnabled: event.currentTarget.checked,
+                        })
+                      }
+                    />
+                    <div>
+                      <strong>Remove filler words</strong>
+                      <span>Clean transcripts before paste and history save.</span>
+                    </div>
+                  </label>
+
+                  <div className="field">
+                    <span>Word or phrase</span>
+                    <div className="inline-actions cleanup-add-row">
+                      <input
+                        value={cleanupInput}
+                        onChange={(event) => setCleanupInput(event.currentTarget.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void addCleanupTerm();
+                          }
+                        }}
+                        placeholder="e.g. um, uh, you know"
+                      />
+                      <ActionButton
+                        state={buttonFeedback["cleanup-add"]}
+                        idleLabel="Add"
+                        workingLabel="Adding"
+                        doneLabel="Added"
+                        doneIcon={<CheckIcon className="small-icon" />}
+                        onClick={() => addCleanupTerm()}
+                      />
+                    </div>
+                  </div>
+
+                  {availableCleanupSuggestions.length > 0 ? (
+                    <div className="cleanup-suggestions">
+                      {availableCleanupSuggestions.map((term) => (
+                        <button
+                          key={term}
+                          type="button"
+                          className="secondary cleanup-suggestion"
+                          onClick={() => {
+                            void addCleanupTerm(term);
+                          }}
+                        >
+                          {term}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mini-meta-row">
+                  <span>{draft.cleanupEnabled ? "Cleanup on" : "Cleanup off"}</span>
+                  <span>{cleanupTerms.length} terms</span>
+                </div>
+              </article>
+
+              <article className="surface preference-surface">
+                <div className="surface-bar">
+                  <div className="surface-title">
+                    <span className="surface-title-label">Managed terms</span>
+                  </div>
+                  <ActionButton
+                    className="secondary small"
+                    state={buttonFeedback["cleanup-restore"]}
+                    idleLabel="Defaults"
+                    workingLabel="Restoring"
+                    doneLabel="Restored"
+                    doneIcon={<CheckIcon className="small-icon" />}
+                    onClick={restoreCleanupDefaults}
+                  />
+                </div>
+
+                {cleanupTerms.length === 0 ? (
+                  <div className="empty-state cleanup-empty-state">
+                    No cleanup terms yet.
+                  </div>
+                ) : (
+                  <div className="cleanup-list">
+                    {cleanupTerms.map((term) => (
+                      <div className="cleanup-chip" key={term}>
+                        <span>{term}</span>
+                        <ActionButton
+                          className="secondary small cleanup-chip-remove"
+                          state={buttonFeedback[`cleanup-remove:${term}`]}
+                          idleLabel="Remove"
+                          doneLabel="Removed"
+                          doneIcon={<CheckIcon className="small-icon" />}
+                          onClick={() => removeCleanupTerm(term)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </article>
             </section>
           ) : null}

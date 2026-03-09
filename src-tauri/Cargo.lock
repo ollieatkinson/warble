@@ -4750,6 +4750,7 @@ dependencies = [
  "cpal",
  "hound",
  "ort",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

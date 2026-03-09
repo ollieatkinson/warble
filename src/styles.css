@@ -506,6 +506,53 @@ input::placeholder {
   margin-top: 0.1rem;
 }
 
+.cleanup-add-row {
+  align-items: stretch;
+}
+
+.cleanup-add-row input {
+  flex: 1 1 auto;
+}
+
+.cleanup-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.cleanup-suggestion {
+  padding: 0.48rem 0.72rem;
+}
+
+.cleanup-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.cleanup-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.78rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.cleanup-chip span {
+  color: var(--text);
+  word-break: break-word;
+}
+
+.cleanup-chip-remove {
+  flex: 0 0 auto;
+}
+
+.cleanup-empty-state {
+  min-height: 140px;
+}
+
 .preview-surface {
   display: grid;
   gap: 0.6rem;
