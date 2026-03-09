@@ -1080,6 +1080,7 @@ function ActionButton({
   doneIcon,
   onClick,
   disabled,
+  iconOnly,
 }: {
   className?: string;
   state?: ButtonFeedbackState;
@@ -1091,6 +1092,7 @@ function ActionButton({
   doneIcon?: ReactNode;
   onClick: () => void | Promise<void>;
   disabled?: boolean;
+  iconOnly?: boolean;
 }) {
   const label =
     state === "working"
@@ -1109,7 +1111,7 @@ function ActionButton({
     <button
       className={[
         className,
-        icon ? "icon-button" : "",
+        iconOnly ? "icon-only-button" : icon ? "icon-button" : "",
         state === "working" ? "action-button-working" : "",
         state === "done" ? "action-button-done" : "",
       ]
@@ -1117,6 +1119,8 @@ function ActionButton({
         .join(" ")}
       onClick={onClick}
       disabled={disabled}
+      aria-label={label}
+      title={label}
     >
       {icon ? (
         <span
@@ -1130,7 +1134,7 @@ function ActionButton({
           {icon}
         </span>
       ) : null}
-      <span>{label}</span>
+      {iconOnly ? null : <span>{label}</span>}
     </button>
   );
 }
@@ -2715,13 +2719,14 @@ function ControlApp({
                         <div className="history-actions">
                           {item.audioPath ? (
                             <button
-                              className="secondary small icon-button"
+                              className="secondary small icon-only-button"
                               onClick={() => {
                                 void openHistoryAudio(item);
                               }}
+                              aria-label="Open audio"
+                              title="Open audio"
                             >
                               <ExternalIcon className="small-icon" />
-                              <span>Audio</span>
                             </button>
                           ) : null}
                           <ActionButton
@@ -2732,6 +2737,7 @@ function ControlApp({
                             idleIcon={<CopyIcon className="small-icon" />}
                             doneIcon={<CheckIcon className="small-icon" />}
                             onClick={() => copyHistory(item.id, item.text)}
+                            iconOnly
                           />
                           <ActionButton
                             className="secondary small"
@@ -2742,6 +2748,7 @@ function ControlApp({
                             idleIcon={<TrashIcon className="small-icon" />}
                             doneIcon={<CheckIcon className="small-icon" />}
                             onClick={() => removeHistoryItem(item.id)}
+                            iconOnly
                           />
                         </div>
                       </div>
