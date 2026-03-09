@@ -1168,20 +1168,10 @@ input::placeholder {
   padding: 0.44rem 0.56rem;
   border-radius: 999px;
   background: rgba(8, 11, 18, 0.92);
-  border-color: rgba(111, 157, 255, 0.14);
+  border: none;
   overflow: hidden;
   isolation: isolate;
-  box-shadow:
-    0 0 0 1px rgba(111, 157, 255, 0.03),
-    0 8px 18px rgba(0, 0, 0, 0.2);
-}
-
-.indicator-shell-recording {
-  border-color: rgba(47, 210, 127, 0.22);
-}
-
-.indicator-shell-transcribing {
-  border-color: rgba(243, 180, 92, 0.24);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
 }
 
 .indicator-shell-inline {
