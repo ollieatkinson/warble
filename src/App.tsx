@@ -119,7 +119,7 @@ type ModelRow = {
   runtime: string;
   license: string;
   state: "ready" | "planned" | "incomplete";
-  source: "built-in" | "catalog" | "imported";
+  source: "built-in" | "catalog";
   active: boolean;
   selectable: boolean;
   summary: string;
@@ -410,10 +410,6 @@ function smoothLevels(levels: number[]) {
   });
 }
 
-function deriveDisplayNameFromPath(path: string) {
-  const lastSegment = path.replace(/\\/g, "/").split("/").pop() || "Local model";
-  return lastSegment.replace(/\.[^.]+$/, "") || lastSegment;
-}
 const MODEL_CATALOG: Array<
   Omit<ModelRow, "state" | "source" | "active" | "selectable" | "path">
 > = [
@@ -515,42 +511,6 @@ const MODEL_CATALOG: Array<
   },
 ];
 
-function buildImportedModelRow(snapshot: Snapshot): ModelRow | null {
-  if (!snapshot.settings.selectedModelPath || snapshot.settings.selectedModelId === "parakeet") {
-    return null;
-  }
-
-  const isWhisper = snapshot.settings.selectedModelKind === "whisper";
-  return {
-    id: snapshot.settings.selectedModelId,
-    name: deriveDisplayNameFromPath(snapshot.settings.selectedModelPath),
-    modelKind: snapshot.settings.selectedModelKind,
-    family: isWhisper ? "Whisper" : "Parakeet",
-    provider: "Imported",
-    architecture: isWhisper ? "whisper.cpp local model" : "Parakeet local export",
-    languages: isWhisper ? "Depends on imported model" : "English-first",
-    speed: isWhisper ? "Varies" : "Fast",
-    quality: isWhisper ? "Varies" : "High",
-    footprint: isWhisper ? "Local file" : "Local folder",
-    runtime: snapshot.modelStatus === "ready" ? "Imported" : "Imported",
-    license: "Local asset",
-    state: snapshot.modelStatus === "ready" ? "ready" : "incomplete",
-    source: "imported",
-    active: true,
-    selectable: snapshot.modelStatus === "ready",
-    summary: "Previously imported model retained for compatibility.",
-    note: "Imported-model management is hidden from the main catalog for now.",
-    highlights: [
-      "Still supported by the Rust backend",
-      "Shown here so the current engine stays visible",
-      "Will eventually move into a cleaner install flow",
-    ],
-    path: snapshot.settings.selectedModelPath,
-    tags: ["imported", snapshot.modelStatus === "ready" ? "available" : "future"],
-    supportsInstall: false,
-  };
-}
-
 function buildModelRows(snapshot: Snapshot): ModelRow[] {
   const activeModelId = snapshot.settings.selectedModelId;
   const rows = MODEL_CATALOG.map<ModelRow>((entry) => {
@@ -597,11 +557,6 @@ function buildModelRows(snapshot: Snapshot): ModelRow[] {
         : entry.tags,
     };
   });
-
-  const imported = buildImportedModelRow(snapshot);
-  if (imported && !rows.some((row) => row.id === imported.id)) {
-    rows.unshift(imported);
-  }
 
   return rows;
 }
@@ -2198,10 +2153,6 @@ function ControlApp({
                                 ? "Ready"
                               : selectedModel.source === "catalog"
                                 ? "Catalog"
-                                : selectedModel.source === "imported"
-                                  ? "Imported"
-                                  : selectedModel.selectable
-                                  ? "Ready"
                                   : "Missing"
                           }
                           tone={
