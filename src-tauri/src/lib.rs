@@ -55,7 +55,7 @@ const LIVE_METER_SILENCE_RMS_THRESHOLD: f32 = 0.0045;
 const LIVE_METER_SILENCE_PEAK_THRESHOLD: f32 = 0.015;
 const LIVE_METER_FULL_RMS: f32 = 0.05;
 const LIVE_METER_FULL_PEAK: f32 = 0.18;
-const INDICATOR_WINDOW_PADDING: i32 = 10;
+const INDICATOR_WINDOW_PADDING: i32 = 14;
 const BACKGROUND_ARG: &str = "--background";
 const TRAY_ID: &str = "main-tray";
 const TRAY_SHOW_ID: &str = "tray-show";
@@ -1316,12 +1316,12 @@ fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
 fn indicator_window_size(settings: &Settings) -> (i32, i32) {
     let content_height = if settings.show_live_transcription { 64 } else { 58 };
     let content_width = if settings.show_live_transcription {
-        250
+        268
     } else {
         match settings.overlay_animation_style {
-            OverlayAnimationStyle::Radial => 74,
-            OverlayAnimationStyle::Spectrum => 110,
-            OverlayAnimationStyle::Waveform => 116,
+            OverlayAnimationStyle::Radial => 86,
+            OverlayAnimationStyle::Spectrum => 126,
+            OverlayAnimationStyle::Waveform => 134,
         }
     } as i32;
 
