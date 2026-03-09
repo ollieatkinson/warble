@@ -180,6 +180,26 @@ export function BoltIcon(props: IconProps) {
   );
 }
 
+export function UsersIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <path d="M9 11a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
+      <path d="M15.75 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />
+      <path d="M4.75 17.5a4.25 4.25 0 0 1 8.5 0" />
+      <path d="M13.25 17.5a3.5 3.5 0 0 1 6 0" />
+    </GlyphBase>
+  );
+}
+
+export function ClockIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 7.5v5l3 1.8" />
+    </GlyphBase>
+  );
+}
+
 export function GlobeIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>

@@ -32,8 +32,8 @@ export const modelFilters: Array<{
 }> = [
   { id: "all", label: "All" },
   { id: "available", label: "Available" },
-  { id: "multilingual", label: "Multilingual" },
-  { id: "future", label: "Future" },
+  { id: "streaming", label: "Streaming" },
+  { id: "speaker", label: "Speaker" },
 ];
 
 export const overlayPositionOptions: Array<{

@@ -3,15 +3,15 @@ import { ActionButton, ChoiceDropdown, ModelFeatureBadge, ModelPickerPreview, Sc
 import {
   BoltIcon,
   CheckIcon,
+  ClockIcon,
   CpuIcon,
   DownloadIcon,
   ExternalIcon,
   FolderIcon,
-  GlobeIcon,
-  InputIcon,
   SearchIcon,
   SparkIcon,
   TrashIcon,
+  UsersIcon,
 } from "../components/icons";
 import {
   describeHardwareFit,
@@ -29,16 +29,16 @@ import type {
   Snapshot,
 } from "../types";
 
-function featureIcon(icon: "spark" | "cpu" | "globe" | "input" | "bolt") {
+function featureIcon(icon: "spark" | "cpu" | "bolt" | "users" | "clock") {
   switch (icon) {
     case "cpu":
       return <CpuIcon className="small-icon" />;
-    case "globe":
-      return <GlobeIcon className="small-icon" />;
-    case "input":
-      return <InputIcon className="small-icon" />;
     case "bolt":
       return <BoltIcon className="small-icon" />;
+    case "users":
+      return <UsersIcon className="small-icon" />;
+    case "clock":
+      return <ClockIcon className="small-icon" />;
     case "spark":
     default:
       return <SparkIcon className="small-icon" />;
@@ -105,7 +105,7 @@ export function ModelsSection({
       <div className="model-library-head">
         <div className="model-library-copy">
           <span className="surface-title-label">Speech models</span>
-          <p>Choose the local Parakeet engine Transcribed should use by default.</p>
+          <p>Compare NVIDIA speech runtimes, streaming variants, and speaker-aware pipelines.</p>
         </div>
       </div>
 
@@ -152,7 +152,7 @@ export function ModelsSection({
             type="search"
             value={modelQuery}
             onChange={(event) => onSetModelQuery(event.currentTarget.value)}
-            placeholder="Filter models"
+            placeholder="Search NVIDIA speech models"
           />
         </label>
 
@@ -176,9 +176,9 @@ export function ModelsSection({
             <tr>
               <th />
               <th>Model</th>
-              <th>Features</th>
+              <th>Capabilities</th>
               <th>Speed</th>
-              <th>Accuracy</th>
+              <th>Quality</th>
               <th />
             </tr>
           </thead>
@@ -220,7 +220,8 @@ export function ModelsSection({
                       </div>
                       <div className="model-entry-meta">
                         <span>{row.provider}</span>
-                        <span>{row.languages}</span>
+                        <span>{row.speechMode}</span>
+                        <span>{row.architecture}</span>
                         <span>{formatModelSizeLabel(row)}</span>
                       </div>
                     </div>
@@ -336,7 +337,7 @@ export function ModelsSection({
             <div className="surface-title">
               <span className="surface-title-label">{selectedModel.name}</span>
               <span className="model-focus-subtitle">
-                {selectedModel.provider} · {selectedModel.architecture}
+                {selectedModel.provider} · {selectedModel.speechMode} · {selectedModel.footprint}
               </span>
             </div>
             <div className="header-actions">
@@ -371,8 +372,19 @@ export function ModelsSection({
               <div className="detail-copy model-focus-copy-block">
                 <p>{selectedModel.summary}</p>
                 <p>{selectedModel.note}</p>
+                <p>{selectedModel.bestFor}</p>
                 {selectedModelFit ? <p>{selectedModelFit.detail}</p> : null}
                 {selectedModel.path ? <code className="path-chip">{selectedModel.path}</code> : null}
+              </div>
+
+              <div className="model-feature-list model-focus-capabilities">
+                {selectedModel.featureBadges.map((feature) => (
+                  <ModelFeatureBadge
+                    key={`focus-${selectedModel.id}-${feature.id}`}
+                    icon={featureIcon(feature.icon)}
+                    label={feature.label}
+                  />
+                ))}
               </div>
 
               <div className="inline-actions model-focus-actions">

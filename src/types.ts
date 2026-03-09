@@ -18,9 +18,20 @@ export type SectionId =
   | "inputs"
   | "history"
   | "about";
-export type ModelFilter = "all" | "available" | "multilingual" | "future";
+export type ModelFilter = "all" | "available" | "streaming" | "speaker";
 export type EditableOverlayPosition = Exclude<OverlayPosition, "caret">;
 export type AudioRetentionPolicy = "one-day" | "seven-days" | "thirty-days";
+export type ModelFeatureIcon =
+  | "spark"
+  | "cpu"
+  | "bolt"
+  | "users"
+  | "clock";
+export type ModelFeatureItem = {
+  id: string;
+  label: string;
+  icon: ModelFeatureIcon;
+};
 
 export type Settings = {
   holdShortcut: string;
@@ -117,6 +128,7 @@ export type ModelRow = {
   provider: string;
   architecture: string;
   languages: string;
+  speechMode: string;
   speed: string;
   quality: string;
   footprint: string;
@@ -129,6 +141,9 @@ export type ModelRow = {
   selectable: boolean;
   summary: string;
   note: string;
+  bestFor: string;
+  capabilities: string[];
+  featureBadges: ModelFeatureItem[];
   highlights: string[];
   hfUrl?: string;
   artifactUrl?: string;

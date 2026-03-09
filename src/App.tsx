@@ -550,7 +550,7 @@ function ControlApp({
     .map((row) => ({
       id: row.id,
       label: row.name,
-      description: `${row.provider} · ${formatModelSizeLabel(row)}`,
+      description: `${row.speechMode} · ${formatModelSizeLabel(row)}`,
     }));
   const activeReadyModelId =
     activeModel?.selectable && activeModel
@@ -558,6 +558,10 @@ function ControlApp({
       : readyModelOptions[0]?.id ?? "";
   const selectedModelMeta: Array<[string, string]> = selectedModel
     ? [
+        ["Family", selectedModel.family],
+        ["Speech mode", selectedModel.speechMode],
+        ["Architecture", selectedModel.architecture],
+        ["Parameters", selectedModel.footprint],
         ["Runtime", selectedModel.runtime],
         [
           "Download size",
@@ -566,12 +570,12 @@ function ControlApp({
             : "Included / n.a.",
         ],
         ["Size on disk", formatBytes(selectedModel.diskSizeBytes)],
-        ["Languages", selectedModel.languages],
         ["Speed", selectedModel.speed],
         ["Quality", selectedModel.quality],
-        ["Footprint", selectedModel.footprint],
         ["License", selectedModel.license],
-        ["This Mac", selectedModelFit?.label ?? "Unknown"],
+        ["Best for", selectedModel.bestFor],
+        ["Capabilities", selectedModel.capabilities.join(" · ")],
+        ["This PC", selectedModelFit?.label ?? "Unknown"],
         [
           "Hardware",
           snapshot ? formatSystemProfile(snapshot.systemProfile) : "Unknown",
