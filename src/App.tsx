@@ -6,6 +6,7 @@ import type { KeyboardEvent, ReactNode, SVGProps } from "react";
 type RecordingMode = "hold" | "toggle";
 type AppPhase = "idle" | "recording" | "transcribing" | "error";
 type ModelStatus = "ready" | "missing";
+type TranscriptionModelKind = "parakeet" | "whisper";
 type OverlayPosition =
   | "bottom-center"
   | "bottom-left"
@@ -30,6 +31,9 @@ type Settings = {
   toggleShortcut: string;
   selectedSourceId: string | null;
   autoPaste: boolean;
+  selectedModelId: string;
+  selectedModelKind: TranscriptionModelKind;
+  selectedModelPath: string | null;
   cleanupEnabled: boolean;
   cleanupTerms: string[];
   overlayPosition: OverlayPosition;
@@ -68,6 +72,7 @@ type Snapshot = {
   sources: SourceInfo[];
   history: HistoryItem[];
   modelStatus: ModelStatus;
+  parakeetModelStatus: ModelStatus;
   shortcutsActive: boolean;
   shortcutMessage: string;
   statusMessage: string;
@@ -97,6 +102,7 @@ type StoredModelEntry = {
   id: string;
   name: string;
   path: string;
+  modelKind: TranscriptionModelKind;
   compatible: boolean;
   ready: boolean;
 };
@@ -104,6 +110,7 @@ type StoredModelEntry = {
 type ModelPathInspection = {
   name: string;
   path: string;
+  modelKind: TranscriptionModelKind;
   compatible: boolean;
   ready: boolean;
 };
@@ -111,6 +118,7 @@ type ModelPathInspection = {
 type ModelRow = {
   id: string;
   name: string;
+  modelKind: TranscriptionModelKind;
   family: string;
   languages: string;
   speed: string;
@@ -119,6 +127,7 @@ type ModelRow = {
   state: "ready" | "planned" | "incomplete";
   source: "built-in" | "planned" | "local";
   active: boolean;
+  selectable: boolean;
   summary: string;
   note: string;
   path?: string;
@@ -135,7 +144,6 @@ type IconProps = SVGProps<SVGSVGElement>;
 
 const SNAPSHOT_EVENT = "transcribed://snapshot";
 const MODEL_LIBRARY_STORAGE_KEY = "transcribed:model-library";
-const SELECTED_MODEL_STORAGE_KEY = "transcribed:selected-model";
 const isIndicatorWindow = new URLSearchParams(window.location.search).has(
   "indicator",
 );
@@ -388,8 +396,24 @@ function smoothLevels(levels: number[]) {
   });
 }
 
-function makeCustomModelId(path: string) {
-  return `custom:${path.toLowerCase().replace(/\\/g, "/")}`;
+function makeCustomModelId(
+  path: string,
+  modelKind = inferModelKindFromPath(path),
+) {
+  return `custom:${modelKind}:${normalizeStoredPath(path)}`;
+}
+
+function normalizeStoredPath(path: string) {
+  return path.toLowerCase().replace(/\\/g, "/");
+}
+
+function inferModelKindFromPath(path: string): TranscriptionModelKind {
+  return path.trim().toLowerCase().endsWith(".bin") ? "whisper" : "parakeet";
+}
+
+function deriveDisplayNameFromPath(path: string) {
+  const lastSegment = path.replace(/\\/g, "/").split("/").pop() || "Local model";
+  return lastSegment.replace(/\.[^.]+$/, "") || lastSegment;
 }
 
 function loadStoredModels() {
@@ -404,44 +428,198 @@ function loadStoredModels() {
       return [];
     }
 
-    return parsed.filter(
-      (entry) =>
-        typeof entry.id === "string" &&
-        typeof entry.name === "string" &&
-        typeof entry.path === "string",
-    );
+    return parsed
+      .filter(
+        (entry) =>
+          entry &&
+          typeof entry === "object" &&
+          typeof entry.name === "string" &&
+          typeof entry.path === "string",
+      )
+      .map((entry) => {
+        const modelKind =
+          entry.modelKind === "whisper" || entry.modelKind === "parakeet"
+            ? entry.modelKind
+            : inferModelKindFromPath(entry.path);
+        return {
+          id: makeCustomModelId(entry.path, modelKind),
+          name: entry.name,
+          path: entry.path,
+          modelKind,
+          compatible: Boolean(entry.compatible),
+          ready: Boolean(entry.ready),
+        } satisfies StoredModelEntry;
+      });
   } catch {
     return [];
   }
 }
 
-function loadSelectedModelId() {
-  try {
-    return window.localStorage.getItem(SELECTED_MODEL_STORAGE_KEY) ?? "parakeet";
-  } catch {
-    return "parakeet";
+function describeWhisperModel(name: string) {
+  const normalized = name.toLowerCase();
+  const englishOnly =
+    normalized.includes(".en") ||
+    normalized.includes("-en") ||
+    normalized.includes("_en") ||
+    normalized.includes("english");
+
+  if (normalized.includes("tiny")) {
+    return {
+      languages: englishOnly ? "English" : "Multilingual",
+      speed: "Fastest",
+      quality: "Basic",
+      footprint: "Tiny",
+    };
   }
+
+  if (normalized.includes("base")) {
+    return {
+      languages: englishOnly ? "English" : "Multilingual",
+      speed: "Fast",
+      quality: "Good",
+      footprint: "Base",
+    };
+  }
+
+  if (normalized.includes("small")) {
+    return {
+      languages: englishOnly ? "English" : "Multilingual",
+      speed: "Medium",
+      quality: "Balanced",
+      footprint: "Small",
+    };
+  }
+
+  if (normalized.includes("medium")) {
+    return {
+      languages: englishOnly ? "English" : "Multilingual",
+      speed: "Medium",
+      quality: "High",
+      footprint: "Medium",
+    };
+  }
+
+  if (normalized.includes("turbo")) {
+    return {
+      languages: "Multilingual",
+      speed: "Fast",
+      quality: "High",
+      footprint: "Turbo",
+    };
+  }
+
+  if (normalized.includes("large")) {
+    return {
+      languages: "Multilingual",
+      speed: "Slow",
+      quality: "Best",
+      footprint: "Large",
+    };
+  }
+
+  return {
+    languages: englishOnly ? "English" : "Multilingual",
+    speed: "Medium",
+    quality: "Good",
+    footprint: "Local file",
+  };
+}
+
+function describeStoredModel(entry: StoredModelEntry) {
+  if (entry.modelKind === "whisper") {
+    const whisper = describeWhisperModel(entry.name);
+    return {
+      family: "Whisper",
+      languages: whisper.languages,
+      speed: whisper.speed,
+      quality: whisper.quality,
+      footprint: whisper.footprint,
+      summary: entry.ready
+        ? "Rust-native whisper.cpp runtime."
+        : "Whisper file saved locally.",
+      note: entry.ready
+        ? "Uses a local Whisper .bin model."
+        : "Provide a supported Whisper .bin file to use it.",
+      tags: [
+        "local",
+        "whisper",
+        whisper.languages === "Multilingual" ? "multilingual" : "english",
+        entry.ready ? "ready" : "incomplete",
+      ],
+    };
+  }
+
+  return {
+    family: "Parakeet",
+    languages: "English-first",
+    speed: "Fast",
+    quality: "High",
+    footprint: "Folder",
+    summary: entry.ready
+      ? "Rust-native Parakeet runtime."
+      : "Parakeet folder saved locally.",
+    note: entry.ready
+      ? "Uses a local Parakeet model folder."
+      : "Required Parakeet files are incomplete.",
+    tags: ["local", "parakeet", "english", entry.ready ? "ready" : "incomplete"],
+  };
+}
+
+function ensureSelectedModelEntry(
+  snapshot: Snapshot,
+  customModels: StoredModelEntry[],
+) {
+  if (
+    !snapshot.settings.selectedModelPath ||
+    snapshot.settings.selectedModelId === "parakeet" ||
+    customModels.some((entry) => entry.id === snapshot.settings.selectedModelId)
+  ) {
+    return customModels;
+  }
+
+  return [
+    {
+      id:
+        snapshot.settings.selectedModelId ||
+        makeCustomModelId(
+          snapshot.settings.selectedModelPath,
+          snapshot.settings.selectedModelKind,
+        ),
+      name: deriveDisplayNameFromPath(snapshot.settings.selectedModelPath),
+      path: snapshot.settings.selectedModelPath,
+      modelKind: snapshot.settings.selectedModelKind,
+      compatible: snapshot.modelStatus === "ready",
+      ready: snapshot.modelStatus === "ready",
+    },
+    ...customModels,
+  ];
 }
 
 function buildModelRows(
   snapshot: Snapshot,
   customModels: StoredModelEntry[],
 ): ModelRow[] {
+  const activeModelId = snapshot.settings.selectedModelId;
   const builtIns: ModelRow[] = [
     {
       id: "parakeet",
       name: "Parakeet TDT",
+      modelKind: "parakeet",
       family: "Parakeet",
       languages: "English-first",
       speed: "Fast",
       quality: "High",
       footprint: "0.6B int8",
-      state: snapshot.modelStatus === "ready" ? "ready" : "incomplete",
+      state: snapshot.parakeetModelStatus === "ready" ? "ready" : "incomplete",
       source: "built-in",
-      active: snapshot.modelStatus === "ready",
+      active:
+        activeModelId === "parakeet" &&
+        snapshot.settings.selectedModelKind === "parakeet" &&
+        !snapshot.settings.selectedModelPath,
+      selectable: snapshot.parakeetModelStatus === "ready",
       summary: "Current Rust-native runtime.",
       note:
-        snapshot.modelStatus === "ready"
+        snapshot.parakeetModelStatus === "ready"
           ? "Live now."
           : "Built-in runtime missing model files.",
       tags: ["ready", "local", "english"],
@@ -449,6 +627,7 @@ function buildModelRows(
     {
       id: "whisper-small",
       name: "Whisper Small",
+      modelKind: "whisper",
       family: "Whisper",
       languages: "Broad multilingual",
       speed: "Medium",
@@ -457,13 +636,15 @@ function buildModelRows(
       state: "planned",
       source: "planned",
       active: false,
+      selectable: false,
       summary: "Planned multilingual fallback.",
-      note: "Better fit for mixed-language dictation.",
+      note: "Add a local Whisper .bin model to use this family today.",
       tags: ["planned", "multilingual"],
     },
     {
       id: "whisper-large",
       name: "Whisper Large",
+      modelKind: "whisper",
       family: "Whisper",
       languages: "Broad multilingual",
       speed: "Slow",
@@ -472,32 +653,36 @@ function buildModelRows(
       state: "planned",
       source: "planned",
       active: false,
+      selectable: false,
       summary: "Highest-quality lane for later.",
-      note: "Best for accuracy, worst for latency.",
+      note: "Add a local Whisper .bin model to use this family today.",
       tags: ["planned", "multilingual"],
     },
   ];
 
-  const locals = customModels.map<ModelRow>((entry) => ({
-    id: entry.id,
-    name: entry.name,
-    family: "Local",
-    languages: "Unknown",
-    speed: "Unknown",
-    quality: "Unknown",
-    footprint: "Folder",
-    state: entry.ready ? "ready" : "incomplete",
-    source: "local",
-    active: false,
-    summary: entry.ready
-      ? "Parakeet-compatible folder detected."
-      : "Path saved locally.",
-    note: entry.ready
-      ? "Library only for now."
-      : "Required model files are incomplete.",
-    path: entry.path,
-    tags: ["local", entry.ready ? "ready" : "incomplete"],
-  }));
+  const locals = ensureSelectedModelEntry(snapshot, customModels).map<ModelRow>(
+    (entry) => {
+      const details = describeStoredModel(entry);
+      return {
+        id: entry.id,
+        name: entry.name,
+        modelKind: entry.modelKind,
+        family: details.family,
+        languages: details.languages,
+        speed: details.speed,
+        quality: details.quality,
+        footprint: details.footprint,
+        state: entry.ready ? "ready" : "incomplete",
+        source: "local",
+        active: activeModelId === entry.id,
+        selectable: entry.ready,
+        summary: details.summary,
+        note: details.note,
+        path: entry.path,
+        tags: details.tags,
+      };
+    },
+  );
 
   return [...builtIns, ...locals];
 }
@@ -1386,9 +1571,7 @@ function ControlApp({
   const [customModels, setCustomModels] = useState<StoredModelEntry[]>(() =>
     loadStoredModels(),
   );
-  const [selectedModelId, setSelectedModelId] = useState(() =>
-    loadSelectedModelId(),
-  );
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [buttonFeedback, setButtonFeedback] = useState<
     Record<string, ButtonFeedbackState>
   >({});
@@ -1445,13 +1628,25 @@ function ControlApp({
     );
   }, [customModels]);
 
-  useEffect(() => {
-    window.localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, selectedModelId);
-  }, [selectedModelId]);
-
   async function refreshSnapshot() {
     const current = await getSnapshot();
     setSnapshot(current);
+  }
+
+  async function sendSettingsUpdate(update: Record<string, unknown>) {
+    pendingSettingsSaves.current += 1;
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      await invoke("update_settings_command", { update });
+    } catch (error) {
+      await refreshSnapshot();
+      throw error;
+    } finally {
+      pendingSettingsSaves.current = Math.max(0, pendingSettingsSaves.current - 1);
+      setSaving(pendingSettingsSaves.current > 0);
+    }
   }
 
   function clearButtonFeedback(actionId: string) {
@@ -1500,23 +1695,14 @@ function ControlApp({
     const nextDraft = { ...draftRef.current, ...update };
     setDraft(nextDraft);
     draftRef.current = nextDraft;
-    pendingSettingsSaves.current += 1;
-    setSaving(true);
-    setMessage(null);
 
     try {
-      await invoke("update_settings_command", {
-        update: buildSettingsUpdate(nextDraft),
-      });
+      await sendSettingsUpdate(buildSettingsUpdate(nextDraft));
     } catch (error) {
-      await refreshSnapshot();
       setMessage({
         kind: "error",
         text: formatInvokeError(error),
       });
-    } finally {
-      pendingSettingsSaves.current = Math.max(0, pendingSettingsSaves.current - 1);
-      setSaving(pendingSettingsSaves.current > 0);
     }
   }
 
@@ -1583,7 +1769,7 @@ function ControlApp({
     if (!trimmed) {
       setMessage({
         kind: "error",
-        text: "Enter a local model folder path.",
+        text: "Enter a local model file or folder path.",
       });
       return;
     }
@@ -1594,9 +1780,10 @@ function ControlApp({
     try {
       const inspected = await inspectModelPath(trimmed);
       const entry: StoredModelEntry = {
-        id: makeCustomModelId(inspected.path),
+        id: makeCustomModelId(inspected.path, inspected.modelKind),
         name: inspected.name,
         path: inspected.path,
+        modelKind: inspected.modelKind,
         compatible: inspected.compatible,
         ready: inspected.ready,
       };
@@ -1608,6 +1795,13 @@ function ControlApp({
       setSelectedModelId(entry.id);
       setCustomModelPath("");
       setModelFilter("local");
+      if (entry.ready) {
+        await sendSettingsUpdate({
+          selectedModelId: entry.id,
+          selectedModelKind: entry.modelKind,
+          selectedModelPath: entry.path,
+        });
+      }
       finishButtonFeedback("add-model");
     } catch (error) {
       clearButtonFeedback("add-model");
@@ -1618,12 +1812,49 @@ function ControlApp({
     }
   }
 
-  function removeCustomModel(id: string) {
+  async function removeCustomModel(id: string) {
     const actionId = `remove-model:${id}`;
-    setCustomModels((current) => current.filter((model) => model.id !== id));
-    setSelectedModelId("parakeet");
+    setButtonFeedbackState(actionId, "working");
     setMessage(null);
-    finishButtonFeedback(actionId);
+    setCustomModels((current) => current.filter((model) => model.id !== id));
+    setSelectedModelId((current) => (current === id ? "parakeet" : current));
+
+    try {
+      if (snapshot?.settings.selectedModelId === id) {
+        await sendSettingsUpdate({
+          selectedModelId: "parakeet",
+          selectedModelKind: "parakeet",
+          selectedModelPath: null,
+        });
+      }
+      finishButtonFeedback(actionId);
+    } catch (error) {
+      clearButtonFeedback(actionId);
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
+  async function selectModel(row: ModelRow) {
+    setSelectedModelId(row.id);
+    if (!row.selectable || row.active) {
+      return;
+    }
+
+    try {
+      await sendSettingsUpdate({
+        selectedModelId: row.id,
+        selectedModelKind: row.modelKind,
+        selectedModelPath: row.source === "built-in" ? null : row.path ?? null,
+      });
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
   }
 
   async function addCleanupTerm(term = cleanupInput) {
@@ -1686,18 +1917,27 @@ function ControlApp({
   }
 
   const modelRows = snapshot ? buildModelRows(snapshot, customModels) : [];
-  const selectedRowExists = modelRows.some((row) => row.id === selectedModelId);
+  const activeModelId = snapshot?.settings.selectedModelId ?? "parakeet";
+  const selectedRowExists = selectedModelId
+    ? modelRows.some((row) => row.id === selectedModelId)
+    : false;
   const resolvedSelectedModelId = selectedRowExists
     ? selectedModelId
-    : modelRows[0]?.id ?? "parakeet";
+    : modelRows.some((row) => row.id === activeModelId)
+      ? activeModelId
+      : modelRows[0]?.id ?? "parakeet";
   const selectedModel =
     modelRows.find((row) => row.id === resolvedSelectedModelId) ?? modelRows[0];
+  const activeModel =
+    modelRows.find((row) => row.active) ??
+    modelRows.find((row) => row.id === activeModelId) ??
+    null;
 
   useEffect(() => {
     if (!selectedRowExists && modelRows[0]) {
-      setSelectedModelId(modelRows[0].id);
+      setSelectedModelId(activeModelId || modelRows[0].id);
     }
-  }, [modelRows, selectedRowExists]);
+  }, [activeModelId, modelRows, selectedRowExists]);
 
   if (!snapshot) {
     return <main className="loading-shell">Loading...</main>;
@@ -1775,7 +2015,11 @@ function ControlApp({
 
           <div className="header-actions">
             <StatusChip
-              label={snapshot.modelStatus === "ready" ? "Model ready" : "Model missing"}
+              label={
+                snapshot.modelStatus === "ready"
+                  ? `${activeModel?.family ?? "Model"} ready`
+                  : `${activeModel?.family ?? "Model"} missing`
+              }
               tone={snapshot.modelStatus === "ready" ? "success" : "warning"}
               icon={<CheckIcon className="chip-icon-svg" />}
             />
@@ -1801,7 +2045,11 @@ function ControlApp({
                 <StatTile
                   icon={<CheckIcon className="tile-icon-svg" />}
                   label="Engine"
-                  value={snapshot.modelStatus === "ready" ? "Parakeet ready" : "Missing"}
+                  value={
+                    activeModel
+                      ? `${activeModel.name}${snapshot.modelStatus === "ready" ? "" : " (missing)"}`
+                      : "No model"
+                  }
                   tone={snapshot.modelStatus === "ready" ? "success" : "warning"}
                 />
                 <StatTile
@@ -1931,7 +2179,9 @@ function ControlApp({
                           ]
                             .filter(Boolean)
                             .join(" ")}
-                          onClick={() => setSelectedModelId(row.id)}
+                          onClick={() => {
+                            void selectModel(row);
+                          }}
                         >
                           <td>
                             <span
@@ -1976,7 +2226,9 @@ function ControlApp({
                               ? "Active"
                               : selectedModel.source === "planned"
                                 ? "Planned"
-                                : "Library"
+                                : selectedModel.selectable
+                                  ? "Ready"
+                                  : "Library"
                           }
                           tone={
                             selectedModel.active
@@ -2016,6 +2268,19 @@ function ControlApp({
                       ) : null}
                     </div>
 
+                    {selectedModel.selectable && !selectedModel.active ? (
+                      <div className="inline-actions">
+                        <button
+                          className="secondary"
+                          onClick={() => {
+                            void selectModel(selectedModel);
+                          }}
+                        >
+                          Use model
+                        </button>
+                      </div>
+                    ) : null}
+
                     {selectedModel.source === "local" ? (
                       <div className="inline-actions">
                         <ActionButton
@@ -2024,7 +2289,9 @@ function ControlApp({
                           idleLabel="Remove"
                           doneLabel="Removed"
                           doneIcon={<CheckIcon className="small-icon" />}
-                          onClick={() => removeCustomModel(selectedModel.id)}
+                          onClick={() => {
+                            void removeCustomModel(selectedModel.id);
+                          }}
                         />
                       </div>
                     ) : null}
@@ -2037,14 +2304,17 @@ function ControlApp({
                       </div>
                     </div>
                     <div className="field">
-                      <span>Folder path</span>
+                      <span>File or folder path</span>
                       <input
                         value={customModelPath}
                         onChange={(event) =>
                           setCustomModelPath(event.currentTarget.value)
                         }
-                        placeholder="C:\\models\\parakeet"
+                        placeholder="C:\\models\\whisper-small.bin"
                       />
+                    </div>
+                    <div className="mini-meta-row">
+                      <span>Parakeet folders or Whisper .bin files</span>
                     </div>
                     <div className="inline-actions">
                       <ActionButton

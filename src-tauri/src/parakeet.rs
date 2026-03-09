@@ -35,6 +35,12 @@ pub fn model_ready_at(root: &Path) -> bool {
         .all(|filename| model_dir.join(filename).exists())
 }
 
+pub fn model_ready_in_dir(model_dir: &Path) -> bool {
+    REQUIRED_MODEL_FILES
+        .iter()
+        .all(|filename| model_dir.join(filename).exists())
+}
+
 #[derive(Debug)]
 pub struct ParakeetTdt {
     preprocessor: Option<Session>,
@@ -48,7 +54,11 @@ pub struct ParakeetTdt {
 impl ParakeetTdt {
     pub fn load(model_root: &Path) -> Result<Self> {
         let model_dir = model_root.join(MODEL_ID);
-        if !model_ready_at(model_root) {
+        Self::load_from_dir(&model_dir)
+    }
+
+    pub fn load_from_dir(model_dir: &Path) -> Result<Self> {
+        if !model_ready_in_dir(model_dir) {
             bail!("Parakeet model is missing at {}", model_dir.display());
         }
 

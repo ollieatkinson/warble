@@ -1,5 +1,6 @@
 pub mod parakeet;
 mod platform;
+pub mod whisper;
 
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
@@ -8,7 +9,7 @@ use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig, 
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -74,6 +75,19 @@ enum ModelStatus {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+enum TranscriptionModelKind {
+    Parakeet,
+    Whisper,
+}
+
+impl Default for TranscriptionModelKind {
+    fn default() -> Self {
+        Self::Parakeet
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
 enum OverlayPosition {
     BottomCenter,
     BottomLeft,
@@ -108,6 +122,9 @@ struct Settings {
     toggle_shortcut: String,
     selected_source_id: Option<String>,
     auto_paste: bool,
+    selected_model_id: String,
+    selected_model_kind: TranscriptionModelKind,
+    selected_model_path: Option<String>,
     cleanup_enabled: bool,
     cleanup_terms: Vec<String>,
     overlay_position: OverlayPosition,
@@ -122,6 +139,9 @@ impl Default for Settings {
             toggle_shortcut: DEFAULT_TOGGLE_SHORTCUT.to_string(),
             selected_source_id: None,
             auto_paste: true,
+            selected_model_id: "parakeet".to_string(),
+            selected_model_kind: TranscriptionModelKind::Parakeet,
+            selected_model_path: None,
             cleanup_enabled: true,
             cleanup_terms: default_cleanup_terms(),
             overlay_position: OverlayPosition::BottomCenter,
@@ -157,6 +177,9 @@ struct SettingsUpdate {
     toggle_shortcut: Option<String>,
     selected_source_id: Option<String>,
     auto_paste: Option<bool>,
+    selected_model_id: Option<String>,
+    selected_model_kind: Option<TranscriptionModelKind>,
+    selected_model_path: Option<Option<String>>,
     cleanup_enabled: Option<bool>,
     cleanup_terms: Option<Vec<String>>,
     overlay_position: Option<OverlayPosition>,
@@ -192,6 +215,7 @@ struct Snapshot {
     sources: Vec<SourceInfo>,
     history: Vec<HistoryItem>,
     model_status: ModelStatus,
+    parakeet_model_status: ModelStatus,
     shortcuts_active: bool,
     shortcut_message: String,
     status_message: String,
@@ -204,6 +228,7 @@ struct Snapshot {
 struct ModelPathInspection {
     name: String,
     path: String,
+    model_kind: TranscriptionModelKind,
     compatible: bool,
     ready: bool,
 }
@@ -250,6 +275,7 @@ struct AppCore {
     shortcut_message: String,
     error_message: Option<String>,
     model_status: ModelStatus,
+    parakeet_model_status: ModelStatus,
     overlay: OverlaySnapshot,
 }
 
@@ -265,6 +291,7 @@ impl AppCore {
             shortcut_message: "Checking global shortcuts".to_string(),
             error_message: None,
             model_status: ModelStatus::Missing,
+            parakeet_model_status: ModelStatus::Missing,
             overlay: OverlaySnapshot {
                 visible: false,
                 title: String::new(),
@@ -295,12 +322,23 @@ struct RecorderHandle {
 }
 
 #[derive(Clone, Default)]
-struct TranscriberHandle(Arc<Mutex<Option<parakeet::ParakeetTdt>>>);
+struct TranscriberHandle(Arc<Mutex<TranscriberCache>>);
 
 impl TranscriberHandle {
-    fn lock(&self) -> MutexGuard<'_, Option<parakeet::ParakeetTdt>> {
+    fn lock(&self) -> MutexGuard<'_, TranscriberCache> {
         self.0.lock().expect("transcriber state poisoned")
     }
+}
+
+#[derive(Default)]
+struct TranscriberCache {
+    selected_key: Option<String>,
+    engine: Option<TranscriberEngine>,
+}
+
+enum TranscriberEngine {
+    Parakeet(parakeet::ParakeetTdt),
+    Whisper(whisper::WhisperTranscriber),
 }
 
 #[derive(Clone, Default)]
@@ -368,12 +406,71 @@ fn model_root_dir(app: &AppHandle) -> Result<PathBuf> {
     Ok(dir)
 }
 
-fn detect_model_status(app: &AppHandle) -> ModelStatus {
+fn path_if_not_empty(value: Option<String>) -> Option<String> {
+    value.and_then(|path| {
+        let trimmed = path.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    })
+}
+
+fn parakeet_status_for_path(path: &Path) -> ModelStatus {
+    if parakeet::model_ready_in_dir(path) || parakeet::model_ready_at(path) {
+        ModelStatus::Ready
+    } else {
+        ModelStatus::Missing
+    }
+}
+
+fn selected_model_cache_key(settings: &Settings) -> String {
+    match settings.selected_model_kind {
+        TranscriptionModelKind::Parakeet => format!(
+            "parakeet:{}",
+            settings
+                .selected_model_path
+                .as_deref()
+                .unwrap_or("builtin")
+                .to_ascii_lowercase()
+        ),
+        TranscriptionModelKind::Whisper => format!(
+            "whisper:{}",
+            settings
+                .selected_model_path
+                .as_deref()
+                .unwrap_or("missing")
+                .to_ascii_lowercase()
+        ),
+    }
+}
+
+fn built_in_parakeet_status(app: &AppHandle) -> ModelStatus {
     model_root_dir(app)
         .ok()
         .filter(|root| parakeet::model_ready_at(root))
         .map(|_| ModelStatus::Ready)
         .unwrap_or(ModelStatus::Missing)
+}
+
+fn current_model_status(app: &AppHandle, settings: &Settings) -> ModelStatus {
+    match settings.selected_model_kind {
+        TranscriptionModelKind::Parakeet => {
+            if let Some(path) = settings.selected_model_path.as_ref() {
+                parakeet_status_for_path(Path::new(path))
+            } else {
+                built_in_parakeet_status(app)
+            }
+        }
+        TranscriptionModelKind::Whisper => settings
+            .selected_model_path
+            .as_ref()
+            .map(PathBuf::from)
+            .filter(|path| whisper::model_ready_at(path))
+            .map(|_| ModelStatus::Ready)
+            .unwrap_or(ModelStatus::Missing),
+    }
 }
 
 fn emit_snapshot(app: &AppHandle, shared: &SharedState) {
@@ -385,6 +482,7 @@ fn emit_snapshot(app: &AppHandle, shared: &SharedState) {
             sources: core.sources.clone(),
             history: core.history.clone(),
             model_status: core.model_status.clone(),
+            parakeet_model_status: core.parakeet_model_status.clone(),
             shortcuts_active: core.shortcuts_active,
             shortcut_message: core.shortcut_message.clone(),
             status_message: core.status_message.clone(),
@@ -630,18 +728,45 @@ fn finalize_recording(session: RecordingSession) -> Result<Option<CompletedRecor
 fn transcribe_audio(
     app: &AppHandle,
     transcriber: &TranscriberHandle,
+    settings: &Settings,
     audio: &[f32],
 ) -> Result<String> {
+    let selected_key = selected_model_cache_key(settings);
     let mut guard = transcriber.lock();
-    if guard.is_none() {
-        let model_root = model_root_dir(app)?;
-        *guard = Some(parakeet::ParakeetTdt::load(&model_root)?);
+    if guard.selected_key.as_ref() != Some(&selected_key) {
+        let engine = match settings.selected_model_kind {
+            TranscriptionModelKind::Parakeet => {
+                let model = if let Some(path) = settings.selected_model_path.as_ref() {
+                    let path = PathBuf::from(path);
+                    if parakeet::model_ready_in_dir(&path) {
+                        parakeet::ParakeetTdt::load_from_dir(&path)?
+                    } else {
+                        parakeet::ParakeetTdt::load(&path)?
+                    }
+                } else {
+                    let model_root = model_root_dir(app)?;
+                    parakeet::ParakeetTdt::load(&model_root)?
+                };
+                TranscriberEngine::Parakeet(model)
+            }
+            TranscriptionModelKind::Whisper => {
+                let model_path = settings
+                    .selected_model_path
+                    .as_ref()
+                    .map(PathBuf::from)
+                    .ok_or_else(|| anyhow!("Whisper model path is not configured"))?;
+                TranscriberEngine::Whisper(whisper::WhisperTranscriber::load(&model_path)?)
+            }
+        };
+
+        guard.engine = Some(engine);
+        guard.selected_key = Some(selected_key);
     }
 
-    guard
-        .as_mut()
-        .expect("transcriber initialized")
-        .transcribe_audio(audio)
+    match guard.engine.as_mut().expect("transcriber initialized") {
+        TranscriberEngine::Parakeet(model) => model.transcribe_audio(audio),
+        TranscriberEngine::Whisper(model) => model.transcribe_audio(audio),
+    }
 }
 
 fn default_cleanup_terms() -> Vec<String> {
@@ -1116,14 +1241,15 @@ fn spawn_live_preview(
             };
 
             let preview_audio = parakeet::resample_to_16khz(&chunk, preview_sample_rate);
-            let (cleanup_enabled, cleanup_terms) = {
+            let (settings, cleanup_enabled, cleanup_terms) = {
                 let core = shared.lock();
                 (
+                    core.settings.clone(),
                     core.settings.cleanup_enabled,
                     core.settings.cleanup_terms.clone(),
                 )
             };
-            let preview = match transcribe_audio(&app, &transcriber, &preview_audio) {
+            let preview = match transcribe_audio(&app, &transcriber, &settings, &preview_audio) {
                 Ok(text) => stabilizer.observe(&live_preview_text(
                     &text,
                     cleanup_enabled,
@@ -1226,14 +1352,14 @@ fn complete_transcription(
     completed: CompletedRecording,
 ) {
     std::thread::spawn(move || {
-        let result = transcribe_audio(&app, &transcriber, &completed.samples);
+        let settings = {
+            let core = shared.lock();
+            core.settings.clone()
+        };
+        let result = transcribe_audio(&app, &transcriber, &settings, &completed.samples);
 
         match result {
             Ok(text) => {
-                let settings = {
-                    let core = shared.lock();
-                    core.settings.clone()
-                };
                 let text = cleanup_transcript_text(
                     text.trim(),
                     settings.cleanup_enabled,
@@ -1244,7 +1370,8 @@ fn complete_transcription(
                     core.phase = AppPhase::Idle;
                     core.status_message = "Nothing intelligible was detected".to_string();
                     core.error_message = None;
-                    core.model_status = detect_model_status(&app);
+                    core.model_status = current_model_status(&app, &core.settings);
+                    core.parakeet_model_status = built_in_parakeet_status(&app);
                     core.overlay.visible = false;
                     core.overlay.detail.clear();
                     core.overlay.levels = default_overlay_levels();
@@ -1284,7 +1411,8 @@ fn complete_transcription(
                         "Transcribed in Rust".to_string()
                     };
                     core.error_message = None;
-                    core.model_status = detect_model_status(&app);
+                    core.model_status = current_model_status(&app, &core.settings);
+                    core.parakeet_model_status = built_in_parakeet_status(&app);
                     core.overlay.visible = false;
                     core.overlay.detail.clear();
                     core.overlay.levels = default_overlay_levels();
@@ -1297,7 +1425,8 @@ fn complete_transcription(
                 core.phase = AppPhase::Error;
                 core.status_message = "Transcription failed".to_string();
                 core.error_message = Some(error.to_string());
-                core.model_status = detect_model_status(&app);
+                core.model_status = current_model_status(&app, &core.settings);
+                core.parakeet_model_status = built_in_parakeet_status(&app);
                 core.overlay.visible = false;
                 core.overlay.detail.clear();
                 core.overlay.levels = default_overlay_levels();
@@ -1387,7 +1516,8 @@ fn refresh_sources(app: &AppHandle, shared: &SharedState) {
     {
         let mut core = shared.lock();
         core.sources = enumerate_sources();
-        core.model_status = detect_model_status(app);
+        core.model_status = current_model_status(app, &core.settings);
+        core.parakeet_model_status = built_in_parakeet_status(app);
     }
     emit_snapshot(app, shared);
 }
@@ -1487,6 +1617,7 @@ fn get_snapshot(app: AppHandle, shared: tauri::State<'_, SharedState>) -> Result
         sources: core.sources.clone(),
         history: core.history.clone(),
         model_status: core.model_status.clone(),
+        parakeet_model_status: core.parakeet_model_status.clone(),
         shortcuts_active: core.shortcuts_active,
         shortcut_message: core.shortcut_message.clone(),
         status_message: core.status_message.clone(),
@@ -1504,26 +1635,33 @@ fn refresh_devices(app: AppHandle, shared: tauri::State<'_, SharedState>) {
 fn inspect_model_path(path: String) -> Result<ModelPathInspection, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
-        return Err("Enter a local model folder path.".to_string());
+        return Err("Enter a local model file or folder path.".to_string());
     }
 
     let candidate = PathBuf::from(trimmed);
     let canonical = candidate
         .canonicalize()
-        .map_err(|_| format!("Folder not found: {trimmed}"))?;
+        .map_err(|_| format!("Path not found: {trimmed}"))?;
 
-    if !canonical.is_dir() {
-        return Err("That path is not a folder.".to_string());
+    if canonical.is_file() {
+        let ready = whisper::model_ready_at(&canonical);
+        let name = whisper::display_name_for(&canonical);
+        return Ok(ModelPathInspection {
+            name,
+            path: canonical.display().to_string(),
+            model_kind: TranscriptionModelKind::Whisper,
+            compatible: ready,
+            ready,
+        });
     }
 
-    let direct_ready = parakeet::REQUIRED_MODEL_FILES
-        .iter()
-        .all(|filename| canonical.join(filename).exists());
+    if !canonical.is_dir() {
+        return Err("That path is not a file or folder.".to_string());
+    }
+
+    let direct_ready = parakeet::model_ready_in_dir(&canonical);
     let nested_dir = canonical.join(parakeet::MODEL_ID);
-    let nested_ready = nested_dir.is_dir()
-        && parakeet::REQUIRED_MODEL_FILES
-            .iter()
-            .all(|filename| nested_dir.join(filename).exists());
+    let nested_ready = nested_dir.is_dir() && parakeet::model_ready_in_dir(&nested_dir);
     let resolved_dir = if nested_ready { nested_dir } else { canonical.clone() };
     let name = resolved_dir
         .file_name()
@@ -1536,12 +1674,18 @@ fn inspect_model_path(path: String) -> Result<ModelPathInspection, String> {
     Ok(ModelPathInspection {
         name,
         path: canonical.display().to_string(),
+        model_kind: TranscriptionModelKind::Parakeet,
         compatible: ready,
         ready,
     })
 }
 
 fn persist_and_emit_settings_change(app: &AppHandle, shared: &SharedState) -> Result<(), String> {
+    {
+        let mut core = shared.lock();
+        core.model_status = current_model_status(app, &core.settings);
+        core.parakeet_model_status = built_in_parakeet_status(app);
+    }
     save_persisted_state(app, shared).map_err(|error| error.to_string())?;
     update_indicator_window(app, shared);
     emit_snapshot(app, shared);
@@ -1581,6 +1725,15 @@ fn update_settings_command(
         if let Some(auto_paste) = update.auto_paste {
             core.settings.auto_paste = auto_paste;
         }
+        if let Some(selected_model_id) = update.selected_model_id {
+            core.settings.selected_model_id = selected_model_id;
+        }
+        if let Some(selected_model_kind) = update.selected_model_kind {
+            core.settings.selected_model_kind = selected_model_kind;
+        }
+        if let Some(selected_model_path) = update.selected_model_path {
+            core.settings.selected_model_path = path_if_not_empty(selected_model_path);
+        }
         if let Some(cleanup_enabled) = update.cleanup_enabled {
             core.settings.cleanup_enabled = cleanup_enabled;
         }
@@ -1614,7 +1767,6 @@ fn update_settings_command(
         return Err(error.to_string());
     }
     persist_and_emit_settings_change(&app, &shared)?;
-    refresh_sources(&app, &shared);
     Ok(())
 }
 
@@ -1730,7 +1882,8 @@ pub fn run() {
                 core.settings = persisted.settings;
                 core.history = persisted.history;
                 core.sources = enumerate_sources();
-                core.model_status = detect_model_status(app.handle());
+                core.model_status = current_model_status(app.handle(), &core.settings);
+                core.parakeet_model_status = built_in_parakeet_status(app.handle());
             }
 
             create_tray_icon(app.handle())?;
