@@ -11,6 +11,7 @@ type OverlayPosition =
   | "bottom-left"
   | "bottom-right"
   | "caret";
+type OverlayAnimationStyle = "spectrum" | "waveform";
 type ShortcutFieldName = "holdShortcut" | "toggleShortcut";
 type SectionId =
   | "overview"
@@ -28,6 +29,7 @@ type Settings = {
   selectedSourceId: string | null;
   autoPaste: boolean;
   overlayPosition: OverlayPosition;
+  overlayAnimationStyle: OverlayAnimationStyle;
 };
 
 type SourceInfo = {
@@ -73,6 +75,7 @@ type SettingsDraft = {
   selectedSourceId: string;
   autoPaste: boolean;
   overlayPosition: OverlayPosition;
+  overlayAnimationStyle: OverlayAnimationStyle;
 };
 
 type FlashMessage = {
@@ -181,6 +184,16 @@ function formatOverlayPosition(position: OverlayPosition) {
     case "bottom-center":
     default:
       return "Bottom center";
+  }
+}
+
+function formatOverlayAnimationStyle(style: OverlayAnimationStyle) {
+  switch (style) {
+    case "waveform":
+      return "Waveform";
+    case "spectrum":
+    default:
+      return "Spectrum";
   }
 }
 
@@ -298,8 +311,41 @@ function hasUnsavedChanges(snapshot: Snapshot, draft: SettingsDraft) {
     snapshot.settings.toggleShortcut !== draft.toggleShortcut ||
     (snapshot.settings.selectedSourceId ?? "") !== draft.selectedSourceId ||
     snapshot.settings.autoPaste !== draft.autoPaste ||
-    snapshot.settings.overlayPosition !== draft.overlayPosition
+    snapshot.settings.overlayPosition !== draft.overlayPosition ||
+    snapshot.settings.overlayAnimationStyle !== draft.overlayAnimationStyle
   );
+}
+
+function resampleLevels(sourceLevels: number[], count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    if (count <= 1 || sourceLevels.length === 1) {
+      return sourceLevels[0] ?? 0.14;
+    }
+
+    const position = (index / (count - 1)) * (sourceLevels.length - 1);
+    const baseIndex = Math.floor(position);
+    const nextIndex = Math.min(sourceLevels.length - 1, baseIndex + 1);
+    const mix = position - baseIndex;
+    const baseLevel = sourceLevels[baseIndex] ?? 0.14;
+    const nextLevel = sourceLevels[nextIndex] ?? baseLevel;
+    return baseLevel + (nextLevel - baseLevel) * mix;
+  });
+}
+
+function smoothLevels(levels: number[]) {
+  return levels.map((level, index, values) => {
+    const previous = values[index - 1] ?? level;
+    const next = values[index + 1] ?? level;
+    const fartherPrevious = values[index - 2] ?? previous;
+    const fartherNext = values[index + 2] ?? next;
+    return (
+      fartherPrevious * 0.1 +
+      previous * 0.2 +
+      level * 0.4 +
+      next * 0.2 +
+      fartherNext * 0.1
+    );
+  });
 }
 
 function makeCustomModelId(path: string) {
@@ -665,11 +711,13 @@ function SignalBars({
   levels,
   count = 24,
   compact = false,
+  animationStyle = "spectrum",
 }: {
   phase: AppPhase;
   levels?: number[];
   count?: number;
   compact?: boolean;
+  animationStyle?: OverlayAnimationStyle;
 }) {
   const tone =
     phase === "transcribing"
@@ -678,32 +726,59 @@ function SignalBars({
         ? "live"
         : "idle";
   const sourceLevels = levels && levels.length > 0 ? levels : [0.14];
-  const renderedLevels = Array.from({ length: count }, (_, index) => {
-    if (count <= 1 || sourceLevels.length === 1) {
-      return sourceLevels[0] ?? 0.14;
-    }
-
-    const position = (index / (count - 1)) * (sourceLevels.length - 1);
-    const baseIndex = Math.floor(position);
-    const nextIndex = Math.min(sourceLevels.length - 1, baseIndex + 1);
-    const mix = position - baseIndex;
-    const baseLevel = sourceLevels[baseIndex] ?? 0.14;
-    const nextLevel = sourceLevels[nextIndex] ?? baseLevel;
-    return baseLevel + (nextLevel - baseLevel) * mix;
-  });
-  const smoothedLevels = renderedLevels.map((level, index, values) => {
-    const previous = values[index - 1] ?? level;
-    const next = values[index + 1] ?? level;
-    const fartherPrevious = values[index - 2] ?? previous;
-    const fartherNext = values[index + 2] ?? next;
-    return (
-      fartherPrevious * 0.1 +
-      previous * 0.2 +
-      level * 0.4 +
-      next * 0.2 +
-      fartherNext * 0.1
+  if (animationStyle === "spectrum") {
+    const width = compact ? 74 : 96;
+    const height = compact ? 28 : 36;
+    const barCount = compact ? 13 : 16;
+    const barWidth = compact ? 3.1 : 3.4;
+    const barGap = compact ? 2.2 : 2.45;
+    const innerWidth = barCount * barWidth + (barCount - 1) * barGap;
+    const xOffset = (width - innerWidth) / 2;
+    const centerY = height / 2;
+    const amplitude = compact ? 10.5 : 13.5;
+    const bars = smoothLevels(resampleLevels(sourceLevels, barCount)).map(
+      (level, index) => {
+        const eased = Math.pow(Math.max(0.08, level), 0.88);
+        const barHeight = 4 + eased * amplitude;
+        return {
+          x: xOffset + index * (barWidth + barGap),
+          y: centerY - barHeight / 2,
+          height: barHeight,
+          opacity: 0.4 + eased * 0.6,
+        };
+      },
     );
-  });
+
+    return (
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className={`signal-spectrum signal-spectrum-${tone} ${compact ? "signal-spectrum-compact" : ""}`}
+        aria-hidden="true"
+      >
+        <line
+          x1="0"
+          y1={centerY}
+          x2={width}
+          y2={centerY}
+          className="signal-spectrum-center"
+        />
+        {bars.map((bar, index) => (
+          <rect
+            key={`${index}-${bar.height.toFixed(2)}`}
+            x={bar.x}
+            y={bar.y}
+            width={barWidth}
+            height={bar.height}
+            rx={barWidth / 2}
+            className="signal-spectrum-bar"
+            style={{ opacity: bar.opacity }}
+          />
+        ))}
+      </svg>
+    );
+  }
+
+  const smoothedLevels = smoothLevels(resampleLevels(sourceLevels, count));
   const width = compact ? 82 : 114;
   const height = compact ? 28 : 36;
   const centerY = height / 2;
@@ -759,16 +834,23 @@ function TranscriptionPill({
   phase,
   title,
   levels,
+  animationStyle,
 }: {
   phase: AppPhase;
   title: string;
   levels: number[];
+  animationStyle: OverlayAnimationStyle;
 }) {
   return (
     <div className={`indicator-shell indicator-shell-${phase} indicator-shell-inline`}>
       <div className="indicator-mark">
         <div className="indicator-dot" />
-        <SignalBars phase={phase} levels={levels} compact />
+        <SignalBars
+          phase={phase}
+          levels={levels}
+          compact
+          animationStyle={animationStyle}
+        />
       </div>
       <div className="indicator-copy">
         <strong>{title}</strong>
@@ -788,6 +870,7 @@ function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
         phase={snapshot.phase}
         title={snapshot.overlay.title}
         levels={snapshot.overlay.levels}
+        animationStyle={snapshot.settings.overlayAnimationStyle}
       />
     </main>
   );
@@ -919,6 +1002,7 @@ function ControlApp({
     selectedSourceId: "",
     autoPaste: true,
     overlayPosition: "bottom-center",
+    overlayAnimationStyle: "spectrum",
   });
 
   useEffect(() => {
@@ -935,6 +1019,7 @@ function ControlApp({
       overlayPosition: normalizeEditableOverlayPosition(
         snapshot.settings.overlayPosition,
       ),
+      overlayAnimationStyle: snapshot.settings.overlayAnimationStyle,
     });
   }, [snapshot]);
 
@@ -970,6 +1055,7 @@ function ControlApp({
           selectedSourceId: draft.selectedSourceId || undefined,
           autoPaste: draft.autoPaste,
           overlayPosition: draft.overlayPosition,
+          overlayAnimationStyle: draft.overlayAnimationStyle,
         },
       });
       await refreshSnapshot();
@@ -1256,6 +1342,7 @@ function ControlApp({
                     phase={snapshot.phase}
                     title={snapshot.overlay.title || previewTitle}
                     levels={snapshot.overlay.levels}
+                    animationStyle={draft.overlayAnimationStyle}
                   />
                 </div>
 
@@ -1509,9 +1596,27 @@ function ControlApp({
                   </select>
                 </label>
 
+                <label className="field">
+                  <span>Animation</span>
+                  <select
+                    value={draft.overlayAnimationStyle}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        overlayAnimationStyle:
+                          event.currentTarget.value as OverlayAnimationStyle,
+                      }))
+                    }
+                  >
+                    <option value="spectrum">Spectrum</option>
+                    <option value="waveform">Waveform</option>
+                  </select>
+                </label>
+
                 <div className="mini-meta-row">
                   <span>{snapshot.shortcutMessage}</span>
                   <span>{formatOverlayPosition(draft.overlayPosition)}</span>
+                  <span>{formatOverlayAnimationStyle(draft.overlayAnimationStyle)}</span>
                   {snapshot.settings.overlayPosition === "caret" ? (
                     <span>Caret mode is hidden here until the settings UI is stable.</span>
                   ) : null}
@@ -1588,6 +1693,7 @@ function ControlApp({
                       phase={snapshot.phase}
                       title={snapshot.overlay.title || previewTitle}
                       levels={snapshot.overlay.levels}
+                      animationStyle={draft.overlayAnimationStyle}
                     />
                   </div>
                 </article>

@@ -81,6 +81,19 @@ impl Default for OverlayPosition {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum OverlayAnimationStyle {
+    Spectrum,
+    Waveform,
+}
+
+impl Default for OverlayAnimationStyle {
+    fn default() -> Self {
+        Self::Spectrum
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct Settings {
@@ -89,6 +102,7 @@ struct Settings {
     selected_source_id: Option<String>,
     auto_paste: bool,
     overlay_position: OverlayPosition,
+    overlay_animation_style: OverlayAnimationStyle,
 }
 
 impl Default for Settings {
@@ -99,6 +113,7 @@ impl Default for Settings {
             selected_source_id: None,
             auto_paste: true,
             overlay_position: OverlayPosition::BottomCenter,
+            overlay_animation_style: OverlayAnimationStyle::Spectrum,
         }
     }
 }
@@ -130,6 +145,7 @@ struct SettingsUpdate {
     selected_source_id: Option<String>,
     auto_paste: Option<bool>,
     overlay_position: Option<OverlayPosition>,
+    overlay_animation_style: Option<OverlayAnimationStyle>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1184,6 +1200,9 @@ fn update_settings_command(
         }
         if let Some(overlay_position) = update.overlay_position {
             core.settings.overlay_position = overlay_position;
+        }
+        if let Some(overlay_animation_style) = update.overlay_animation_style {
+            core.settings.overlay_animation_style = overlay_animation_style;
         }
     }
 
