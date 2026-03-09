@@ -149,6 +149,23 @@ const modelFilters: Array<{
   { id: "local", label: "Local" },
 ];
 
+const overlayPositionOptions: Array<{
+  id: EditableOverlayPosition;
+  label: string;
+}> = [
+  { id: "bottom-center", label: "Center" },
+  { id: "bottom-left", label: "Left" },
+  { id: "bottom-right", label: "Right" },
+];
+
+const overlayAnimationOptions: Array<{
+  id: OverlayAnimationStyle;
+  label: string;
+}> = [
+  { id: "spectrum", label: "Spectrum" },
+  { id: "waveform", label: "Waveform" },
+];
+
 async function getSnapshot() {
   return invoke<Snapshot>("get_snapshot");
 }
@@ -1605,40 +1622,47 @@ function ControlApp({
                   </div>
                 </label>
 
-                <label className="field">
+                <div className="field">
                   <span>HUD</span>
-                  <select
-                    value={draft.overlayPosition}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        overlayPosition:
-                          event.currentTarget.value as EditableOverlayPosition,
-                      }))
-                    }
-                  >
-                    <option value="bottom-center">Bottom center</option>
-                    <option value="bottom-left">Bottom left</option>
-                    <option value="bottom-right">Bottom right</option>
-                  </select>
-                </label>
+                  <div className="segmented">
+                    {overlayPositionOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`segment ${draft.overlayPosition === option.id ? "segment-active" : ""}`}
+                        onClick={() =>
+                          setDraft((current) => ({
+                            ...current,
+                            overlayPosition: option.id,
+                          }))
+                        }
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                <label className="field">
+                <div className="field">
                   <span>Animation</span>
-                  <select
-                    value={draft.overlayAnimationStyle}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        overlayAnimationStyle:
-                          event.currentTarget.value as OverlayAnimationStyle,
-                      }))
-                    }
-                  >
-                    <option value="spectrum">Spectrum</option>
-                    <option value="waveform">Waveform</option>
-                  </select>
-                </label>
+                  <div className="segmented">
+                    {overlayAnimationOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`segment ${draft.overlayAnimationStyle === option.id ? "segment-active" : ""}`}
+                        onClick={() =>
+                          setDraft((current) => ({
+                            ...current,
+                            overlayAnimationStyle: option.id,
+                          }))
+                        }
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 <label className="toggle-row toggle-row-card">
                   <input
