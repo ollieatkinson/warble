@@ -890,114 +890,71 @@ input::placeholder {
 
 .signal-spectrum {
   display: block;
-  width: 56px;
-  min-width: 56px;
-  height: 20px;
+  width: 72px;
+  min-width: 72px;
+  height: 18px;
   overflow: visible;
 }
 
 .signal-spectrum-compact {
-  width: 56px;
-  min-width: 56px;
-  height: 20px;
+  width: 72px;
+  min-width: 72px;
+  height: 18px;
 }
 
-.signal-spectrum-bar,
-.signal-spectrum-center {
+.signal-spectrum-glow,
+.signal-spectrum-dot,
+.signal-spectrum-stack {
   transition:
     opacity 120ms ease,
     fill 160ms ease,
-    stroke 160ms ease;
-}
-
-.signal-spectrum-center {
-  stroke-width: 1;
-  stroke-linecap: round;
-}
-
-.signal-spectrum-live .signal-spectrum-bar {
-  fill: #35df98;
-}
-
-.signal-spectrum-live .signal-spectrum-center {
-  stroke: rgba(53, 223, 152, 0.22);
-}
-
-.signal-spectrum-warm .signal-spectrum-bar {
-  fill: #f4be71;
-}
-
-.signal-spectrum-warm .signal-spectrum-center {
-  stroke: rgba(244, 190, 113, 0.2);
+    transform 120ms ease;
 }
 
 .signal-spectrum-idle {
   opacity: 0.7;
 }
 
-.signal-spectrum-idle .signal-spectrum-bar {
-  fill: #7f8ca1;
-}
-
-.signal-spectrum-idle .signal-spectrum-center {
-  stroke: rgba(127, 140, 161, 0.18);
+.signal-spectrum-glow {
+  filter: drop-shadow(0 0 4px rgba(125, 104, 255, 0.42));
 }
 
 .signal-radial {
   display: block;
-  width: 32px;
-  min-width: 32px;
-  height: 20px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
   overflow: visible;
 }
 
 .signal-radial-compact {
-  width: 32px;
-  min-width: 32px;
-  height: 20px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
 }
 
-.signal-radial-ring,
+.signal-radial-glow,
+.signal-radial-dot,
+.signal-radial-spike,
 .signal-radial-core {
-  fill: none;
   transition:
     opacity 120ms ease,
     stroke 160ms ease,
     fill 160ms ease,
-    r 90ms linear;
+    transform 120ms ease;
 }
 
-.signal-radial-ring {
-  stroke-width: 1.55;
+.signal-radial-glow {
+  filter: drop-shadow(0 0 4px rgba(168, 77, 255, 0.45));
+}
+
+.signal-radial-spike {
+  stroke-width: 1.25;
   stroke-linecap: round;
-}
-
-.signal-radial-live .signal-radial-ring {
-  stroke: #35df98;
-}
-
-.signal-radial-live .signal-radial-core {
-  fill: #35df98;
-}
-
-.signal-radial-warm .signal-radial-ring {
-  stroke: #f4be71;
-}
-
-.signal-radial-warm .signal-radial-core {
-  fill: #f4be71;
 }
 
 .signal-radial-idle {
   opacity: 0.72;
-}
-
-.signal-radial-idle .signal-radial-ring {
-  stroke: #7f8ca1;
-}
-
-.signal-radial-idle .signal-radial-core {
-  fill: #7f8ca1;
 }
 
 .signal-wave {

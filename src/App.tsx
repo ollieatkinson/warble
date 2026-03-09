@@ -379,6 +379,68 @@ function smoothLevels(levels: number[]) {
   });
 }
 
+function hexToRgb(hex: string) {
+  const normalized = hex.replace("#", "");
+  const value =
+    normalized.length === 3
+      ? normalized
+          .split("")
+          .map((part) => `${part}${part}`)
+          .join("")
+      : normalized;
+  const parsed = Number.parseInt(value, 16);
+
+  return {
+    r: (parsed >> 16) & 255,
+    g: (parsed >> 8) & 255,
+    b: parsed & 255,
+  };
+}
+
+function rgbaColor(hex: string, alpha: number) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function mixColor(left: string, right: string, amount: number) {
+  const start = hexToRgb(left);
+  const end = hexToRgb(right);
+  const mix = Math.max(0, Math.min(1, amount));
+
+  const channel = (from: number, to: number) =>
+    Math.round(from + (to - from) * mix);
+
+  return `rgb(${channel(start.r, end.r)}, ${channel(start.g, end.g)}, ${channel(start.b, end.b)})`;
+}
+
+function neonPaletteForTone(tone: "live" | "warm" | "idle") {
+  switch (tone) {
+    case "warm":
+      return ["#53b8ff", "#8f63ff", "#d94ef2", "#ff8a68"];
+    case "idle":
+      return ["#56a6d9", "#6e7fe7", "#8e66d4", "#b86db7"];
+    case "live":
+    default:
+      return ["#45cfff", "#5d87ff", "#965cff", "#ff47b8"];
+  }
+}
+
+function colorAt(stops: string[], progress: number) {
+  if (stops.length === 0) {
+    return "#ffffff";
+  }
+  if (stops.length === 1) {
+    return stops[0];
+  }
+
+  const clamped = Math.max(0, Math.min(1, progress));
+  const scaled = clamped * (stops.length - 1);
+  const index = Math.floor(scaled);
+  const nextIndex = Math.min(stops.length - 1, index + 1);
+  const mix = scaled - index;
+  return mixColor(stops[index], stops[nextIndex], mix);
+}
+
 function makeCustomModelId(path: string) {
   return `custom:${path.toLowerCase().replace(/\\/g, "/")}`;
 }
@@ -765,25 +827,30 @@ function SignalBars({
         ? "live"
         : "idle";
   const sourceLevels = levels && levels.length > 0 ? levels : [0.14];
+  const palette = neonPaletteForTone(tone);
+
   if (animationStyle === "spectrum") {
-    const width = compact ? 56 : 96;
-    const height = compact ? 20 : 36;
-    const barCount = compact ? 11 : 16;
-    const barWidth = compact ? 2.5 : 3.4;
-    const barGap = compact ? 1.8 : 2.45;
-    const innerWidth = barCount * barWidth + (barCount - 1) * barGap;
-    const xOffset = (width - innerWidth) / 2;
-    const centerY = height / 2;
-    const amplitude = compact ? 7.2 : 13.5;
-    const bars = smoothLevels(resampleLevels(sourceLevels, barCount)).map(
+    const width = compact ? 72 : 118;
+    const height = compact ? 18 : 28;
+    const centerY = compact ? 12.4 : 18.6;
+    const pointCount = compact ? 34 : 56;
+    const step = pointCount > 1 ? width / (pointCount - 1) : width;
+    const dotRadius = compact ? 0.72 : 0.95;
+    const stackWidth = compact ? 1.5 : 1.9;
+    const stackHeight = compact ? 2.1 : 2.7;
+    const stackGap = compact ? 1.3 : 1.8;
+    const maxStacks = compact ? 5 : 8;
+    const sampled = smoothLevels(resampleLevels(sourceLevels, pointCount)).map(
       (level, index) => {
-        const eased = Math.pow(Math.max(0.08, level), 0.88);
-        const barHeight = (compact ? 3 : 4) + eased * amplitude;
+        const progress = pointCount > 1 ? index / (pointCount - 1) : 0;
+        const lifted = Math.max(0, (level - 0.22) / 0.78);
+        const energy = Math.pow(lifted, 1.45);
         return {
-          x: xOffset + index * (barWidth + barGap),
-          y: centerY - barHeight / 2,
-          height: barHeight,
-          opacity: 0.4 + eased * 0.6,
+          x: index * step,
+          progress,
+          color: colorAt(palette, progress),
+          stackCount: Math.round(energy * maxStacks),
+          energy,
         };
       },
     );
@@ -794,37 +861,68 @@ function SignalBars({
         className={`signal-spectrum signal-spectrum-${tone} ${compact ? "signal-spectrum-compact" : ""}`}
         aria-hidden="true"
       >
-        <line
-          x1="0"
-          y1={centerY}
-          x2={width}
-          y2={centerY}
-          className="signal-spectrum-center"
-        />
-        {bars.map((bar, index) => (
-          <rect
-            key={`${index}-${bar.height.toFixed(2)}`}
-            x={bar.x}
-            y={bar.y}
-            width={barWidth}
-            height={bar.height}
-            rx={barWidth / 2}
-            className="signal-spectrum-bar"
-            style={{ opacity: bar.opacity }}
-          />
-        ))}
+        <g className="signal-spectrum-glow">
+          {sampled.map((point, index) => (
+            <circle
+              key={`base-${index}`}
+              cx={point.x}
+              cy={centerY}
+              r={dotRadius}
+              className="signal-spectrum-dot"
+              fill={rgbaColor(point.color, tone === "idle" ? 0.62 : 0.9)}
+            />
+          ))}
+          {sampled.map((point, index) =>
+            Array.from({ length: point.stackCount }, (_, stackIndex) => {
+              const y =
+                centerY -
+                (stackIndex + 1) * (stackHeight + stackGap) +
+                stackHeight / 2;
+              return (
+                <rect
+                  key={`stack-${index}-${stackIndex}`}
+                  x={point.x - stackWidth / 2}
+                  y={y - stackHeight / 2}
+                  width={stackWidth}
+                  height={stackHeight}
+                  rx={stackWidth / 2}
+                  className="signal-spectrum-stack"
+                  fill={point.color}
+                  opacity={0.38 + point.energy * 0.62}
+                />
+              );
+            }),
+          )}
+        </g>
       </svg>
     );
   }
 
   if (animationStyle === "radial") {
-    const width = compact ? 32 : 44;
-    const height = compact ? 20 : 28;
+    const width = compact ? 24 : 34;
+    const height = compact ? 24 : 34;
     const cx = width / 2;
     const cy = height / 2;
-    const ringLevels = smoothLevels(resampleLevels(sourceLevels, 3));
-    const baseRadii = compact ? [3.2, 6.1, 9] : [4, 7.8, 11.4];
-    const growth = compact ? 0.95 : 1.3;
+    const pointCount = compact ? 52 : 72;
+    const baseRadius = compact ? 8 : 12;
+    const dotRadius = compact ? 0.56 : 0.8;
+    const spikeStep = compact ? 1.35 : 1.9;
+    const spikeLength = compact ? 1.05 : 1.55;
+    const maxSpikes = compact ? 3 : 5;
+    const sampled = smoothLevels(resampleLevels(sourceLevels, pointCount)).map(
+      (level, index) => {
+        const progress = pointCount > 1 ? index / (pointCount - 1) : 0;
+        const angle = progress * Math.PI * 2 - Math.PI / 2;
+        const lifted = Math.max(0, (level - 0.22) / 0.78);
+        const energy = Math.pow(lifted, 1.4);
+        return {
+          angle,
+          color: colorAt(palette, progress),
+          spikeCount: Math.round(energy * maxSpikes),
+          energy,
+        };
+      },
+    );
 
     return (
       <svg
@@ -832,25 +930,52 @@ function SignalBars({
         className={`signal-radial signal-radial-${tone} ${compact ? "signal-radial-compact" : ""}`}
         aria-hidden="true"
       >
-        {ringLevels.map((level, index) => (
-          <circle
-            key={`${index}-${level.toFixed(3)}`}
-            cx={cx}
-            cy={cy}
-            r={baseRadii[index] + level * growth}
-            className="signal-radial-ring"
-            style={{
-              opacity: 0.24 + level * 0.76,
-              strokeDasharray:
-                index === 2 ? "16 8" : index === 1 ? "12 5" : undefined,
-            }}
-          />
-        ))}
+        <g className="signal-radial-glow">
+          {sampled.map((point, index) => {
+            const x = cx + Math.cos(point.angle) * baseRadius;
+            const y = cy + Math.sin(point.angle) * baseRadius;
+
+            return (
+              <circle
+                key={`ring-${index}`}
+                cx={x}
+                cy={y}
+                r={dotRadius}
+                className="signal-radial-dot"
+                fill={rgbaColor(point.color, tone === "idle" ? 0.62 : 0.9)}
+              />
+            );
+          })}
+          {sampled.map((point, index) =>
+            Array.from({ length: point.spikeCount }, (_, spikeIndex) => {
+              const innerRadius = baseRadius + 1.4 + spikeIndex * spikeStep;
+              const outerRadius = innerRadius + spikeLength;
+              const x1 = cx + Math.cos(point.angle) * innerRadius;
+              const y1 = cy + Math.sin(point.angle) * innerRadius;
+              const x2 = cx + Math.cos(point.angle) * outerRadius;
+              const y2 = cy + Math.sin(point.angle) * outerRadius;
+
+              return (
+                <line
+                  key={`spike-${index}-${spikeIndex}`}
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  className="signal-radial-spike"
+                  stroke={point.color}
+                  opacity={0.32 + point.energy * 0.68}
+                />
+              );
+            }),
+          )}
+        </g>
         <circle
           cx={cx}
           cy={cy}
-          r={compact ? 2.4 : 3.2}
+          r={compact ? 1.7 : 2.4}
           className="signal-radial-core"
+          fill={palette[2]}
         />
       </svg>
     );
