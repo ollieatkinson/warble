@@ -2495,6 +2495,26 @@ fn restore_default_cleanup_terms(
 }
 
 #[tauri::command]
+fn clear_error_message_command(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    {
+        let mut core = shared.lock();
+        core.error_message = None;
+        if matches!(core.phase, AppPhase::Error) {
+            core.phase = AppPhase::Idle;
+            if core.status_message == "Transcription failed" {
+                core.status_message = "Ready".to_string();
+            }
+        }
+    }
+
+    emit_snapshot(&app, &shared);
+    Ok(())
+}
+
+#[tauri::command]
 fn start_manual_recording(
     app: AppHandle,
     shared: tauri::State<'_, SharedState>,
@@ -2670,6 +2690,7 @@ pub fn run() {
             add_cleanup_term,
             remove_cleanup_term,
             restore_default_cleanup_terms,
+            clear_error_message_command,
             remove_history_item,
             start_manual_recording,
             stop_manual_recording,

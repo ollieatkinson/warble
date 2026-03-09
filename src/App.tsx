@@ -923,6 +923,15 @@ function CheckIcon(props: IconProps) {
   );
 }
 
+function CloseIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <path d="m7 7 10 10" />
+      <path d="m17 7-10 10" />
+    </GlyphBase>
+  );
+}
+
 function ChevronDownIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
@@ -1657,6 +1666,31 @@ function StatTile({
   );
 }
 
+function NoticeBanner({
+  kind,
+  text,
+  onDismiss,
+}: {
+  kind: "error";
+  text: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className={`notice notice-${kind}`}>
+      <div className="notice-copy">{text}</div>
+      <button
+        type="button"
+        className="notice-dismiss"
+        onClick={onDismiss}
+        aria-label="Dismiss message"
+        title="Dismiss"
+      >
+        <CloseIcon className="small-icon" />
+      </button>
+    </div>
+  );
+}
+
 function ControlApp({
   snapshot,
   setSnapshot,
@@ -1735,6 +1769,17 @@ function ControlApp({
     } catch (error) {
       await refreshSnapshot();
       throw error;
+    }
+  }
+
+  async function dismissSnapshotError() {
+    try {
+      await invoke("clear_error_message_command");
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
     }
   }
 
@@ -2199,10 +2244,20 @@ function ControlApp({
         </header>
 
         {message ? (
-          <div className={`notice notice-${message.kind}`}>{message.text}</div>
+          <NoticeBanner
+            kind={message.kind}
+            text={message.text}
+            onDismiss={() => setMessage(null)}
+          />
         ) : null}
         {!message && snapshot.errorMessage ? (
-          <div className="notice notice-error">{snapshot.errorMessage}</div>
+          <NoticeBanner
+            kind="error"
+            text={snapshot.errorMessage}
+            onDismiss={() => {
+              void dismissSnapshotError();
+            }}
+          />
         ) : null}
 
         <div className="content-stack">

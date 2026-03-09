@@ -389,6 +389,10 @@ input::placeholder {
 .notice {
   margin-bottom: 1rem;
   padding: 0.88rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
 }
 
 .notice-success {
@@ -399,6 +403,25 @@ input::placeholder {
 .notice-error {
   background: var(--danger-soft);
   color: #ffc2cc;
+}
+
+.notice-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.notice-dismiss {
+  flex: 0 0 auto;
+  width: 2rem;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  box-shadow: none;
 }
 
 .tile-grid {
