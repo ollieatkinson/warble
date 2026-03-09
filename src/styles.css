@@ -1367,6 +1367,11 @@ input::placeholder {
   background: rgba(7, 10, 15, 0.92);
 }
 
+.animation-choice-pill-radial {
+  gap: 0;
+  padding-inline: 0.3rem;
+}
+
 .animation-choice-preview-large .animation-choice-pill {
   padding: 0.34rem 0.48rem;
 }
@@ -1582,6 +1587,10 @@ input::placeholder {
   max-width: none;
 }
 
+.indicator-shell-radial.indicator-shell-compact {
+  padding: 0.52rem 0.74rem;
+}
+
 .indicator-shell-detail {
   padding-right: 0.82rem;
 }
@@ -1591,6 +1600,12 @@ input::placeholder {
   align-items: center;
   gap: 0.5rem;
   flex: 0 0 auto;
+}
+
+.indicator-mark-radial {
+  display: grid;
+  place-items: center;
+  gap: 0;
 }
 
 .indicator-signal {
@@ -1605,6 +1620,8 @@ input::placeholder {
 }
 
 .indicator-signal-radial {
+  display: grid;
+  place-items: center;
   justify-content: center;
 }
 
@@ -1760,15 +1777,15 @@ input::placeholder {
 }
 
 .signal-radial {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
 }
 
 .signal-radial-compact {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
 }
 
 .signal-radial-ring {

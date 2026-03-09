@@ -76,13 +76,13 @@ export function SignalBars({
   }
 
   if (animationStyle === "radial") {
-    const width = compact ? 26 : 34;
-    const height = compact ? 26 : 34;
+    const width = compact ? 30 : 40;
+    const height = compact ? 30 : 40;
     const cx = width / 2;
     const cy = height / 2;
     const pointCount = compact ? 18 : 24;
-    const baseRadius = compact ? 8.3 : 11.4;
-    const maxExtension = compact ? 3.2 : 4.6;
+    const baseRadius = compact ? 8.6 : 11.8;
+    const maxExtension = compact ? 3.1 : 4.9;
     const sampled = resampleLevels(sourceLevels, pointCount);
 
     return (
@@ -116,13 +116,13 @@ export function SignalBars({
         <circle
           cx={cx}
           cy={cy}
-          r={compact ? 5.8 : 7}
+          r={compact ? 6.2 : 7.4}
           className="signal-radial-core-halo"
         />
         <circle
           cx={cx}
           cy={cy}
-          r={compact ? 3.8 : 4.8}
+          r={compact ? 4.2 : 5.2}
           className="signal-radial-core"
         />
       </svg>
@@ -216,9 +216,10 @@ export function TranscriptionPill({
         `indicator-shell-${phase}`,
         "indicator-shell-inline",
         showLiveTranscription ? "indicator-shell-detail" : "indicator-shell-compact",
+        usesRadialCore ? "indicator-shell-radial" : "",
       ].join(" ")}
     >
-      <div className="indicator-mark">
+      <div className={["indicator-mark", usesRadialCore ? "indicator-mark-radial" : ""].filter(Boolean).join(" ")}>
         {usesRadialCore ? null : (
           <button
             type="button"
@@ -341,6 +342,8 @@ export function AnimationOptionPreview({
   style: OverlayAnimationStyle;
   large?: boolean;
 }) {
+  const showsStandaloneDot = style !== "radial";
+
   return (
     <div
       className={[
@@ -350,8 +353,8 @@ export function AnimationOptionPreview({
         .filter(Boolean)
         .join(" ")}
     >
-      <div className="animation-choice-pill">
-        <span className="animation-choice-dot" />
+      <div className={["animation-choice-pill", !showsStandaloneDot ? "animation-choice-pill-radial" : ""].filter(Boolean).join(" ")}>
+        {showsStandaloneDot ? <span className="animation-choice-dot" /> : null}
         <SignalBars
           phase="recording"
           levels={DEMO_LEVELS}
