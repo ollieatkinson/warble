@@ -439,7 +439,15 @@ fn condense_whitespace(text: &str) -> String {
 }
 
 fn normalize_live_preview_line(text: &str) -> String {
-    condense_whitespace(&text.replace('_', " "))
+    let normalized = text
+        .chars()
+        .map(|character| match character {
+            '_' | '▁' | 'Ġ' => ' ',
+            _ => character,
+        })
+        .collect::<String>();
+
+    condense_whitespace(&normalized)
 }
 
 fn cleanup_patterns_from_terms(terms: &[String]) -> Vec<Regex> {
@@ -2554,6 +2562,17 @@ mod tests {
             preview,
             "this is a test and we're just making sure streaming works"
         );
+    }
+
+    #[test]
+    fn live_preview_text_normalizes_sentencepiece_markers() {
+        let preview = live_preview_text(
+            "▁this▁is▁a▁live▁transcript▁and▁it▁wraps",
+            true,
+            &default_cleanup_terms(),
+        );
+
+        assert_eq!(preview, "this is a live transcript and it wraps");
     }
 
     #[test]

@@ -11,14 +11,14 @@ import type {
 
 function normalizeIndicatorCopy(value: string): string {
   return value
-    .replace(/_/g, " ")
+    .replace(/[_▁Ġ]+/g, " ")
     .split(/\n+/)
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean)
     .join("\n");
 }
 
-function balanceIndicatorCopy(value: string): string {
+function latestIndicatorCopy(value: string): string {
   const normalized = normalizeIndicatorCopy(value);
   if (!normalized) {
     return "";
@@ -28,30 +28,14 @@ function balanceIndicatorCopy(value: string): string {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+  const latestLine = lines.length > 0 ? lines[lines.length - 1] : "";
+  const words = latestLine.split(" ").filter(Boolean);
 
-  if (lines.length >= 2) {
-    return lines.slice(-2).join("\n");
+  if (words.length <= 10) {
+    return latestLine;
   }
 
-  const [singleLine] = lines;
-  const words = singleLine.split(" ").filter(Boolean);
-  if (words.length < 7) {
-    return singleLine;
-  }
-
-  let bestIndex = Math.ceil(words.length / 2);
-  let bestScore = Number.POSITIVE_INFINITY;
-  for (let index = 3; index <= words.length - 3; index += 1) {
-    const left = words.slice(0, index).join(" ");
-    const right = words.slice(index).join(" ");
-    const score = Math.abs(left.length - right.length);
-    if (score < bestScore) {
-      bestScore = score;
-      bestIndex = index;
-    }
-  }
-
-  return `${words.slice(0, bestIndex).join(" ")}\n${words.slice(bestIndex).join(" ")}`;
+  return `…${words.slice(-10).join(" ")}`;
 }
 
 export function SignalBars({
@@ -257,7 +241,7 @@ export function TranscriptionPill({
   onCancel?: (() => void) | null;
 }) {
   const copy = showLiveTranscription
-    ? balanceIndicatorCopy(detail.trim() || title)
+    ? latestIndicatorCopy(detail.trim() || title)
     : normalizeIndicatorCopy(detail.trim() || title);
   const usesRadialCore = animationStyle === "radial";
   const canCancel = phase === "recording" || phase === "transcribing";
