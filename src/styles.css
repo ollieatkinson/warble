@@ -1718,6 +1718,10 @@ input::placeholder {
   min-width: 0;
 }
 
+.indicator-shell-compact .indicator-meter-row {
+  width: auto;
+}
+
 .indicator-meter-row-detail {
   justify-content: center;
 }
@@ -1837,6 +1841,9 @@ input::placeholder {
 .indicator-timer {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  min-width: 5.8rem;
   font-size: 0.67rem;
   line-height: 1;
   letter-spacing: 0.03em;
