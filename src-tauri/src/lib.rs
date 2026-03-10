@@ -2173,6 +2173,28 @@ fn remove_history_item(
 }
 
 #[tauri::command]
+fn clear_history(app: AppHandle, shared: tauri::State<'_, SharedState>) -> Result<(), String> {
+    {
+        let mut core = shared.lock();
+        if core.history.is_empty() {
+            return Ok(());
+        }
+
+        let items = std::mem::take(&mut core.history);
+        for item in &items {
+            remove_history_audio_file(item);
+        }
+
+        core.status_message = "History cleared".to_string();
+        core.error_message = None;
+    }
+
+    save_persisted_state(&app, &shared).map_err(|error| error.to_string())?;
+    emit_snapshot(&app, &shared);
+    Ok(())
+}
+
+#[tauri::command]
 fn add_cleanup_term(
     app: AppHandle,
     shared: tauri::State<'_, SharedState>,
@@ -2462,6 +2484,7 @@ pub fn run() {
             restore_default_cleanup_terms,
             clear_error_message_command,
             remove_history_item,
+            clear_history,
             start_manual_recording,
             stop_manual_recording,
             transcribe_media_file_command,

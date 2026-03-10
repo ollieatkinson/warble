@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { audioRetentionOptions } from "../constants";
 import { ActionButton } from "../components/common";
@@ -29,6 +29,7 @@ export function HistorySection({
   onOpenHistoryAudio,
   onCopyHistory,
   onRemoveHistoryItem,
+  onClearHistory,
 }: {
   snapshot: Snapshot;
   draft: SettingsDraft;
@@ -40,8 +41,30 @@ export function HistorySection({
   onOpenHistoryAudio: (item: HistoryItem) => void | Promise<void>;
   onCopyHistory: (id: string, text: string) => void | Promise<void>;
   onRemoveHistoryItem: (id: string) => void | Promise<void>;
+  onClearHistory: () => void | Promise<void>;
 }) {
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+
+  useEffect(() => {
+    if (!confirmClearAll) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setConfirmClearAll(false);
+    }, 2500);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [confirmClearAll]);
+
+  useEffect(() => {
+    if (snapshot.history.length === 0) {
+      setConfirmClearAll(false);
+    }
+  }, [snapshot.history.length]);
 
   return (
     <>
@@ -51,6 +74,26 @@ export function HistorySection({
             <div className="surface-title">
               <span className="surface-title-label">Search</span>
             </div>
+            {snapshot.history.length > 0 ? (
+              <ActionButton
+                className={`secondary small history-clear-button ${confirmClearAll ? "history-clear-button-confirm" : ""}`}
+                state={buttonFeedback["history-clear-all"]}
+                idleLabel={confirmClearAll ? "Confirm delete all" : "Delete all"}
+                workingLabel="Deleting"
+                doneLabel="Deleted"
+                idleIcon={<TrashIcon className="small-icon" />}
+                doneIcon={<CheckIcon className="small-icon" />}
+                onClick={() => {
+                  if (!confirmClearAll) {
+                    setConfirmClearAll(true);
+                    return;
+                  }
+
+                  setConfirmClearAll(false);
+                  void onClearHistory();
+                }}
+              />
+            ) : null}
           </div>
 
           <label className="search-field">
@@ -117,12 +160,9 @@ export function HistorySection({
               key={item.id}
             >
               <div className="history-row-head">
-                <div className="history-meta">
+              <div className="history-meta">
                   <span>{new Date(item.createdAt).toLocaleString()}</span>
-                  <span>{item.sourceName}</span>
-                  <span>{item.mode}</span>
                   <span>{formatDuration(item.durationMs)}</span>
-                  {item.audioPath ? <span>Audio saved</span> : null}
                 </div>
                 <div className="history-actions">
                   <button

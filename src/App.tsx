@@ -387,6 +387,24 @@ function ControlApp({
     }
   }
 
+  async function clearHistory() {
+    const actionId = "history-clear-all";
+    setMessage(null);
+    setButtonFeedbackState(actionId, "working");
+
+    try {
+      await invoke("clear_history");
+      setHistoryQuery("");
+      finishButtonFeedback(actionId, 1000);
+    } catch (error) {
+      clearButtonFeedback(actionId);
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
   function selectModel(modelId: string) {
     setSelectedModelId(modelId);
   }
@@ -933,6 +951,7 @@ function ControlApp({
               onOpenHistoryAudio={(item) => openHistoryAudio(item.audioPath)}
               onCopyHistory={copyHistory}
               onRemoveHistoryItem={removeHistoryItem}
+              onClearHistory={clearHistory}
             />
           ) : null}
 
