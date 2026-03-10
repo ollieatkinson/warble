@@ -1101,6 +1101,7 @@ fn run_batch_live_preview_loop(
     let mut last_sample_count = 0usize;
     let mut last_preview = String::new();
     let mut stabilizer = PreviewStabilizer::default();
+    let mut unstable_preview_passes = 0usize;
     let preview_window_samples = preview_sample_rate as usize * LIVE_PREVIEW_WINDOW_SECONDS;
     let preview_min_samples = (preview_sample_rate as u64 * LIVE_PREVIEW_MIN_MS / 1_000) as usize;
 
@@ -1143,11 +1144,31 @@ fn run_batch_live_preview_loop(
             )
         };
         let preview = match transcribe_audio(app, transcriber, &settings, &preview_audio) {
-            Ok(output) => stabilizer.observe(&live_preview_text(
-                &output.text,
-                cleanup_enabled,
-                &cleanup_terms,
-            )),
+            Ok(output) => {
+                let cleaned_preview = live_preview_text(
+                    &output.text,
+                    cleanup_enabled,
+                    &cleanup_terms,
+                );
+
+                if cleaned_preview.is_empty() {
+                    unstable_preview_passes = 0;
+                    None
+                } else if let Some(stable_preview) = stabilizer.observe(&cleaned_preview) {
+                    unstable_preview_passes = 0;
+                    Some(stable_preview)
+                } else {
+                    unstable_preview_passes += 1;
+                    let word_count = cleaned_preview.split_whitespace().count();
+                    if unstable_preview_passes >= LIVE_PREVIEW_DRAFT_FALLBACK_PASSES
+                        && word_count >= 3
+                    {
+                        Some(cleaned_preview)
+                    } else {
+                        None
+                    }
+                }
+            }
             Err(_) => continue,
         };
         let Some(preview) = preview else {

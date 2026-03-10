@@ -17,6 +17,7 @@ pub(crate) const LIVE_PREVIEW_MIN_MS: u64 = 900;
 pub(crate) const LIVE_PREVIEW_WINDOW_SECONDS: usize = 12;
 pub(crate) const LIVE_PREVIEW_MAX_WORDS: usize = 32;
 pub(crate) const LIVE_PREVIEW_RESET_AFTER_DIVERGENCE: usize = 2;
+pub(crate) const LIVE_PREVIEW_DRAFT_FALLBACK_PASSES: usize = 2;
 pub(crate) const LIVE_METER_INTERVAL_MS: u64 = 75;
 pub(crate) const LIVE_METER_WINDOW_MS: u64 = 700;
 pub(crate) const LIVE_METER_ANALYSIS_SAMPLES: usize = 2_048;
