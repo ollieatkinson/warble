@@ -98,6 +98,7 @@ function ControlApp({
     showLiveTranscription: false,
   });
   const draftRef = useRef(draft);
+  const previousSnapshotRef = useRef<Snapshot | null>(null);
 
   useEffect(() => {
     draftRef.current = draft;
@@ -142,6 +143,26 @@ function ControlApp({
       showRecordingTimer: snapshot.settings.showRecordingTimer,
       showLiveTranscription: snapshot.settings.showLiveTranscription,
     });
+  }, [snapshot]);
+
+  useEffect(() => {
+    if (!snapshot) {
+      return;
+    }
+
+    const previous = previousSnapshotRef.current;
+    if (
+      previous &&
+      previous.phase === "transcribing" &&
+      snapshot.phase === "idle" &&
+      snapshot.history.length > previous.history.length &&
+      snapshot.history[0]?.capture.sourceKind === "file"
+    ) {
+      setHistoryQuery("");
+      setActiveSection("history");
+    }
+
+    previousSnapshotRef.current = snapshot;
   }, [snapshot]);
 
   async function refreshSnapshot() {
