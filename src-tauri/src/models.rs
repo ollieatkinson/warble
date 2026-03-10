@@ -275,6 +275,16 @@ pub(crate) fn selected_model_audio_limit_ms(settings: &Settings) -> Option<u64> 
     }
 }
 
+pub(crate) fn selected_model_display_name(settings: &Settings) -> String {
+    match settings.selected_model_id.as_str() {
+        "parakeet" => "Parakeet TDT".to_string(),
+        "parakeet-ctc" => "Parakeet CTC".to_string(),
+        model_id => catalog_download_spec(model_id)
+            .map(|spec| spec.display_name.to_string())
+            .unwrap_or_else(|| model_id.to_string()),
+    }
+}
+
 pub(crate) fn inspect_model_candidate(path: &str) -> Result<ModelPathInspection, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {

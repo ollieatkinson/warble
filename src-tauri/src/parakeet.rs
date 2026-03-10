@@ -9,6 +9,8 @@ use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::state::InferenceProvider;
+
 pub const SAMPLE_RATE: u32 = 16_000;
 pub const MODEL_ID: &str = "parakeet-tdt-0.6b-v3-int8";
 pub const CTC_MODEL_ID: &str = "parakeet-ctc-0.6b";
@@ -95,6 +97,7 @@ pub struct ParakeetTdt {
     feature_extractor: ParakeetFeatureExtractor,
     vocab: Vocabulary,
     max_tokens_per_step: usize,
+    provider: InferenceProvider,
 }
 
 impl ParakeetTdt {
@@ -114,24 +117,37 @@ impl ParakeetTdt {
             .unwrap_or_default();
         let vocab = Vocabulary::load(&model_dir.join("vocab.txt"))?;
         let feature_size = config.features_size.unwrap_or(DEFAULT_FEATURE_SIZE);
+        let encoder_path = find_existing_path(model_dir, TDT_ENCODER_CANDIDATES)?;
+        let decoder_path = find_existing_path(model_dir, TDT_DECODER_CANDIDATES)?;
+        let preferred_provider = preferred_inference_provider();
+        let (provider, encoder, decoder) =
+            match try_load_tdt_core_sessions(&encoder_path, &decoder_path, preferred_provider) {
+                Ok((encoder, decoder)) => (preferred_provider, encoder, decoder),
+                Err(error) if preferred_provider == InferenceProvider::Directml => {
+                    let (encoder, decoder) =
+                        try_load_tdt_core_sessions(&encoder_path, &decoder_path, InferenceProvider::Cpu)
+                            .with_context(|| format!("{error}; falling back to CPU"))?;
+                    (InferenceProvider::Cpu, encoder, decoder)
+                }
+                Err(error) => return Err(error),
+            };
 
         let preprocessor = if model_dir.join("nemo128.onnx").exists() {
-            load_session(&model_dir.join("nemo128.onnx")).ok()
+            load_session_for_provider(&model_dir.join("nemo128.onnx"), provider).ok()
         } else {
             None
         };
 
         Ok(Self {
             preprocessor,
-            encoder: load_session(&find_existing_path(model_dir, TDT_ENCODER_CANDIDATES)?)
-                .context("failed to load encoder model")?,
-            decoder: load_session(&find_existing_path(model_dir, TDT_DECODER_CANDIDATES)?)
-                .context("failed to load decoder model")?,
+            encoder,
+            decoder,
             feature_extractor: ParakeetFeatureExtractor::new(feature_size),
             vocab,
             max_tokens_per_step: config
                 .max_tokens_per_step
                 .unwrap_or(DEFAULT_MAX_TOKENS_PER_STEP),
+            provider,
         })
     }
 
@@ -148,6 +164,10 @@ impl ParakeetTdt {
     pub fn transcribe_wav_path(&mut self, wav_path: &Path) -> Result<String> {
         let audio = read_wav_mono(wav_path)?;
         self.transcribe_audio(&audio)
+    }
+
+    pub(crate) fn provider(&self) -> InferenceProvider {
+        self.provider
     }
 
     fn extract_features(&mut self, audio: &[f32]) -> Result<ExtractedFeatures> {
@@ -584,7 +604,19 @@ fn find_existing_path(dir: &Path, candidates: &[&str]) -> Result<PathBuf> {
     Err(anyhow!("no matching model file found in {}", dir.display()))
 }
 
-fn load_session(path: &Path) -> Result<Session> {
+fn try_load_tdt_core_sessions(
+    encoder_path: &Path,
+    decoder_path: &Path,
+    provider: InferenceProvider,
+) -> Result<(Session, Session)> {
+    let encoder = load_session_for_provider(encoder_path, provider)
+        .context("failed to load encoder model")?;
+    let decoder = load_session_for_provider(decoder_path, provider)
+        .context("failed to load decoder model")?;
+    Ok((encoder, decoder))
+}
+
+fn load_session_for_provider(path: &Path, provider: InferenceProvider) -> Result<Session> {
     let mut builder = Session::builder()
         .context("failed to create ONNX session builder")?
         .with_optimization_level(GraphOptimizationLevel::Level3)
@@ -594,10 +626,10 @@ fn load_session(path: &Path) -> Result<Session> {
         ;
 
     #[cfg(target_os = "windows")]
-    if directml_runtime_available() {
+    if provider == InferenceProvider::Directml {
         builder = builder
             .with_execution_providers([
-                DirectMLExecutionProvider::default().build(),
+                DirectMLExecutionProvider::default().build().error_on_failure(),
                 CPUExecutionProvider::default().build().error_on_failure(),
             ])
             .map_err(|error| anyhow!("failed to enable DirectML session: {error}"))?;
@@ -606,6 +638,15 @@ fn load_session(path: &Path) -> Result<Session> {
     builder
         .commit_from_file(path)
         .with_context(|| format!("failed to open {}", path.display()))
+}
+
+fn preferred_inference_provider() -> InferenceProvider {
+    #[cfg(target_os = "windows")]
+    if directml_runtime_available() {
+        return InferenceProvider::Directml;
+    }
+
+    InferenceProvider::Cpu
 }
 
 #[cfg(target_os = "windows")]

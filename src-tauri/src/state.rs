@@ -35,6 +35,14 @@ pub(crate) enum ModelStatus {
     Missing,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum InferenceProvider {
+    #[default]
+    Cpu,
+    Directml,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum TranscriptionModelKind {
@@ -134,6 +142,30 @@ impl Default for Settings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub(crate) struct HistoryCaptureDetails {
+    pub(crate) model_id: String,
+    pub(crate) model_name: String,
+    pub(crate) inference_provider: InferenceProvider,
+    pub(crate) input_sample_rate: u32,
+    pub(crate) input_channels: u16,
+    pub(crate) transcription_sample_rate: u32,
+}
+
+impl Default for HistoryCaptureDetails {
+    fn default() -> Self {
+        Self {
+            model_id: String::new(),
+            model_name: String::new(),
+            inference_provider: InferenceProvider::Cpu,
+            input_sample_rate: 0,
+            input_channels: 0,
+            transcription_sample_rate: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HistoryItem {
     pub(crate) id: String,
@@ -144,6 +176,8 @@ pub(crate) struct HistoryItem {
     pub(crate) duration_ms: u64,
     pub(crate) pasted: bool,
     pub(crate) audio_path: Option<String>,
+    #[serde(default)]
+    pub(crate) capture: HistoryCaptureDetails,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -364,6 +398,7 @@ pub(crate) struct CompletedRecording {
     pub(crate) samples: Vec<f32>,
     pub(crate) captured_samples: Vec<f32>,
     pub(crate) captured_sample_rate: u32,
+    pub(crate) captured_channels: u16,
     pub(crate) duration_ms: u64,
     pub(crate) source_name: String,
     pub(crate) mode: RecordingMode,

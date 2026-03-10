@@ -1559,10 +1559,45 @@ input::placeholder {
   align-items: center;
 }
 
+.history-details-toggle-active {
+  color: #dce7ff;
+  border-color: rgba(111, 157, 255, 0.2);
+  background: rgba(111, 157, 255, 0.08);
+}
+
 .history-row p {
   margin: 0.55rem 0 0;
   color: var(--text);
   line-height: 1.6;
+}
+
+.history-details {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.history-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.6rem 0.8rem;
+}
+
+.history-detail-item {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.history-detail-item span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.history-detail-item strong {
+  color: var(--text);
+  font-weight: 600;
+  word-break: break-word;
 }
 
 .icon-button {

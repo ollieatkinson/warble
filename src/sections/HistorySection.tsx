@@ -1,7 +1,21 @@
+import { useState } from "react";
+
 import { audioRetentionOptions } from "../constants";
 import { ActionButton } from "../components/common";
-import { CheckIcon, CopyIcon, ExternalIcon, SearchIcon, TrashIcon } from "../components/icons";
-import { formatAudioRetentionPolicy, formatDuration } from "../lib/utils";
+import {
+  AboutIcon,
+  CheckIcon,
+  CopyIcon,
+  ExternalIcon,
+  SearchIcon,
+  TrashIcon,
+} from "../components/icons";
+import {
+  formatAudioRetentionPolicy,
+  formatCaptureInput,
+  formatDuration,
+  formatInferenceProvider,
+} from "../lib/utils";
 import type { ButtonFeedbackState, HistoryItem, SettingsDraft, Snapshot } from "../types";
 
 export function HistorySection({
@@ -27,6 +41,8 @@ export function HistorySection({
   onCopyHistory: (id: string, text: string) => void | Promise<void>;
   onRemoveHistoryItem: (id: string) => void | Promise<void>;
 }) {
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+
   return (
     <>
       <section className="compact-grid-two">
@@ -96,7 +112,10 @@ export function HistorySection({
       ) : (
         <section className="history-list">
           {filteredHistory.map((item) => (
-            <article className="surface history-row" key={item.id}>
+            <article
+              className={`surface history-row ${expandedItems[item.id] ? "history-row-expanded" : ""}`}
+              key={item.id}
+            >
               <div className="history-row-head">
                 <div className="history-meta">
                   <span>{new Date(item.createdAt).toLocaleString()}</span>
@@ -106,6 +125,19 @@ export function HistorySection({
                   {item.audioPath ? <span>Audio saved</span> : null}
                 </div>
                 <div className="history-actions">
+                  <button
+                    className={`secondary small icon-only-button ${expandedItems[item.id] ? "history-details-toggle-active" : ""}`}
+                    onClick={() =>
+                      setExpandedItems((current) => ({
+                        ...current,
+                        [item.id]: !current[item.id],
+                      }))
+                    }
+                    aria-label={expandedItems[item.id] ? "Hide details" : "Show details"}
+                    title={expandedItems[item.id] ? "Hide details" : "Show details"}
+                  >
+                    <AboutIcon className="small-icon" />
+                  </button>
                   {item.audioPath ? (
                     <button
                       className="secondary small icon-only-button"
@@ -142,6 +174,47 @@ export function HistorySection({
                 </div>
               </div>
               <p>{item.text}</p>
+              {expandedItems[item.id] ? (
+                <div className="history-details">
+                  <div className="history-details-grid">
+                    <div className="history-detail-item">
+                      <span>Model</span>
+                      <strong>{item.capture.modelName || "Unknown"}</strong>
+                    </div>
+                    <div className="history-detail-item">
+                      <span>Inference</span>
+                      <strong>
+                        {formatInferenceProvider(item.capture.inferenceProvider)}
+                      </strong>
+                    </div>
+                    <div className="history-detail-item">
+                      <span>Microphone</span>
+                      <strong>{item.sourceName}</strong>
+                    </div>
+                    <div className="history-detail-item">
+                      <span>Input</span>
+                      <strong>
+                        {formatCaptureInput(
+                          item.capture.inputSampleRate,
+                          item.capture.inputChannels,
+                        )}
+                      </strong>
+                    </div>
+                    <div className="history-detail-item">
+                      <span>Transcribe</span>
+                      <strong>
+                        {item.capture.transcriptionSampleRate > 0
+                          ? `${Math.round(item.capture.transcriptionSampleRate / 100) / 10} kHz · mono`
+                          : "Unknown"}
+                      </strong>
+                    </div>
+                    <div className="history-detail-item">
+                      <span>Audio clip</span>
+                      <strong>{item.audioPath ? "Saved" : "Not saved"}</strong>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </article>
           ))}
         </section>

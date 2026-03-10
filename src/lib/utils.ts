@@ -5,6 +5,7 @@ import type {
   AudioRetentionPolicy,
   EditableOverlayPosition,
   HistoryItem,
+  InferenceProvider,
   OverlayAnimationStyle,
   OverlayPosition,
   SettingsDraft,
@@ -121,6 +122,28 @@ export function formatSystemProfile(profile: SystemProfile) {
   return parts.join(" · ");
 }
 
+export function formatInferenceProvider(provider: InferenceProvider) {
+  switch (provider) {
+    case "directml":
+      return "DirectML";
+    case "cpu":
+    default:
+      return "CPU";
+  }
+}
+
+export function formatCaptureInput(sampleRate: number, channels: number) {
+  const parts: string[] = [];
+  if (sampleRate > 0) {
+    parts.push(`${Math.round(sampleRate / 100) / 10} kHz`);
+  }
+  if (channels > 0) {
+    parts.push(`${channels} ch`);
+  }
+
+  return parts.join(" · ") || "Unknown input";
+}
+
 export function toneForPhase(phase: AppPhase): StatusTone {
   switch (phase) {
     case "recording":
@@ -232,6 +255,11 @@ export function matchesHistory(item: HistoryItem, query: string) {
   }
 
   const haystack = [item.text, item.sourceName, item.mode, item.pasted ? "pasted" : "saved"]
+    .concat([
+      item.capture.modelName,
+      formatInferenceProvider(item.capture.inferenceProvider),
+      formatCaptureInput(item.capture.inputSampleRate, item.capture.inputChannels),
+    ])
     .join(" ")
     .toLowerCase();
 

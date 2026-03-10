@@ -2,6 +2,7 @@ export type RecordingMode = "hold" | "toggle";
 export type AppPhase = "idle" | "recording" | "transcribing" | "error";
 export type ModelStatus = "ready" | "missing";
 export type TranscriptionModelKind = "parakeet" | "parakeet-ctc";
+export type InferenceProvider = "cpu" | "directml";
 export type OverlayPosition =
   | "bottom-center"
   | "bottom-left"
@@ -68,6 +69,14 @@ export type HistoryItem = {
   durationMs: number;
   pasted: boolean;
   audioPath: string | null;
+  capture: {
+    modelId: string;
+    modelName: string;
+    inferenceProvider: InferenceProvider;
+    inputSampleRate: number;
+    inputChannels: number;
+    transcriptionSampleRate: number;
+  };
 };
 
 export type OverlaySnapshot = {

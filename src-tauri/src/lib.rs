@@ -223,6 +223,7 @@ fn finalize_recording(session: RecordingSession) -> Result<Option<CompletedRecor
         samples: parakeet::resample_to_16khz(&samples, session.sample_rate),
         captured_samples: samples,
         captured_sample_rate: session.sample_rate,
+        captured_channels: session.channels as u16,
         duration_ms,
         source_name: session.source_name,
         mode: session.mode,
@@ -230,12 +231,18 @@ fn finalize_recording(session: RecordingSession) -> Result<Option<CompletedRecor
     }))
 }
 
+struct TranscriptionOutput {
+    text: String,
+    inference_provider: InferenceProvider,
+    model_name: String,
+}
+
 fn transcribe_audio(
     app: &AppHandle,
     transcriber: &TranscriberHandle,
     settings: &Settings,
     audio: &[f32],
-) -> Result<String> {
+) -> Result<TranscriptionOutput> {
     let selected_key = selected_model_cache_key(settings);
     let mut guard = transcriber.lock();
     if guard.selected_key.as_ref() != Some(&selected_key) {
@@ -271,9 +278,18 @@ fn transcribe_audio(
         guard.selected_key = Some(selected_key);
     }
 
+    let model_name = selected_model_display_name(settings);
     match guard.engine.as_mut().expect("transcriber initialized") {
-        TranscriberEngine::Parakeet(model) => model.transcribe_audio(audio),
-        TranscriberEngine::ParakeetCtc(model) => model.transcribe_audio(audio),
+        TranscriberEngine::Parakeet(model) => Ok(TranscriptionOutput {
+            text: model.transcribe_audio(audio)?,
+            inference_provider: model.provider(),
+            model_name,
+        }),
+        TranscriberEngine::ParakeetCtc(model) => Ok(TranscriptionOutput {
+            text: model.transcribe_audio(audio)?,
+            inference_provider: InferenceProvider::Cpu,
+            model_name,
+        }),
     }
 }
 
@@ -995,8 +1011,8 @@ fn run_batch_live_preview_loop(
             )
         };
         let preview = match transcribe_audio(app, transcriber, &settings, &preview_audio) {
-            Ok(text) => stabilizer.observe(&live_preview_text(
-                &text,
+            Ok(output) => stabilizer.observe(&live_preview_text(
+                &output.text,
                 cleanup_enabled,
                 &cleanup_terms,
             )),
@@ -1138,7 +1154,8 @@ fn complete_transcription(
             }
 
             match result {
-                Ok(text) => {
+                Ok(output) => {
+                    let text = output.text;
                     let text = cleanup_transcript_text(
                         text.trim(),
                         settings.cleanup_enabled,
@@ -1186,6 +1203,14 @@ fn complete_transcription(
                             duration_ms: completed.duration_ms,
                             pasted,
                             audio_path,
+                            capture: HistoryCaptureDetails {
+                                model_id: settings.selected_model_id.clone(),
+                                model_name: output.model_name,
+                                inference_provider: output.inference_provider,
+                                input_sample_rate: completed.captured_sample_rate,
+                                input_channels: completed.captured_channels,
+                                transcription_sample_rate: parakeet::SAMPLE_RATE,
+                            },
                         },
                     );
                     let keep_len = HISTORY_LIMIT.min(core.history.len());
