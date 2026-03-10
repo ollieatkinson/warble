@@ -746,6 +746,11 @@ input::placeholder {
   gap: 0.8rem;
 }
 
+.model-page {
+  display: grid;
+  gap: 0.8rem;
+}
+
 .model-library-head,
 .model-selector-row,
 .model-focus-layout {
@@ -761,6 +766,116 @@ input::placeholder {
 .model-selector-footnote {
   margin: 0.28rem 0 0;
   color: var(--muted);
+}
+
+.model-decision-surface,
+.model-group-surface {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.model-decision-grid,
+.model-groups {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.model-decision-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(10, 13, 18, 0.72);
+}
+
+.model-decision-copy {
+  display: grid;
+  gap: 0.24rem;
+}
+
+.model-decision-copy span,
+.model-group-copy p,
+.model-decision-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.model-group-copy {
+  margin-top: -0.1rem;
+}
+
+.model-list {
+  display: grid;
+}
+
+.model-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.model-list-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.model-list-row:last-child {
+  padding-bottom: 0;
+}
+
+.model-list-row-active {
+  position: relative;
+}
+
+.model-list-row-active::before {
+  content: "";
+  position: absolute;
+  inset: 0 -0.45rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  z-index: 0;
+}
+
+.model-list-main,
+.model-list-side {
+  position: relative;
+  z-index: 1;
+}
+
+.model-list-main {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.model-list-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.model-list-note {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.model-list-side {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: end;
+  align-content: start;
+  min-width: 160px;
+}
+
+.model-list-stat {
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .model-type-tabs {
@@ -2121,6 +2236,20 @@ input::placeholder {
 
   .sidebar-button {
     justify-content: center;
+  }
+
+  .model-list-row {
+    grid-template-columns: 1fr;
+  }
+
+  .model-list-side {
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .model-row-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 

@@ -10,17 +10,11 @@ import { CheckIcon, SectionIcon } from "./components/icons";
 import { fetchSnapshot, useSnapshotState } from "./hooks/useSnapshotState";
 import {
   buildModelRows,
-  describeHardwareFit,
-  formatModelAudioLimit,
   formatModelSizeLabel,
-  matchesModel,
 } from "./lib/modelCatalog";
 import {
   buildSettingsUpdate,
-  formatBytes,
-  formatInferenceProvider,
   formatInvokeError,
-  formatSystemProfile,
   matchesHistory,
   normalizeEditableOverlayPosition,
 } from "./lib/utils";
@@ -36,7 +30,7 @@ import { Sidebar } from "./sections/Sidebar";
 import type {
   ButtonFeedbackState,
   FlashMessage,
-  ModelFilter,
+  LivePreviewModel,
   SectionId,
   SettingsDraft,
   ShortcutFieldName,
@@ -78,10 +72,7 @@ function ControlApp({
   const [message, setMessage] = useState<FlashMessage>(null);
   const [capturing, setCapturing] = useState<ShortcutFieldName | null>(null);
   const [historyQuery, setHistoryQuery] = useState("");
-  const [modelQuery, setModelQuery] = useState("");
-  const [modelFilter, setModelFilter] = useState<ModelFilter>("all");
   const [cleanupInput, setCleanupInput] = useState("");
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [buttonFeedback, setButtonFeedback] = useState<
     Record<string, ButtonFeedbackState>
   >({});
@@ -407,10 +398,6 @@ function ControlApp({
     }
   }
 
-  function selectModel(modelId: string) {
-    setSelectedModelId(modelId);
-  }
-
   async function activateModel(modelId: string) {
     if (!snapshot) {
       return;
@@ -429,46 +416,6 @@ function ControlApp({
         selectedModelPath: row.source === "built-in" ? null : row.path ?? null,
       });
     } catch (error) {
-      setMessage({
-        kind: "error",
-        text: formatInvokeError(error),
-      });
-    }
-  }
-
-  async function linkCatalogModel(modelId: string) {
-    if (!snapshot) {
-      return;
-    }
-
-    const row = buildModelRows(snapshot).find((candidate) => candidate.id === modelId);
-    if (!row?.supportsInstall) {
-      return;
-    }
-
-    const actionId = `model-link:${row.id}`;
-    setMessage(null);
-    setButtonFeedbackState(actionId, "working");
-
-    try {
-      const selected = await openDialog({
-        directory: true,
-        multiple: false,
-      });
-
-      if (!selected || Array.isArray(selected)) {
-        clearButtonFeedback(actionId);
-        return;
-      }
-
-      await invoke("install_catalog_model", {
-        modelId: row.id,
-        modelKind: row.modelKind,
-        path: selected,
-      });
-      finishButtonFeedback(actionId);
-    } catch (error) {
-      clearButtonFeedback(actionId);
       setMessage({
         kind: "error",
         text: formatInvokeError(error),
@@ -547,21 +494,6 @@ function ControlApp({
     }
   }
 
-  async function openModelArtifact(url: string | undefined) {
-    if (!url) {
-      return;
-    }
-
-    try {
-      await openUrl(url);
-    } catch (error) {
-      setMessage({
-        kind: "error",
-        text: formatInvokeError(error),
-      });
-    }
-  }
-
   async function addCleanupTerm(term = cleanupInput) {
     const trimmed = term.trim();
     if (!trimmed) {
@@ -623,93 +555,51 @@ function ControlApp({
 
   const modelRows = snapshot ? buildModelRows(snapshot) : [];
   const activeModelId = snapshot?.settings.selectedModelId ?? "parakeet";
-  const selectedRowExists = selectedModelId
-    ? modelRows.some((row) => row.id === selectedModelId)
-    : false;
-  const resolvedSelectedModelId = selectedRowExists && selectedModelId
-    ? selectedModelId
-    : modelRows.some((row) => row.id === activeModelId)
-      ? activeModelId
-      : modelRows[0]?.id ?? "parakeet";
-  const selectedModel =
-    modelRows.find((row) => row.id === resolvedSelectedModelId) ?? modelRows[0];
   const activeModel =
     modelRows.find((row) => row.active) ??
     modelRows.find((row) => row.id === activeModelId) ??
     null;
-  const selectedModelFit =
-    snapshot && selectedModel
-      ? describeHardwareFit(selectedModel, snapshot.systemProfile)
-      : null;
-  const latestSelectedModelCapture = selectedModel
-    ? snapshot?.history.find((item) => item.capture.modelId === selectedModel.id) ?? null
-    : null;
-  const selectedModelAcceleration = selectedModel
-    ? latestSelectedModelCapture
-      ? `Last run used ${formatInferenceProvider(latestSelectedModelCapture.capture.inferenceProvider)}`
-      : selectedModel.directmlCapable
-        ? snapshot?.systemProfile.directmlAvailable
-          ? "Will try DirectML first, then CPU fallback"
-          : "CPU today · DirectML when available"
-        : "CPU"
-    : "Unknown";
-  const selectedModelRole = selectedModel
-    ? selectedModel.tags.includes("streaming")
-      ? "Live preview only. Final dictation still uses Default speech model."
-      : "Used for final microphone and file transcription when selected as Default speech model."
-    : "Unknown";
-  const readyModelOptions = modelRows
+  const batchModelRows = modelRows.filter((row) => !row.tags.includes("streaming"));
+  const streamingModelRows = modelRows.filter((row) => row.tags.includes("streaming"));
+  const readyModelOptions = batchModelRows
     .filter((row) => row.selectable)
     .map((row) => ({
       id: row.id,
       label: row.name,
-      description: `${row.speechMode} · ${formatModelSizeLabel(row)}`,
+      description: `${row.footprint} · ${formatModelSizeLabel(row)}`,
     }));
   const activeReadyModelId =
-    activeModel?.selectable && activeModel
+    activeModel?.selectable && activeModel && !activeModel.tags.includes("streaming")
       ? activeModel.id
       : readyModelOptions[0]?.id ?? "";
-  const selectedModelMeta: Array<[string, string]> = selectedModel
-    ? [
-        ["Family", selectedModel.family],
-        ["Speech mode", selectedModel.speechMode],
-        ["Architecture", selectedModel.architecture],
-        ["Parameters", selectedModel.footprint],
-        ["Runtime", selectedModel.runtime],
-        ["Role", selectedModelRole],
-        ["Acceleration", selectedModelAcceleration],
-        ["Audio limit", formatModelAudioLimit(selectedModel)],
-        [
-          "Download size",
-          selectedModel.downloadSizeBytes
-            ? formatBytes(selectedModel.downloadSizeBytes)
-            : "Included / n.a.",
-        ],
-        ["Size on disk", formatBytes(selectedModel.diskSizeBytes)],
-        [
-          "Unlocks",
-          selectedModel.unlockedFeatures?.length
-            ? selectedModel.unlockedFeatures.join(" · ")
-            : "Default dictation engine",
-        ],
-        ["Speed", selectedModel.speed],
-        ["Quality", selectedModel.quality],
-        ["License", selectedModel.license],
-        ["Best for", selectedModel.bestFor],
-        ["Capabilities", selectedModel.capabilities.join(" · ")],
-        ["This PC", selectedModelFit?.label ?? "Unknown"],
-        [
-          "Hardware",
-          snapshot ? formatSystemProfile(snapshot.systemProfile) : "Unknown",
-        ],
-      ]
-    : [];
-
-  useEffect(() => {
-    if (!selectedRowExists && modelRows[0]) {
-      setSelectedModelId(activeModelId || modelRows[0].id);
-    }
-  }, [activeModelId, modelRows, selectedRowExists]);
+  const installedStreamingModels = streamingModelRows.filter(
+    (row) => row.state === "ready" && (row.unlockedFeatures?.length ?? 0) > 0,
+  );
+  const livePreviewOptions = [
+    {
+      id: "auto",
+      label: "Auto",
+      description: "Prefer Nemotron, then Realtime EOU.",
+    },
+    ...installedStreamingModels.map((row) => ({
+      id: row.id,
+      label: row.name,
+      description: `${row.footprint} · ${row.quality}`,
+    })),
+  ];
+  const resolvedLivePreviewModel: LivePreviewModel =
+    draft.livePreviewModel === "auto" ||
+    installedStreamingModels.some((row) => row.id === draft.livePreviewModel)
+      ? draft.livePreviewModel
+      : "auto";
+  const effectiveLivePreviewModelId =
+    resolvedLivePreviewModel !== "auto"
+      ? resolvedLivePreviewModel
+      : installedStreamingModels.some((row) => row.id === "nemotron-streaming")
+        ? "nemotron-streaming"
+        : installedStreamingModels.some((row) => row.id === "parakeet-eou")
+          ? "parakeet-eou"
+          : null;
 
   useEffect(() => {
     function handleCancelEscape(event: globalThis.KeyboardEvent) {
@@ -735,7 +625,6 @@ function ControlApp({
   }, [snapshot]);
 
   async function chooseDefaultModel(modelId: string) {
-    setSelectedModelId(modelId);
     await activateModel(modelId);
   }
 
@@ -767,16 +656,7 @@ function ControlApp({
         ? "Transcribing"
         : "Ready";
   const previewDetail = snapshot.overlay.detail || previewTitle;
-  const filteredModels = modelRows.filter((row) =>
-    matchesModel(row, modelQuery, modelFilter),
-  );
   const cleanupTerms = snapshot.settings.cleanupTerms;
-  const installedStreamingModels = modelRows.filter(
-    (row) =>
-      row.state === "ready" &&
-      row.tags.includes("streaming") &&
-      (row.unlockedFeatures?.length ?? 0) > 0,
-  );
 
   return (
     <main
@@ -866,28 +746,23 @@ function ControlApp({
           {activeSection === "models" ? (
             <ModelsSection
               snapshot={snapshot}
-              modelRows={modelRows}
-              filteredModels={filteredModels}
-              modelQuery={modelQuery}
-              modelFilter={modelFilter}
-              selectedModel={selectedModel}
-              selectedModelFit={selectedModelFit}
-              selectedModelMeta={selectedModelMeta}
-              resolvedSelectedModelId={resolvedSelectedModelId}
+              batchModels={batchModelRows}
+              streamingModels={streamingModelRows}
               activeModel={activeModel}
               activeReadyModelId={activeReadyModelId}
               readyModelOptions={readyModelOptions}
+              livePreviewModel={resolvedLivePreviewModel}
+              livePreviewOptions={livePreviewOptions}
+              effectiveLivePreviewModelId={effectiveLivePreviewModelId}
               buttonFeedback={buttonFeedback}
-              onSetModelQuery={setModelQuery}
-              onSetModelFilter={setModelFilter}
-              onSelectModel={(row) => selectModel(row.id)}
               onChooseDefaultModel={chooseDefaultModel}
+              onChooseLivePreviewModel={(value) => {
+                void applySettings({ livePreviewModel: value });
+              }}
               onActivateModel={(row) => activateModel(row.id)}
-              onLinkCatalogModel={(row) => linkCatalogModel(row.id)}
               onDownloadCatalogModel={(row) => downloadCatalogModel(row.id)}
               onRemoveCatalogModel={(row) => removeCatalogModel(row.id)}
               onOpenModelReference={(row) => openModelReference(row.hfUrl)}
-              onOpenModelArtifact={(row) => openModelArtifact(row.artifactUrl)}
             />
           ) : null}
 
