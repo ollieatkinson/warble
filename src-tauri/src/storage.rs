@@ -2,9 +2,11 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde_json::Value;
 use std::fs;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "windows")]
 use std::process::Command;
+use std::io::Write;
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(target_os = "windows")]
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
@@ -68,6 +70,28 @@ pub(crate) fn managed_models_dir(app: &AppHandle) -> Result<PathBuf> {
     let dir = model_root_dir(app)?.join(MANAGED_MODELS_DIR);
     fs::create_dir_all(&dir)?;
     Ok(dir)
+}
+
+pub(crate) fn diagnostics_dir(app: &AppHandle) -> Result<PathBuf> {
+    let dir = app_data_dir(app)?.join("logs");
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+pub(crate) fn live_preview_log_path(app: &AppHandle) -> Result<PathBuf> {
+    Ok(diagnostics_dir(app)?.join("live-preview.log"))
+}
+
+pub(crate) fn append_live_preview_log(app: &AppHandle, line: &str) {
+    let Ok(path) = live_preview_log_path(app) else {
+        return;
+    };
+
+    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) else {
+        return;
+    };
+
+    let _ = writeln!(file, "{line}");
 }
 
 pub(crate) fn managed_model_dir_for_id(app: &AppHandle, model_id: &str) -> Result<PathBuf> {
@@ -359,6 +383,10 @@ pub(crate) fn load_persisted_state(app: &AppHandle) -> PersistedState {
 
 pub(crate) fn build_snapshot(app: &AppHandle, shared: &SharedState) -> Snapshot {
     let core = shared.lock();
+    let mut preview_diagnostics = core.preview_diagnostics.clone();
+    preview_diagnostics.log_path = live_preview_log_path(app)
+        .ok()
+        .map(|path| path.to_string_lossy().into_owned());
     Snapshot {
         phase: core.phase.clone(),
         settings: core.settings.clone(),
@@ -372,6 +400,7 @@ pub(crate) fn build_snapshot(app: &AppHandle, shared: &SharedState) -> Snapshot 
         shortcut_message: core.shortcut_message.clone(),
         status_message: core.status_message.clone(),
         error_message: core.error_message.clone(),
+        preview_diagnostics,
         overlay: core.overlay.clone(),
     }
 }

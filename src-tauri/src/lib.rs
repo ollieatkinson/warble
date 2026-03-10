@@ -186,6 +186,13 @@ fn begin_recording(app: &AppHandle, shared: &SharedState, mode: RecordingMode) -
     update_indicator_window(app, shared);
     emit_snapshot(app, shared);
     if should_spawn_preview {
+        note_preview_diagnostic(
+            app,
+            shared,
+            "starting",
+            "Preparing live preview",
+            "Selecting preview backend",
+        );
         spawn_live_preview(
             app.clone(),
             shared.clone(),
@@ -510,6 +517,47 @@ fn trim_preview_line(text: &str, max_words: usize) -> String {
     }
 
     words[words.len().saturating_sub(max_words)..].join(" ")
+}
+
+fn note_preview_diagnostic(
+    app: &AppHandle,
+    shared: &SharedState,
+    backend: &str,
+    status: &str,
+    detail: impl Into<String>,
+) {
+    let detail = detail.into();
+    let event_line = if detail.is_empty() {
+        status.to_string()
+    } else {
+        format!("{status}: {detail}")
+    };
+    let timestamp = Utc::now().format("%H:%M:%S").to_string();
+
+    {
+        let mut core = shared.lock();
+        core.preview_diagnostics.backend = backend.to_string();
+        core.preview_diagnostics.status = status.to_string();
+        core.preview_diagnostics.detail = detail.clone();
+        core.preview_diagnostics
+            .recent_events
+            .push(format!("{timestamp}  {event_line}"));
+        if core.preview_diagnostics.recent_events.len() > 6 {
+            let overflow = core.preview_diagnostics.recent_events.len() - 6;
+            core.preview_diagnostics.recent_events.drain(..overflow);
+        }
+    }
+
+    append_live_preview_log(
+        app,
+        &format!(
+            "{} [{}] {}",
+            Utc::now().to_rfc3339(),
+            backend,
+            event_line
+        ),
+    );
+    emit_snapshot(app, shared);
 }
 
 fn transcription_cancelled(
@@ -966,7 +1014,14 @@ fn spawn_live_preview(
         };
 
         if let Some(config) = streaming_config {
-            if run_streaming_live_preview_loop(
+            note_preview_diagnostic(
+                &app,
+                &shared,
+                "streaming-eou",
+                "Trying streaming preview",
+                "Using Parakeet Realtime EOU first",
+            );
+            match run_streaming_live_preview_loop(
                 &app,
                 &shared,
                 &preview_control,
@@ -974,11 +1029,26 @@ fn spawn_live_preview(
                 preview_buffer.clone(),
                 preview_sample_rate,
                 config,
-            )
-            .is_ok()
-            {
-                return;
+            ) {
+                Ok(()) => return,
+                Err(error) => {
+                    note_preview_diagnostic(
+                        &app,
+                        &shared,
+                        "batch-tdt",
+                        "Streaming fallback",
+                        error.to_string(),
+                    );
+                }
             }
+        } else {
+            note_preview_diagnostic(
+                &app,
+                &shared,
+                "batch-tdt",
+                "Using batch preview",
+                "No streaming add-on is ready",
+            );
         }
 
         run_batch_live_preview_loop(
@@ -1069,6 +1139,15 @@ fn run_streaming_live_preview_loop(
         if preview.is_empty() || preview == last_preview {
             continue;
         }
+        if !preview_emitted {
+            note_preview_diagnostic(
+                app,
+                shared,
+                "streaming-eou",
+                "Streaming live preview active",
+                "Realtime EOU is emitting text",
+            );
+        }
         preview_emitted = true;
         last_preview = preview.clone();
 
@@ -1102,6 +1181,7 @@ fn run_batch_live_preview_loop(
     let mut last_preview = String::new();
     let mut stabilizer = PreviewStabilizer::default();
     let mut unstable_preview_passes = 0usize;
+    let mut batch_emitted = false;
     let preview_window_samples = preview_sample_rate as usize * LIVE_PREVIEW_WINDOW_SECONDS;
     let preview_min_samples = (preview_sample_rate as u64 * LIVE_PREVIEW_MIN_MS / 1_000) as usize;
 
@@ -1181,6 +1261,16 @@ fn run_batch_live_preview_loop(
 
         if preview.is_empty() || preview == last_preview {
             continue;
+        }
+        if !batch_emitted {
+            note_preview_diagnostic(
+                app,
+                shared,
+                "batch-tdt",
+                "Batch live preview active",
+                "Using rolling Parakeet TDT partials",
+            );
+            batch_emitted = true;
         }
         last_preview = preview.clone();
 

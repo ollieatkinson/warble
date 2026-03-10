@@ -240,6 +240,28 @@ pub(crate) struct OverlaySnapshot {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct PreviewDiagnostics {
+    pub(crate) backend: String,
+    pub(crate) status: String,
+    pub(crate) detail: String,
+    pub(crate) recent_events: Vec<String>,
+    pub(crate) log_path: Option<String>,
+}
+
+impl Default for PreviewDiagnostics {
+    fn default() -> Self {
+        Self {
+            backend: String::new(),
+            status: "Idle".to_string(),
+            detail: String::new(),
+            recent_events: Vec::new(),
+            log_path: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Snapshot {
     pub(crate) phase: AppPhase,
     pub(crate) settings: Settings,
@@ -253,6 +275,7 @@ pub(crate) struct Snapshot {
     pub(crate) shortcut_message: String,
     pub(crate) status_message: String,
     pub(crate) error_message: Option<String>,
+    pub(crate) preview_diagnostics: PreviewDiagnostics,
     pub(crate) overlay: OverlaySnapshot,
 }
 
@@ -318,6 +341,7 @@ pub(crate) struct AppCore {
     pub(crate) shortcuts_active: bool,
     pub(crate) shortcut_message: String,
     pub(crate) error_message: Option<String>,
+    pub(crate) preview_diagnostics: PreviewDiagnostics,
     pub(crate) model_status: ModelStatus,
     pub(crate) parakeet_model_status: ModelStatus,
     pub(crate) overlay: OverlaySnapshot,
@@ -336,6 +360,7 @@ impl AppCore {
             shortcuts_active: false,
             shortcut_message: "Checking global shortcuts".to_string(),
             error_message: None,
+            preview_diagnostics: PreviewDiagnostics::default(),
             model_status: ModelStatus::Missing,
             parakeet_model_status: ModelStatus::Missing,
             overlay: OverlaySnapshot {

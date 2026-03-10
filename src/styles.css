@@ -1527,6 +1527,10 @@ input::placeholder {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.feature-unlock-row-stack {
+  align-items: start;
+}
+
 .feature-unlock-row:last-child {
   border-bottom: none;
 }
@@ -1537,6 +1541,10 @@ input::placeholder {
 
 .feature-unlock-row span {
   color: var(--muted);
+}
+
+.feature-unlock-events {
+  white-space: pre-line;
 }
 
 .history-list {

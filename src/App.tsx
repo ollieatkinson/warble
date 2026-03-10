@@ -880,6 +880,7 @@ function ControlApp({
                 directmlCapable: Boolean(row.directmlCapable),
               }))}
               directmlAvailable={snapshot.systemProfile.directmlAvailable}
+              previewDiagnostics={snapshot.previewDiagnostics}
             />
           ) : null}
 

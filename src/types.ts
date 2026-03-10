@@ -111,6 +111,13 @@ export type Snapshot = {
   shortcutMessage: string;
   statusMessage: string;
   errorMessage: string | null;
+  previewDiagnostics: {
+    backend: string;
+    status: string;
+    detail: string;
+    recentEvents: string[];
+    logPath: string | null;
+  };
   overlay: OverlaySnapshot;
 };
 

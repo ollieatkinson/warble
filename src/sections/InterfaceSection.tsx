@@ -13,6 +13,7 @@ export function InterfaceSection({
   onApplySettings,
   installedStreamingModels,
   directmlAvailable,
+  previewDiagnostics,
 }: {
   draft: SettingsDraft;
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
@@ -23,6 +24,13 @@ export function InterfaceSection({
     directmlCapable: boolean;
   }>;
   directmlAvailable: boolean;
+  previewDiagnostics: {
+    backend: string;
+    status: string;
+    detail: string;
+    recentEvents: string[];
+    logPath: string | null;
+  };
 }) {
   const unlockedFeatures = Array.from(
     new Set(installedStreamingModels.flatMap((model) => model.unlockedFeatures)),
@@ -157,6 +165,35 @@ export function InterfaceSection({
                     ? "DirectML ready on this Windows machine"
                     : "Model supports DirectML, but this PC is not reporting DirectML-ready"
                   : "No DirectML-capable streaming model installed"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="feature-unlock-panel">
+          <div className="feature-unlock-head">
+            <strong>Live preview diagnostics</strong>
+            <span>{previewDiagnostics.backend || "No session yet"}</span>
+          </div>
+          <div className="feature-unlock-list">
+            <div className="feature-unlock-row">
+              <strong>Status</strong>
+              <span>{previewDiagnostics.status}</span>
+            </div>
+            <div className="feature-unlock-row">
+              <strong>Detail</strong>
+              <span>{previewDiagnostics.detail || "No detail yet"}</span>
+            </div>
+            <div className="feature-unlock-row">
+              <strong>Log</strong>
+              <span>{previewDiagnostics.logPath ?? "Unavailable"}</span>
+            </div>
+            <div className="feature-unlock-row feature-unlock-row-stack">
+              <strong>Recent</strong>
+              <span className="feature-unlock-events">
+                {previewDiagnostics.recentEvents.length > 0
+                  ? previewDiagnostics.recentEvents.join("\n")
+                  : "No live preview events yet"}
               </span>
             </div>
           </div>
