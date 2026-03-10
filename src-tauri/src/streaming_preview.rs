@@ -532,6 +532,8 @@ fn load_streaming_session(path: &Path, directml_enabled: bool) -> Result<Session
     let mut builder = Session::builder()
         .context("failed to create ONNX session builder")?
         .with_optimization_level(GraphOptimizationLevel::Level3)
+        .and_then(|builder| builder.with_parallel_execution(false))
+        .and_then(|builder| builder.with_memory_pattern(false))
         .map_err(|error| anyhow!("failed to configure ONNX session: {error}"))?;
 
     #[cfg(target_os = "windows")]

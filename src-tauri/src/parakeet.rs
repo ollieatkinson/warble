@@ -1,5 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use ort::{
+    execution_providers::{CPUExecutionProvider, DirectMLExecutionProvider},
     inputs,
     session::{builder::GraphOptimizationLevel, Session},
     value::TensorRef,
@@ -584,12 +585,36 @@ fn find_existing_path(dir: &Path, candidates: &[&str]) -> Result<PathBuf> {
 }
 
 fn load_session(path: &Path) -> Result<Session> {
-    Session::builder()
+    let mut builder = Session::builder()
         .context("failed to create ONNX session builder")?
         .with_optimization_level(GraphOptimizationLevel::Level3)
+        .and_then(|builder| builder.with_parallel_execution(false))
+        .and_then(|builder| builder.with_memory_pattern(false))
         .map_err(|error| anyhow!("failed to configure ONNX session: {error}"))?
+        ;
+
+    #[cfg(target_os = "windows")]
+    if directml_runtime_available() {
+        builder = builder
+            .with_execution_providers([
+                DirectMLExecutionProvider::default().build(),
+                CPUExecutionProvider::default().build().error_on_failure(),
+            ])
+            .map_err(|error| anyhow!("failed to enable DirectML session: {error}"))?;
+    }
+
+    builder
         .commit_from_file(path)
         .with_context(|| format!("failed to open {}", path.display()))
+}
+
+#[cfg(target_os = "windows")]
+fn directml_runtime_available() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|parent| parent.join("DirectML.dll")))
+        .map(|path| path.exists())
+        .unwrap_or(false)
 }
 
 fn shape_to_vec(shape: &ort::tensor::Shape) -> Vec<usize> {
