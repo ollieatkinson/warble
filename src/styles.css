@@ -662,6 +662,21 @@ input::placeholder {
   gap: 0.6rem;
 }
 
+.overview-transcript-surface {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.overview-transcript-copy {
+  margin-top: 0.2rem;
+}
+
+.overview-transcript-copy p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.65;
+}
+
 .pill-stage {
   display: flex;
   justify-content: center;

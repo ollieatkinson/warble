@@ -11,6 +11,7 @@ import { toneForPhase } from "../lib/utils";
 import type {
   AppPhase,
   ButtonFeedbackState,
+  HistoryItem,
   ModelRow,
   OverlayAnimationStyle,
   SourceInfo,
@@ -30,7 +31,7 @@ export function OverviewSection({
   levels,
   elapsedMs,
   limitMs,
-  recentTranscript,
+  recentFileTranscript,
   shortcutsActive,
   fileActionState,
   onStartRecording,
@@ -51,7 +52,7 @@ export function OverviewSection({
   levels: number[];
   elapsedMs: number;
   limitMs: number | null;
-  recentTranscript: boolean;
+  recentFileTranscript: HistoryItem | null;
   shortcutsActive: boolean;
   fileActionState?: ButtonFeedbackState;
   onStartRecording: (mode: "hold" | "toggle") => void;
@@ -144,9 +145,30 @@ export function OverviewSection({
         <div className="mini-meta-row">
           <span>{activeSource?.sampleRate ?? 0} Hz</span>
           <span>{activeSource?.channels ?? 0} ch</span>
-          <span>{recentTranscript ? "Last saved locally" : "No transcript yet"}</span>
+          <span>
+            {recentFileTranscript ? "Last file saved locally" : "No imported file yet"}
+          </span>
         </div>
       </section>
+
+      {recentFileTranscript ? (
+        <section className="surface overview-transcript-surface">
+          <div className="surface-bar">
+            <div className="surface-title">
+              <span className="surface-title-label">Last file transcript</span>
+            </div>
+          </div>
+
+          <div className="mini-meta-row">
+            <span>{new Date(recentFileTranscript.createdAt).toLocaleString()}</span>
+            <span>{recentFileTranscript.sourceName}</span>
+          </div>
+
+          <div className="detail-copy overview-transcript-copy">
+            <p>{recentFileTranscript.text}</p>
+          </div>
+        </section>
+      ) : null}
     </>
   );
 }

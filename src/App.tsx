@@ -159,7 +159,6 @@ function ControlApp({
       snapshot.history[0]?.capture.sourceKind === "file"
     ) {
       setHistoryQuery("");
-      setActiveSection("history");
     }
 
     previousSnapshotRef.current = snapshot;
@@ -742,7 +741,8 @@ function ControlApp({
       source.isDefault ? " · default" : ""
     }`,
   }));
-  const recentTranscript = snapshot.history[0] ?? null;
+  const recentFileTranscript =
+    snapshot.history.find((item) => item.capture.sourceKind === "file") ?? null;
   const filteredHistory = snapshot.history.filter((item) =>
     matchesHistory(item, historyQuery),
   );
@@ -833,7 +833,7 @@ function ControlApp({
               levels={snapshot.overlay.levels}
               elapsedMs={snapshot.overlay.elapsedMs}
               limitMs={snapshot.overlay.limitMs}
-              recentTranscript={Boolean(recentTranscript)}
+              recentFileTranscript={recentFileTranscript}
               shortcutsActive={snapshot.shortcutsActive}
               fileActionState={buttonFeedback["transcribe-file"]}
               onStartRecording={startRecording}
