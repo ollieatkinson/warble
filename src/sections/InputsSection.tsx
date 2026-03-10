@@ -4,6 +4,8 @@ import { CheckIcon, RefreshIcon } from "../components/icons";
 import type {
   ButtonFeedbackState,
   ChoiceOption,
+  LiveTranscriptLines,
+  LiveTranscriptWidth,
   SettingsDraft,
   Snapshot,
   SourceInfo,
@@ -19,6 +21,8 @@ export function InputsSection({
   buttonFeedback,
   elapsedMs,
   limitMs,
+  liveTranscriptWidth,
+  liveTranscriptLines,
   onApplySettings,
   onRefreshDevices,
   onStartRecording,
@@ -34,6 +38,8 @@ export function InputsSection({
   buttonFeedback: Record<string, ButtonFeedbackState>;
   elapsedMs: number;
   limitMs: number | null;
+  liveTranscriptWidth: LiveTranscriptWidth;
+  liveTranscriptLines: LiveTranscriptLines;
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
   onRefreshDevices: () => void | Promise<void>;
   onStartRecording: (mode: "hold" | "toggle") => void;
@@ -109,6 +115,8 @@ export function InputsSection({
             animationStyle={draft.overlayAnimationStyle}
             showRecordingTimer={draft.showRecordingTimer}
             showLiveTranscription={draft.showLiveTranscription}
+            liveTranscriptWidth={liveTranscriptWidth}
+            liveTranscriptLines={liveTranscriptLines}
             elapsedMs={elapsedMs}
             limitMs={limitMs}
             onCancel={onCancel}

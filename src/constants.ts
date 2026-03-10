@@ -2,6 +2,8 @@ import type {
   AudioRetentionPolicy,
   EditableOverlayPosition,
   LivePreviewModel,
+  LiveTranscriptLines,
+  LiveTranscriptWidth,
   ModelFilter,
   OverlayAnimationStyle,
   SectionId,
@@ -75,6 +77,26 @@ export const livePreviewModelOptions: Array<{
     label: "Realtime EOU",
     description: "Lower-latency streaming preview with EOU detection.",
   },
+];
+
+export const liveTranscriptWidthOptions: Array<{
+  id: LiveTranscriptWidth;
+  label: string;
+  description: string;
+}> = [
+  { id: "compact", label: "Compact", description: "Smaller live text width." },
+  { id: "balanced", label: "Balanced", description: "Default live text width." },
+  { id: "wide", label: "Wide", description: "More room for live text." },
+];
+
+export const liveTranscriptLineOptions: Array<{
+  id: LiveTranscriptLines;
+  label: string;
+  description: string;
+}> = [
+  { id: "one", label: "1 line", description: "Keep the pill single-line." },
+  { id: "two", label: "2 lines", description: "Show a little more live text." },
+  { id: "three", label: "3 lines", description: "Show the deepest live preview." },
 ];
 
 export const DEMO_LEVELS = [

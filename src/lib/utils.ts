@@ -7,6 +7,8 @@ import type {
   HistoryItem,
   InferenceProvider,
   LivePreviewModel,
+  LiveTranscriptLines,
+  LiveTranscriptWidth,
   OverlayAnimationStyle,
   OverlayPosition,
   SettingsDraft,
@@ -81,6 +83,30 @@ export function formatLivePreviewModel(model: LivePreviewModel) {
     case "auto":
     default:
       return "Auto";
+  }
+}
+
+export function formatLiveTranscriptWidth(width: LiveTranscriptWidth) {
+  switch (width) {
+    case "compact":
+      return "Compact";
+    case "wide":
+      return "Wide";
+    case "balanced":
+    default:
+      return "Balanced";
+  }
+}
+
+export function formatLiveTranscriptLines(lines: LiveTranscriptLines) {
+  switch (lines) {
+    case "one":
+      return "1 line";
+    case "three":
+      return "3 lines";
+    case "two":
+    default:
+      return "2 lines";
   }
 }
 
@@ -290,6 +316,8 @@ export function buildSettingsUpdate(draft: SettingsDraft) {
     overlayPosition: draft.overlayPosition,
     overlayAnimationStyle: draft.overlayAnimationStyle,
     livePreviewModel: draft.livePreviewModel,
+    liveTranscriptWidth: draft.liveTranscriptWidth,
+    liveTranscriptLines: draft.liveTranscriptLines,
     showRecordingTimer: draft.showRecordingTimer,
     showLiveTranscription: draft.showLiveTranscription,
   };

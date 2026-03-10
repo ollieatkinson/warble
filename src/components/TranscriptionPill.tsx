@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { DEMO_LEVELS } from "../constants";
 import { formatElapsedClock, resampleLevels, smoothLevels } from "../lib/utils";
 import type {
   AppPhase,
   EditableOverlayPosition,
+  LiveTranscriptLines,
+  LiveTranscriptWidth,
   OverlayAnimationStyle,
   Snapshot,
 } from "../types";
@@ -19,25 +21,87 @@ function normalizeIndicatorCopy(value: string): string {
     .join("\n");
 }
 
-function latestIndicatorCopy(value: string): string {
-  const normalized = normalizeIndicatorCopy(value);
-  if (!normalized) {
-    return "";
-  }
+function normalizeLiveIndicatorCopy(value: string): string {
+  return normalizeIndicatorCopy(value).replace(/\s+/g, " ").trim();
+}
 
-  const lines = normalized
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const latestLine = lines.length > 0 ? lines[lines.length - 1] : "";
-  const compactLine = latestLine.replace(/\s+/g, " ").trim();
-  const maxChars = 54;
+function LiveTranscriptText({
+  text,
+  lines,
+}: {
+  text: string;
+  lines: LiveTranscriptLines;
+}) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLSpanElement | null>(null);
+  const [offset, setOffset] = useState(0);
+  const multiline = lines !== "one";
 
-  if (compactLine.length <= maxChars) {
-    return compactLine;
-  }
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content) {
+      return;
+    }
 
-  return `…${compactLine.slice(-maxChars).trimStart()}`;
+    let frameId = 0;
+
+    const updateOffset = () => {
+      const nextOffset = multiline
+        ? Math.min(0, viewport.clientHeight - content.scrollHeight)
+        : Math.min(0, viewport.clientWidth - content.scrollWidth);
+
+      setOffset((current) => (current === nextOffset ? current : nextOffset));
+    };
+
+    const schedule = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(updateOffset);
+    };
+
+    schedule();
+
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            schedule();
+          })
+        : null;
+    observer?.observe(viewport);
+    observer?.observe(content);
+    window.addEventListener("resize", schedule);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer?.disconnect();
+      window.removeEventListener("resize", schedule);
+    };
+  }, [text, multiline]);
+
+  return (
+    <div
+      ref={viewportRef}
+      className={[
+        "indicator-live-viewport",
+        `indicator-live-viewport-lines-${lines}`,
+      ].join(" ")}
+    >
+      <span
+        ref={contentRef}
+        className={[
+          "indicator-live-content",
+          multiline ? "indicator-live-content-multiline" : "indicator-live-content-single",
+        ].join(" ")}
+        style={{
+          transform: multiline
+            ? `translateY(${offset}px)`
+            : `translateX(${offset}px)`,
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  );
 }
 
 export function SignalBars({
@@ -227,6 +291,8 @@ export function TranscriptionPill({
   animationStyle,
   showRecordingTimer,
   showLiveTranscription,
+  liveTranscriptWidth = "balanced",
+  liveTranscriptLines = "one",
   elapsedMs = 0,
   limitMs = null,
   onCancel,
@@ -238,12 +304,14 @@ export function TranscriptionPill({
   animationStyle: OverlayAnimationStyle;
   showRecordingTimer: boolean;
   showLiveTranscription: boolean;
+  liveTranscriptWidth?: LiveTranscriptWidth;
+  liveTranscriptLines?: LiveTranscriptLines;
   elapsedMs?: number;
   limitMs?: number | null;
   onCancel?: (() => void) | null;
 }) {
   const copy = showLiveTranscription
-    ? latestIndicatorCopy(detail.trim() || title)
+    ? normalizeLiveIndicatorCopy(detail.trim() || title)
     : normalizeIndicatorCopy(detail.trim() || title);
   const usesRadialCore = animationStyle === "radial";
   const canCancel = phase === "recording" || phase === "transcribing";
@@ -276,12 +344,18 @@ export function TranscriptionPill({
         `indicator-shell-${phase}`,
         "indicator-shell-inline",
         showLiveTranscription ? "indicator-shell-detail" : "indicator-shell-compact",
+        showLiveTranscription
+          ? `indicator-shell-detail-width-${liveTranscriptWidth}`
+          : "",
+        showLiveTranscription
+          ? `indicator-shell-detail-lines-${liveTranscriptLines}`
+          : "",
         usesRadialCore ? "indicator-shell-radial" : "",
       ].join(" ")}
     >
       {showLiveTranscription ? (
         <div className="indicator-copy indicator-copy-floating indicator-copy-live">
-          <span>{copy}</span>
+          <LiveTranscriptText text={copy} lines={liveTranscriptLines} />
         </div>
       ) : null}
       <div className={rowClassName}>
@@ -439,6 +513,8 @@ export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
     snapshot?.overlay.limitMs,
     snapshot?.settings.overlayAnimationStyle,
     snapshot?.settings.showLiveTranscription,
+    snapshot?.settings.liveTranscriptWidth,
+    snapshot?.settings.liveTranscriptLines,
     snapshot?.settings.showRecordingTimer,
   ]);
 
@@ -457,6 +533,8 @@ export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
           animationStyle={snapshot.settings.overlayAnimationStyle}
           showRecordingTimer={snapshot.settings.showRecordingTimer}
           showLiveTranscription={snapshot.settings.showLiveTranscription}
+          liveTranscriptWidth={snapshot.settings.liveTranscriptWidth}
+          liveTranscriptLines={snapshot.settings.liveTranscriptLines}
           elapsedMs={snapshot.overlay.elapsedMs}
           limitMs={snapshot.overlay.limitMs}
           onCancel={cancelFromOverlay}
@@ -525,11 +603,15 @@ export function InterfacePreviewCard({
   animationStyle,
   showRecordingTimer,
   showLiveTranscription,
+  liveTranscriptWidth,
+  liveTranscriptLines,
 }: {
   overlayPosition: EditableOverlayPosition;
   animationStyle: OverlayAnimationStyle;
   showRecordingTimer: boolean;
   showLiveTranscription: boolean;
+  liveTranscriptWidth: LiveTranscriptWidth;
+  liveTranscriptLines: LiveTranscriptLines;
 }) {
   return (
     <div className="interface-demo-frame">
@@ -543,6 +625,8 @@ export function InterfacePreviewCard({
             animationStyle={animationStyle}
             showRecordingTimer={showRecordingTimer}
             showLiveTranscription={showLiveTranscription}
+            liveTranscriptWidth={liveTranscriptWidth}
+            liveTranscriptLines={liveTranscriptLines}
             elapsedMs={134_000}
             limitMs={300_000}
           />

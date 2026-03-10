@@ -12,6 +12,8 @@ import type {
   AppPhase,
   ButtonFeedbackState,
   HistoryItem,
+  LiveTranscriptLines,
+  LiveTranscriptWidth,
   ModelRow,
   OverlayAnimationStyle,
   SourceInfo,
@@ -23,6 +25,8 @@ export function OverviewSection({
   animationStyle,
   showRecordingTimer,
   showLiveTranscription,
+  liveTranscriptWidth,
+  liveTranscriptLines,
   phase,
   historyCount,
   overlayTitle,
@@ -44,6 +48,8 @@ export function OverviewSection({
   animationStyle: OverlayAnimationStyle;
   showRecordingTimer: boolean;
   showLiveTranscription: boolean;
+  liveTranscriptWidth: LiveTranscriptWidth;
+  liveTranscriptLines: LiveTranscriptLines;
   phase: AppPhase;
   historyCount: number;
   overlayTitle: string;
@@ -136,6 +142,8 @@ export function OverviewSection({
             animationStyle={animationStyle}
             showRecordingTimer={showRecordingTimer}
             showLiveTranscription={showLiveTranscription}
+            liveTranscriptWidth={liveTranscriptWidth}
+            liveTranscriptLines={liveTranscriptLines}
             elapsedMs={elapsedMs}
             limitMs={limitMs}
             onCancel={onCancel}

@@ -1,11 +1,21 @@
-import { overlayAnimationOptions, overlayPositionOptions } from "../constants";
+import {
+  liveTranscriptLineOptions,
+  liveTranscriptWidthOptions,
+  overlayAnimationOptions,
+  overlayPositionOptions,
+} from "../constants";
 import { ChoiceDropdown } from "../components/common";
 import {
   AnimationOptionPreview,
   InterfacePreviewCard,
   OverlayPositionPreview,
 } from "../components/TranscriptionPill";
-import { formatOverlayAnimationStyle, formatOverlayPosition } from "../lib/utils";
+import {
+  formatLiveTranscriptLines,
+  formatLiveTranscriptWidth,
+  formatOverlayAnimationStyle,
+  formatOverlayPosition,
+} from "../lib/utils";
 import type { SettingsDraft } from "../types";
 
 export function InterfaceSection({
@@ -121,6 +131,48 @@ export function InterfaceSection({
               <span>Expand the pill with draft text while speaking.</span>
             </div>
           </label>
+
+          {draft.showLiveTranscription ? (
+            <>
+              <div className="setting-row">
+                <div className="setting-copy">
+                  <strong>Transcript width</strong>
+                  <span>Reserve more room for the newest words in the pill.</span>
+                </div>
+                <div className="setting-control">
+                  <ChoiceDropdown
+                    label="Width"
+                    value={draft.liveTranscriptWidth}
+                    options={liveTranscriptWidthOptions}
+                    onChange={(value) =>
+                      void onApplySettings({
+                        liveTranscriptWidth: value as typeof draft.liveTranscriptWidth,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="setting-row">
+                <div className="setting-copy">
+                  <strong>Transcript lines</strong>
+                  <span>Choose how many lines of live text the HUD can show.</span>
+                </div>
+                <div className="setting-control">
+                  <ChoiceDropdown
+                    label="Lines"
+                    value={draft.liveTranscriptLines}
+                    options={liveTranscriptLineOptions}
+                    onChange={(value) =>
+                      void onApplySettings({
+                        liveTranscriptLines: value as typeof draft.liveTranscriptLines,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </>
+          ) : null}
         </div>
 
         <div className="mini-meta-row">
@@ -128,6 +180,12 @@ export function InterfaceSection({
           <span>{formatOverlayAnimationStyle(draft.overlayAnimationStyle)}</span>
           <span>{draft.showRecordingTimer ? "Timer on" : "Timer off"}</span>
           <span>{draft.showLiveTranscription ? "Expanded HUD" : "Compact HUD"}</span>
+          {draft.showLiveTranscription ? (
+            <>
+              <span>{formatLiveTranscriptWidth(draft.liveTranscriptWidth)}</span>
+              <span>{formatLiveTranscriptLines(draft.liveTranscriptLines)}</span>
+            </>
+          ) : null}
         </div>
 
         <div className="feature-unlock-panel">
@@ -209,6 +267,8 @@ export function InterfaceSection({
           animationStyle={draft.overlayAnimationStyle}
           showRecordingTimer={draft.showRecordingTimer}
           showLiveTranscription={draft.showLiveTranscription}
+          liveTranscriptWidth={draft.liveTranscriptWidth}
+          liveTranscriptLines={draft.liveTranscriptLines}
         />
 
         <div className="interface-preview-grid">

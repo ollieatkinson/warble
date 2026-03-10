@@ -87,6 +87,8 @@ function ControlApp({
     overlayPosition: "bottom-center",
     overlayAnimationStyle: "spectrum",
     livePreviewModel: "auto",
+    liveTranscriptWidth: "balanced",
+    liveTranscriptLines: "one",
     showRecordingTimer: false,
     showLiveTranscription: false,
   });
@@ -134,6 +136,8 @@ function ControlApp({
       ),
       overlayAnimationStyle: snapshot.settings.overlayAnimationStyle,
       livePreviewModel: snapshot.settings.livePreviewModel,
+      liveTranscriptWidth: snapshot.settings.liveTranscriptWidth,
+      liveTranscriptLines: snapshot.settings.liveTranscriptLines,
       showRecordingTimer: snapshot.settings.showRecordingTimer,
       showLiveTranscription: snapshot.settings.showLiveTranscription,
     });
@@ -719,6 +723,8 @@ function ControlApp({
               animationStyle={draft.overlayAnimationStyle}
               showRecordingTimer={draft.showRecordingTimer}
               showLiveTranscription={draft.showLiveTranscription}
+              liveTranscriptWidth={draft.liveTranscriptWidth}
+              liveTranscriptLines={draft.liveTranscriptLines}
               phase={snapshot.phase}
               historyCount={snapshot.history.length}
               overlayTitle={snapshot.overlay.title}
@@ -816,6 +822,8 @@ function ControlApp({
               buttonFeedback={buttonFeedback}
               elapsedMs={snapshot.overlay.elapsedMs}
               limitMs={snapshot.overlay.limitMs}
+              liveTranscriptWidth={draft.liveTranscriptWidth}
+              liveTranscriptLines={draft.liveTranscriptLines}
               onApplySettings={applySettings}
               onRefreshDevices={refreshDevices}
               onStartRecording={startRecording}

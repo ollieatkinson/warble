@@ -787,8 +787,11 @@ fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
 
 fn compact_indicator_row_width(style: OverlayAnimationStyle, show_timer: bool) -> i32 {
     const STATUS_WIDTH: i32 = 18;
-    const TIMER_WIDTH: i32 = 96;
     const GAP_WIDTH: i32 = 10;
+    const TIMER_CHARACTER_COUNT: i32 = 11;
+    const TIMER_CHARACTER_WIDTH: i32 = 9;
+    const TIMER_INSET_WIDTH: i32 = 12;
+    let timer_width = TIMER_CHARACTER_COUNT * TIMER_CHARACTER_WIDTH + TIMER_INSET_WIDTH;
 
     let signal_width = match style {
         OverlayAnimationStyle::Radial => 30,
@@ -803,22 +806,47 @@ fn compact_indicator_row_width(style: OverlayAnimationStyle, show_timer: bool) -
     };
 
     if show_timer {
-        base_width + GAP_WIDTH + TIMER_WIDTH
+        base_width + GAP_WIDTH + timer_width
     } else {
         base_width
     }
 }
 
+fn live_transcript_width_px(width: &LiveTranscriptWidth) -> i32 {
+    match width {
+        LiveTranscriptWidth::Compact => 256,
+        LiveTranscriptWidth::Balanced => 320,
+        LiveTranscriptWidth::Wide => 392,
+    }
+}
+
+fn live_transcript_line_count(lines: &LiveTranscriptLines) -> i32 {
+    match lines {
+        LiveTranscriptLines::One => 1,
+        LiveTranscriptLines::Two => 2,
+        LiveTranscriptLines::Three => 3,
+    }
+}
+
 fn fallback_indicator_window_size(settings: &Settings) -> (i32, i32) {
     let content_height = if settings.show_live_transcription {
-        if settings.show_recording_timer { 100 } else { 92 }
+        let copy_height = live_transcript_line_count(&settings.live_transcript_lines) * 16;
+        let row_height = if matches!(settings.overlay_animation_style, OverlayAnimationStyle::Radial)
+        {
+            30
+        } else {
+            20
+        };
+        let copy_gap_height = 9;
+        let shell_padding_height = 28;
+        copy_height + row_height + copy_gap_height + shell_padding_height
     } else {
         58
     };
 
     let pill_padding_width = if settings.show_live_transcription { 34 } else { 30 };
     let content_width = if settings.show_live_transcription {
-        let live_text_width = if settings.show_recording_timer { 320 } else { 292 };
+        let live_text_width = live_transcript_width_px(&settings.live_transcript_width);
         let row_width = compact_indicator_row_width(
             settings.overlay_animation_style.clone(),
             settings.show_recording_timer,
@@ -2158,6 +2186,12 @@ fn update_settings_command(
         }
         if let Some(live_preview_model) = update.live_preview_model {
             core.settings.live_preview_model = live_preview_model;
+        }
+        if let Some(live_transcript_width) = update.live_transcript_width {
+            core.settings.live_transcript_width = live_transcript_width;
+        }
+        if let Some(live_transcript_lines) = update.live_transcript_lines {
+            core.settings.live_transcript_lines = live_transcript_lines;
         }
         if let Some(show_recording_timer) = update.show_recording_timer {
             core.settings.show_recording_timer = show_recording_timer;

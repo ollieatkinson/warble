@@ -14,6 +14,8 @@ export type LivePreviewModel =
   | "auto"
   | "nemotron-streaming"
   | "parakeet-eou";
+export type LiveTranscriptWidth = "compact" | "balanced" | "wide";
+export type LiveTranscriptLines = "one" | "two" | "three";
 export type ShortcutFieldName = "holdShortcut" | "toggleShortcut";
 export type SectionId =
   | "overview"
@@ -54,6 +56,8 @@ export type Settings = {
   overlayPosition: OverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
   livePreviewModel: LivePreviewModel;
+  liveTranscriptWidth: LiveTranscriptWidth;
+  liveTranscriptLines: LiveTranscriptLines;
   showRecordingTimer: boolean;
   showLiveTranscription: boolean;
 };
@@ -136,6 +140,8 @@ export type SettingsDraft = {
   overlayPosition: EditableOverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
   livePreviewModel: LivePreviewModel;
+  liveTranscriptWidth: LiveTranscriptWidth;
+  liveTranscriptLines: LiveTranscriptLines;
   showRecordingTimer: boolean;
   showLiveTranscription: boolean;
 };

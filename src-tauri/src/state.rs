@@ -109,6 +109,34 @@ impl Default for LivePreviewModelPreference {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+pub(crate) enum LiveTranscriptWidth {
+    Compact,
+    Balanced,
+    Wide,
+}
+
+impl Default for LiveTranscriptWidth {
+    fn default() -> Self {
+        Self::Balanced
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum LiveTranscriptLines {
+    One,
+    Two,
+    Three,
+}
+
+impl Default for LiveTranscriptLines {
+    fn default() -> Self {
+        Self::One
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
 pub(crate) enum AudioRetentionPolicy {
     OneDay,
     SevenDays,
@@ -138,6 +166,8 @@ pub(crate) struct Settings {
     pub(crate) overlay_position: OverlayPosition,
     pub(crate) overlay_animation_style: OverlayAnimationStyle,
     pub(crate) live_preview_model: LivePreviewModelPreference,
+    pub(crate) live_transcript_width: LiveTranscriptWidth,
+    pub(crate) live_transcript_lines: LiveTranscriptLines,
     pub(crate) show_recording_timer: bool,
     pub(crate) show_live_transcription: bool,
 }
@@ -159,6 +189,8 @@ impl Default for Settings {
             overlay_position: OverlayPosition::BottomCenter,
             overlay_animation_style: OverlayAnimationStyle::Spectrum,
             live_preview_model: LivePreviewModelPreference::Auto,
+            live_transcript_width: LiveTranscriptWidth::Balanced,
+            live_transcript_lines: LiveTranscriptLines::One,
             show_recording_timer: false,
             show_live_transcription: false,
         }
@@ -229,6 +261,8 @@ pub(crate) struct SettingsUpdate {
     pub(crate) overlay_position: Option<OverlayPosition>,
     pub(crate) overlay_animation_style: Option<OverlayAnimationStyle>,
     pub(crate) live_preview_model: Option<LivePreviewModelPreference>,
+    pub(crate) live_transcript_width: Option<LiveTranscriptWidth>,
+    pub(crate) live_transcript_lines: Option<LiveTranscriptLines>,
     pub(crate) show_recording_timer: Option<bool>,
     pub(crate) show_live_transcription: Option<bool>,
 }
