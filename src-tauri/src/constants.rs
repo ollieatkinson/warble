@@ -12,6 +12,7 @@ pub(crate) const CANCEL_SHORTCUT: &str = "Escape";
 pub(crate) const INDICATOR_MARGIN: i32 = 24;
 pub(crate) const LIVE_PREVIEW_INTERVAL_MS: u64 = 1_500;
 pub(crate) const LIVE_STREAM_PREVIEW_INTERVAL_MS: u64 = 220;
+pub(crate) const LIVE_STREAM_PREVIEW_FALLBACK_MS: u64 = 4_000;
 pub(crate) const LIVE_PREVIEW_MIN_MS: u64 = 900;
 pub(crate) const LIVE_PREVIEW_WINDOW_SECONDS: usize = 12;
 pub(crate) const LIVE_PREVIEW_MAX_WORDS: usize = 32;

@@ -534,10 +534,30 @@ fn preview_words(text: &str) -> Vec<String> {
     text.split_whitespace().map(ToString::to_string).collect()
 }
 
+fn normalize_preview_word(word: &str) -> String {
+    word.trim_matches(|character: char| {
+        character.is_whitespace()
+            || matches!(
+                character,
+                ',' | '.' | ';' | ':' | '!' | '?' | '"' | '\'' | '(' | ')' | '[' | ']' | '{'
+                    | '}'
+                    | '“'
+                    | '”'
+                    | '‘'
+                    | '’'
+            )
+    })
+    .to_lowercase()
+}
+
 fn common_prefix_len(left: &[String], right: &[String]) -> usize {
     left.iter()
         .zip(right.iter())
-        .take_while(|(lhs, rhs)| lhs == rhs)
+        .take_while(|(lhs, rhs)| {
+            let lhs = normalize_preview_word(lhs);
+            let rhs = normalize_preview_word(rhs);
+            !lhs.is_empty() && lhs == rhs
+        })
         .count()
 }
 
@@ -985,6 +1005,8 @@ fn run_streaming_live_preview_loop(
     let mut engine = streaming_preview::StreamingPreviewEngine::load(&config)?;
     let mut last_sample_count = 0usize;
     let mut last_preview = String::new();
+    let mut preview_emitted = false;
+    let mut seen_audio_ms = 0u64;
 
     loop {
         std::thread::sleep(Duration::from_millis(LIVE_STREAM_PREVIEW_INTERVAL_MS));
@@ -1016,9 +1038,19 @@ fn run_streaming_live_preview_loop(
         };
 
         let preview_audio = parakeet::resample_to_16khz(&new_samples, preview_sample_rate);
+        seen_audio_ms = seen_audio_ms.saturating_add(
+            ((preview_audio.len() as f64 / parakeet::SAMPLE_RATE as f64) * 1000.0) as u64,
+        );
         let transcript = match engine.push_audio(&preview_audio) {
             Ok(Some(text)) => text,
-            Ok(None) => continue,
+            Ok(None) => {
+                if !preview_emitted && seen_audio_ms >= LIVE_STREAM_PREVIEW_FALLBACK_MS {
+                    return Err(anyhow!(
+                        "streaming preview did not yield text quickly enough"
+                    ));
+                }
+                continue;
+            }
             Err(error) => return Err(error),
         };
         let (cleanup_enabled, cleanup_terms) = {
@@ -1037,6 +1069,7 @@ fn run_streaming_live_preview_loop(
         if preview.is_empty() || preview == last_preview {
             continue;
         }
+        preview_emitted = true;
         last_preview = preview.clone();
 
         {
@@ -2255,8 +2288,9 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        cleanup_transcript_text, default_cleanup_terms, live_preview_text,
-        measure_overlay_levels, normalize_cleanup_term, normalize_cleanup_terms,
+        cleanup_transcript_text, common_prefix_len, default_cleanup_terms,
+        live_preview_text, measure_overlay_levels, normalize_cleanup_term,
+        normalize_cleanup_terms,
     };
 
     #[test]
@@ -2329,5 +2363,21 @@ mod tests {
             preview,
             "second line with more words\nthird line stays visible\nfourth line is newest"
         );
+    }
+
+    #[test]
+    fn common_prefix_len_ignores_case_and_terminal_punctuation() {
+        let left = vec![
+            String::from("Hello,"),
+            String::from("world!"),
+            String::from("Again"),
+        ];
+        let right = vec![
+            String::from("hello"),
+            String::from("world"),
+            String::from("different"),
+        ];
+
+        assert_eq!(common_prefix_len(&left, &right), 2);
     }
 }
