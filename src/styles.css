@@ -1829,6 +1829,11 @@ input::placeholder {
   max-width: none;
 }
 
+.indicator-copy-live {
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
 .indicator-timer {
   display: inline-flex;
   align-items: center;
@@ -1865,6 +1870,13 @@ input::placeholder {
   text-overflow: ellipsis;
   display: block;
   text-align: left;
+}
+
+.indicator-copy-live span {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  flex: 0 0 auto;
 }
 
 .indicator-shell-detail .indicator-mark {

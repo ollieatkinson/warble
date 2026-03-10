@@ -271,7 +271,7 @@ export function TranscriptionPill({
       ].join(" ")}
     >
       {showLiveTranscription ? (
-        <div className="indicator-copy indicator-copy-floating">
+        <div className="indicator-copy indicator-copy-floating indicator-copy-live">
           <span>{copy}</span>
         </div>
       ) : null}
