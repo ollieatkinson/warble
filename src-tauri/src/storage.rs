@@ -9,6 +9,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(target_os = "windows")]
+use windows::Win32::Graphics::Dxgi::{
+    CreateDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE, IDXGIAdapter1, IDXGIFactory1,
+};
+#[cfg(target_os = "windows")]
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
 use crate::constants::{
@@ -176,6 +180,60 @@ fn directml_runtime_available() -> bool {
 
 #[cfg(target_os = "windows")]
 fn detect_primary_gpu() -> (Option<String>, u64) {
+    if let Some(result) = detect_primary_gpu_via_dxgi() {
+        return result;
+    }
+
+    detect_primary_gpu_via_wmi()
+}
+
+#[cfg(target_os = "windows")]
+fn detect_primary_gpu_via_dxgi() -> Option<(Option<String>, u64)> {
+    let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1().ok()? };
+
+    let mut best_name = None;
+    let mut best_memory = 0u64;
+    let mut index = 0u32;
+
+    loop {
+        let adapter: IDXGIAdapter1 = match unsafe { factory.EnumAdapters1(index) } {
+            Ok(adapter) => adapter,
+            Err(_) => break,
+        };
+        index += 1;
+
+        let description = match unsafe { adapter.GetDesc1() } {
+            Ok(description) => description,
+            Err(_) => continue,
+        };
+        if description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0 {
+            continue;
+        }
+
+        let dedicated_memory = description.DedicatedVideoMemory as u64;
+        if dedicated_memory == 0 || dedicated_memory < best_memory {
+            continue;
+        }
+
+        best_memory = dedicated_memory;
+        best_name = Some(wide_string_to_string(&description.Description));
+    }
+
+    if best_memory == 0 {
+        None
+    } else {
+        Some((best_name, best_memory))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn wide_string_to_string(wide: &[u16]) -> String {
+    let length = wide.iter().position(|character| *character == 0).unwrap_or(wide.len());
+    String::from_utf16_lossy(&wide[..length]).trim().to_string()
+}
+
+#[cfg(target_os = "windows")]
+fn detect_primary_gpu_via_wmi() -> (Option<String>, u64) {
     let output = Command::new("powershell.exe")
         .args([
             "-NoProfile",
