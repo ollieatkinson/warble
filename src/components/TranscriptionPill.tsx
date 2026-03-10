@@ -239,47 +239,19 @@ export function TranscriptionPill({
         usesRadialCore ? "indicator-shell-radial" : "",
       ].join(" ")}
     >
-      <div className={["indicator-mark", usesRadialCore ? "indicator-mark-radial" : ""].filter(Boolean).join(" ")}>
-        {usesRadialCore ? null : (
-          <button
-            type="button"
-            className={[
-              "indicator-status-button",
-              "indicator-status-button-inline",
-              canCancel && onCancel ? "indicator-status-button-cancelable" : "",
-              `indicator-status-button-${phase}`,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            onClick={() => onCancel?.()}
-            disabled={!canCancel || !onCancel}
-            aria-label={canCancel ? "Cancel current dictation" : "Dictation status"}
-            title={canCancel ? "Cancel current dictation" : "Dictation status"}
-          >
-            <span className="indicator-dot" />
-          </button>
-        )}
-        <div
-          className={[
-            "indicator-signal",
-            usesRadialCore ? "" : "indicator-signal-linear",
-            usesRadialCore ? "indicator-signal-radial" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-        >
-          <SignalBars
-            phase={phase}
-            levels={levels}
-            compact
-            animationStyle={animationStyle}
-          />
-          {usesRadialCore ? (
+      {showLiveTranscription ? (
+        <div className="indicator-copy indicator-copy-floating">
+          <span>{copy}</span>
+        </div>
+      ) : null}
+      <div className={["indicator-meter-row", showLiveTranscription ? "indicator-meter-row-detail" : ""].filter(Boolean).join(" ")}>
+        <div className={["indicator-mark", usesRadialCore ? "indicator-mark-radial" : ""].filter(Boolean).join(" ")}>
+          {usesRadialCore ? null : (
             <button
               type="button"
               className={[
                 "indicator-status-button",
-                "indicator-status-button-radial",
+                "indicator-status-button-inline",
                 canCancel && onCancel ? "indicator-status-button-cancelable" : "",
                 `indicator-status-button-${phase}`,
               ]
@@ -292,24 +264,54 @@ export function TranscriptionPill({
             >
               <span className="indicator-dot" />
             </button>
+          )}
+          <div
+            className={[
+              "indicator-signal",
+              usesRadialCore ? "" : "indicator-signal-linear",
+              usesRadialCore ? "indicator-signal-radial" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            <SignalBars
+              phase={phase}
+              levels={levels}
+              compact
+              animationStyle={animationStyle}
+            />
+            {usesRadialCore ? (
+              <button
+                type="button"
+                className={[
+                  "indicator-status-button",
+                  "indicator-status-button-radial",
+                  canCancel && onCancel ? "indicator-status-button-cancelable" : "",
+                  `indicator-status-button-${phase}`,
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => onCancel?.()}
+                disabled={!canCancel || !onCancel}
+                aria-label={canCancel ? "Cancel current dictation" : "Dictation status"}
+                title={canCancel ? "Cancel current dictation" : "Dictation status"}
+              >
+                <span className="indicator-dot" />
+              </button>
+            ) : null}
+          </div>
+          {hasTimer ? (
+            <span
+              className={[
+                "indicator-timer",
+                `indicator-timer-${timerTone}`,
+              ].join(" ")}
+            >
+              {timerText}
+            </span>
           ) : null}
         </div>
-        {hasTimer ? (
-          <span
-            className={[
-              "indicator-timer",
-              `indicator-timer-${timerTone}`,
-            ].join(" ")}
-          >
-            {timerText}
-          </span>
-        ) : null}
       </div>
-      {showLiveTranscription ? (
-        <div className="indicator-copy">
-          <span>{copy}</span>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -417,7 +419,7 @@ export function InterfacePreviewCard({
           <TranscriptionPill
             phase="recording"
             title="Listening"
-            detail="Live preview text"
+            detail={"Capturing live transcript\nwith the latest lines visible"}
             levels={DEMO_LEVELS}
             animationStyle={animationStyle}
             showRecordingTimer={showRecordingTimer}

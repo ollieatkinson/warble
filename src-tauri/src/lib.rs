@@ -1,9 +1,10 @@
 mod constants;
 mod models;
-mod state;
-mod storage;
 pub mod parakeet;
 mod platform;
+mod state;
+mod storage;
+mod streaming_preview;
 
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
@@ -360,28 +361,58 @@ fn cleanup_transcript_text(text: &str, cleanup_enabled: bool, cleanup_terms: &[S
 }
 
 fn live_preview_text(text: &str, cleanup_enabled: bool, cleanup_terms: &[String]) -> String {
-    let cleaned = cleanup_transcript_text(text, cleanup_enabled, cleanup_terms);
-    if cleaned.is_empty() {
+    let mut lines = text
+        .lines()
+        .map(|line| cleanup_transcript_text(line, cleanup_enabled, cleanup_terms))
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+
+    if lines.is_empty() {
+        let cleaned = cleanup_transcript_text(text, cleanup_enabled, cleanup_terms);
+        if cleaned.is_empty() {
+            return String::new();
+        }
+
+        return trim_preview_line(&cleaned, LIVE_PREVIEW_MAX_WORDS);
+    }
+
+    if lines.len() > 3 {
+        lines = lines.split_off(lines.len().saturating_sub(3));
+    }
+
+    let mut total_words = lines
+        .iter()
+        .map(|line| line.split_whitespace().count())
+        .sum::<usize>();
+
+    while total_words > LIVE_PREVIEW_MAX_WORDS && !lines.is_empty() {
+        let first_word_count = lines[0].split_whitespace().count();
+        if lines.len() == 1 {
+            lines[0] = trim_preview_line(&lines[0], LIVE_PREVIEW_MAX_WORDS);
+            break;
+        }
+        total_words = total_words.saturating_sub(first_word_count);
+        lines.remove(0);
+    }
+
+    if lines.is_empty() {
         return String::new();
     }
 
-    let sentences = cleaned
-        .split_inclusive(['.', '!', '?'])
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>();
-
-    let candidate = sentences
-        .last()
-        .copied()
-        .unwrap_or(cleaned.as_str());
-    let words = candidate.split_whitespace().collect::<Vec<_>>();
-
-    if words.len() <= LIVE_PREVIEW_MAX_WORDS {
-        return candidate.to_string();
+    if let Some(last_line) = lines.last_mut() {
+        *last_line = trim_preview_line(last_line, LIVE_PREVIEW_MAX_WORDS);
     }
 
-    words[words.len().saturating_sub(LIVE_PREVIEW_MAX_WORDS)..].join(" ")
+    lines.join("\n")
+}
+
+fn trim_preview_line(text: &str, max_words: usize) -> String {
+    let words = text.split_whitespace().collect::<Vec<_>>();
+    if words.len() <= max_words {
+        return text.to_string();
+    }
+
+    words[words.len().saturating_sub(max_words)..].join(" ")
 }
 
 fn preview_words(text: &str) -> Vec<String> {
@@ -536,12 +567,16 @@ fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
 }
 
 fn indicator_window_size(settings: &Settings) -> (i32, i32) {
-    let content_height = if settings.show_live_transcription { 64 } else { 58 };
+    let content_height = if settings.show_live_transcription {
+        if settings.show_recording_timer { 102 } else { 94 }
+    } else {
+        58
+    };
     let content_width = if settings.show_live_transcription {
         if settings.show_recording_timer {
-            332
+            364
         } else {
-            268
+            324
         }
     } else {
         match settings.overlay_animation_style {
@@ -790,86 +825,209 @@ fn spawn_live_preview(
     preview_sample_rate: u32,
 ) {
     std::thread::spawn(move || {
-        let mut last_sample_count = 0usize;
-        let mut last_preview = String::new();
-        let mut stabilizer = PreviewStabilizer::default();
-        let preview_window_samples = preview_sample_rate as usize * LIVE_PREVIEW_WINDOW_SECONDS;
-        let preview_min_samples =
-            (preview_sample_rate as u64 * LIVE_PREVIEW_MIN_MS / 1_000) as usize;
+        let streaming_config = {
+            let core = shared.lock();
+            streaming_preview::resolve_streaming_preview_config(&core.settings, &core.system_profile)
+        };
 
-        loop {
-            std::thread::sleep(Duration::from_millis(LIVE_PREVIEW_INTERVAL_MS));
-
-            if preview_control.current_generation() != generation {
-                break;
-            }
-
+        if let Some(config) = streaming_config {
+            if run_streaming_live_preview_loop(
+                &app,
+                &shared,
+                &preview_control,
+                generation,
+                preview_buffer.clone(),
+                preview_sample_rate,
+                config,
+            )
+            .is_ok()
             {
-                let core = shared.lock();
-                if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
-                    break;
-                }
+                return;
             }
-
-            let chunk = {
-                let samples = preview_buffer.lock().expect("preview buffer poisoned");
-                if samples.len() <= last_sample_count || samples.len() < preview_min_samples {
-                    None
-                } else {
-                    last_sample_count = samples.len();
-                    let start = samples.len().saturating_sub(preview_window_samples);
-                    Some(samples[start..].to_vec())
-                }
-            };
-
-            let Some(chunk) = chunk else {
-                continue;
-            };
-
-            let preview_audio = parakeet::resample_to_16khz(&chunk, preview_sample_rate);
-            let (settings, cleanup_enabled, cleanup_terms) = {
-                let core = shared.lock();
-                (
-                    core.settings.clone(),
-                    core.settings.cleanup_enabled,
-                    core.settings.cleanup_terms.clone(),
-                )
-            };
-            let preview = match transcribe_audio(&app, &transcriber, &settings, &preview_audio) {
-                Ok(text) => stabilizer.observe(&live_preview_text(
-                    &text,
-                    cleanup_enabled,
-                    &cleanup_terms,
-                )),
-                Err(_) => continue,
-            };
-            let Some(preview) = preview else {
-                continue;
-            };
-
-            if preview_control.current_generation() != generation {
-                break;
-            }
-
-            if preview.is_empty() || preview == last_preview {
-                continue;
-            }
-            last_preview = preview.clone();
-
-            {
-                let mut core = shared.lock();
-                if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
-                    break;
-                }
-                core.overlay.visible = true;
-                core.overlay.title = "Listening".to_string();
-                core.overlay.detail = preview;
-            }
-
-            update_indicator_window(&app, &shared);
-            emit_snapshot(&app, &shared);
         }
+
+        run_batch_live_preview_loop(
+            &app,
+            &shared,
+            &transcriber,
+            &preview_control,
+            generation,
+            preview_buffer,
+            preview_sample_rate,
+        );
     });
+}
+
+fn run_streaming_live_preview_loop(
+    app: &AppHandle,
+    shared: &SharedState,
+    preview_control: &PreviewControl,
+    generation: u64,
+    preview_buffer: Arc<Mutex<Vec<f32>>>,
+    preview_sample_rate: u32,
+    config: streaming_preview::StreamingPreviewConfig,
+) -> Result<()> {
+    let mut engine = streaming_preview::StreamingPreviewEngine::load(&config)?;
+    let mut last_sample_count = 0usize;
+    let mut last_preview = String::new();
+
+    loop {
+        std::thread::sleep(Duration::from_millis(LIVE_STREAM_PREVIEW_INTERVAL_MS));
+
+        if preview_control.current_generation() != generation {
+            break;
+        }
+
+        {
+            let core = shared.lock();
+            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
+                break;
+            }
+        }
+
+        let new_samples = {
+            let samples = preview_buffer.lock().expect("preview buffer poisoned");
+            if samples.len() <= last_sample_count {
+                None
+            } else {
+                let chunk = samples[last_sample_count..].to_vec();
+                last_sample_count = samples.len();
+                Some(chunk)
+            }
+        };
+
+        let Some(new_samples) = new_samples else {
+            continue;
+        };
+
+        let preview_audio = parakeet::resample_to_16khz(&new_samples, preview_sample_rate);
+        let transcript = match engine.push_audio(&preview_audio) {
+            Ok(Some(text)) => text,
+            Ok(None) => continue,
+            Err(error) => return Err(error),
+        };
+        let (cleanup_enabled, cleanup_terms) = {
+            let core = shared.lock();
+            (
+                core.settings.cleanup_enabled,
+                core.settings.cleanup_terms.clone(),
+            )
+        };
+        let preview = live_preview_text(&transcript, cleanup_enabled, &cleanup_terms);
+
+        if preview_control.current_generation() != generation {
+            break;
+        }
+
+        if preview.is_empty() || preview == last_preview {
+            continue;
+        }
+        last_preview = preview.clone();
+
+        {
+            let mut core = shared.lock();
+            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
+                break;
+            }
+            core.overlay.visible = true;
+            core.overlay.title = "Listening".to_string();
+            core.overlay.detail = preview;
+        }
+
+        update_indicator_window(app, shared);
+        emit_snapshot(app, shared);
+    }
+
+    Ok(())
+}
+
+fn run_batch_live_preview_loop(
+    app: &AppHandle,
+    shared: &SharedState,
+    transcriber: &TranscriberHandle,
+    preview_control: &PreviewControl,
+    generation: u64,
+    preview_buffer: Arc<Mutex<Vec<f32>>>,
+    preview_sample_rate: u32,
+) {
+    let mut last_sample_count = 0usize;
+    let mut last_preview = String::new();
+    let mut stabilizer = PreviewStabilizer::default();
+    let preview_window_samples = preview_sample_rate as usize * LIVE_PREVIEW_WINDOW_SECONDS;
+    let preview_min_samples = (preview_sample_rate as u64 * LIVE_PREVIEW_MIN_MS / 1_000) as usize;
+
+    loop {
+        std::thread::sleep(Duration::from_millis(LIVE_PREVIEW_INTERVAL_MS));
+
+        if preview_control.current_generation() != generation {
+            break;
+        }
+
+        {
+            let core = shared.lock();
+            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
+                break;
+            }
+        }
+
+        let chunk = {
+            let samples = preview_buffer.lock().expect("preview buffer poisoned");
+            if samples.len() <= last_sample_count || samples.len() < preview_min_samples {
+                None
+            } else {
+                last_sample_count = samples.len();
+                let start = samples.len().saturating_sub(preview_window_samples);
+                Some(samples[start..].to_vec())
+            }
+        };
+
+        let Some(chunk) = chunk else {
+            continue;
+        };
+
+        let preview_audio = parakeet::resample_to_16khz(&chunk, preview_sample_rate);
+        let (settings, cleanup_enabled, cleanup_terms) = {
+            let core = shared.lock();
+            (
+                core.settings.clone(),
+                core.settings.cleanup_enabled,
+                core.settings.cleanup_terms.clone(),
+            )
+        };
+        let preview = match transcribe_audio(app, transcriber, &settings, &preview_audio) {
+            Ok(text) => stabilizer.observe(&live_preview_text(
+                &text,
+                cleanup_enabled,
+                &cleanup_terms,
+            )),
+            Err(_) => continue,
+        };
+        let Some(preview) = preview else {
+            continue;
+        };
+
+        if preview_control.current_generation() != generation {
+            break;
+        }
+
+        if preview.is_empty() || preview == last_preview {
+            continue;
+        }
+        last_preview = preview.clone();
+
+        {
+            let mut core = shared.lock();
+            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
+                break;
+            }
+            core.overlay.visible = true;
+            core.overlay.title = "Listening".to_string();
+            core.overlay.detail = preview;
+        }
+
+        update_indicator_window(app, shared);
+        emit_snapshot(app, shared);
+    }
 }
 
 fn spawn_live_meter(
@@ -1755,8 +1913,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        cleanup_transcript_text, default_cleanup_terms, measure_overlay_levels,
-        normalize_cleanup_term, normalize_cleanup_terms,
+        cleanup_transcript_text, default_cleanup_terms, live_preview_text,
+        measure_overlay_levels, normalize_cleanup_term, normalize_cleanup_terms,
     };
 
     #[test]
@@ -1815,5 +1973,19 @@ mod tests {
         let levels = measure_overlay_levels(&voiced, 16_000);
 
         assert!(levels.iter().any(|level| *level > 0.05));
+    }
+
+    #[test]
+    fn live_preview_text_keeps_recent_lines() {
+        let preview = live_preview_text(
+            "first line of text\nsecond line with more words\nthird line stays visible\nfourth line is newest",
+            true,
+            &default_cleanup_terms(),
+        );
+
+        assert_eq!(
+            preview,
+            "second line with more words\nthird line stays visible\nfourth line is newest"
+        );
     }
 }

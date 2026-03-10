@@ -1648,7 +1648,24 @@ input::placeholder {
 }
 
 .indicator-shell-detail {
-  padding-right: 0.82rem;
+  display: grid;
+  gap: 0.5rem;
+  align-items: stretch;
+  width: min(100%, 320px);
+  max-width: min(100%, 320px);
+  padding: 0.72rem 0.9rem 0.82rem;
+  border-radius: 18px;
+}
+
+.indicator-meter-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.indicator-meter-row-detail {
+  justify-content: flex-start;
 }
 
 .indicator-mark {
@@ -1744,11 +1761,16 @@ input::placeholder {
 
 .indicator-copy {
   display: flex;
-  align-items: center;
-  max-width: 160px;
+  align-items: flex-start;
+  max-width: 100%;
   min-width: 0;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.indicator-copy-floating {
+  width: 100%;
+  max-width: none;
 }
 
 .indicator-timer {
@@ -1779,9 +1801,14 @@ input::placeholder {
 .indicator-copy span {
   font-size: 0.72rem;
   color: #dce7ff;
-  white-space: nowrap;
+  width: 100%;
+  line-height: 1.35;
+  white-space: pre-line;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
 .signal-bars,
