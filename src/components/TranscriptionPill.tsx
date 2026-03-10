@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { DEMO_LEVELS } from "../constants";
 import { formatElapsedClock, resampleLevels, smoothLevels } from "../lib/utils";
@@ -23,6 +23,40 @@ function normalizeIndicatorCopy(value: string): string {
 
 function normalizeLiveIndicatorCopy(value: string): string {
   return normalizeIndicatorCopy(value).replace(/\s+/g, " ").trim();
+}
+
+function buildDemoLevels(time: number) {
+  return DEMO_LEVELS.map((level, index) => {
+    const sway = Math.sin(time * 0.95 + index * 0.62) * 0.18;
+    const pulse = Math.sin(time * 0.34 - index * 0.21) * 0.14;
+    const flutter = Math.sin(time * 1.75 + index * 1.1) * 0.05;
+    return Math.max(0.04, Math.min(1, level * 0.68 + 0.16 + sway + pulse + flutter));
+  });
+}
+
+function useAnimatedDemoLevels(enabled: boolean) {
+  const [levels, setLevels] = useState(() => buildDemoLevels(0));
+
+  useEffect(() => {
+    if (!enabled) {
+      setLevels(buildDemoLevels(0));
+      return;
+    }
+
+    let timer = 0;
+    const update = () => {
+      setLevels(buildDemoLevels(performance.now() / 320));
+    };
+
+    update();
+    timer = window.setInterval(update, 90);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [enabled]);
+
+  return levels;
 }
 
 function LiveTranscriptText({
@@ -110,20 +144,27 @@ export function SignalBars({
   count = 24,
   compact = false,
   animationStyle = "spectrum",
+  animatedDemo = false,
 }: {
   phase: AppPhase;
   levels?: number[];
   count?: number;
   compact?: boolean;
   animationStyle?: OverlayAnimationStyle;
+  animatedDemo?: boolean;
 }) {
+  const demoLevels = useAnimatedDemoLevels(animatedDemo);
   const tone =
     phase === "transcribing"
       ? "warm"
       : phase === "recording"
         ? "live"
         : "idle";
-  const sourceLevels = levels && levels.length > 0 ? levels : [0];
+  const sourceLevels = animatedDemo
+    ? demoLevels
+    : levels && levels.length > 0
+      ? levels
+      : [0];
 
   if (animationStyle === "spectrum") {
     const width = compact ? 60 : 94;
@@ -295,6 +336,7 @@ export function TranscriptionPill({
   liveTranscriptLines = "one",
   elapsedMs = 0,
   limitMs = null,
+  animatedDemo = false,
   onCancel,
 }: {
   phase: AppPhase;
@@ -308,6 +350,7 @@ export function TranscriptionPill({
   liveTranscriptLines?: LiveTranscriptLines;
   elapsedMs?: number;
   limitMs?: number | null;
+  animatedDemo?: boolean;
   onCancel?: (() => void) | null;
 }) {
   const copy = showLiveTranscription
@@ -388,6 +431,7 @@ export function TranscriptionPill({
             levels={levels}
             compact
             animationStyle={animationStyle}
+            animatedDemo={animatedDemo}
           />
           {usesRadialCore ? (
             <button
@@ -588,6 +632,7 @@ export function AnimationOptionPreview({
           levels={DEMO_LEVELS}
           compact
           animationStyle={style}
+          animatedDemo
         />
       </div>
     </div>
@@ -625,6 +670,7 @@ export function InterfacePreviewCard({
             liveTranscriptLines={liveTranscriptLines}
             elapsedMs={134_000}
             limitMs={300_000}
+            animatedDemo
           />
         </div>
       </div>

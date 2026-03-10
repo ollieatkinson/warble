@@ -46,6 +46,14 @@ export function InputsSection({
   onStopRecording: () => void;
   onCancel: () => void;
 }) {
+  const previewPhase = snapshot.phase === "idle" ? "recording" : snapshot.phase;
+  const previewElapsedMs = snapshot.phase === "idle" ? 17_000 : elapsedMs;
+  const previewLimitMs = snapshot.phase === "idle" ? 300_000 : limitMs;
+  const previewHeadline =
+    snapshot.phase === "idle" ? "Listening" : snapshot.overlay.title || previewTitle;
+  const previewCopy =
+    snapshot.phase === "idle" ? "Speak to test this input" : previewDetail;
+
   return (
     <section className="compact-grid-two">
       <article className="surface">
@@ -108,17 +116,18 @@ export function InputsSection({
         </div>
         <div className="pill-stage pill-stage-wide">
           <TranscriptionPill
-            phase={snapshot.phase}
-            title={snapshot.overlay.title || previewTitle}
-            detail={previewDetail}
+            phase={previewPhase}
+            title={previewHeadline}
+            detail={previewCopy}
             levels={snapshot.overlay.levels}
             animationStyle={draft.overlayAnimationStyle}
             showRecordingTimer={draft.showRecordingTimer}
             showLiveTranscription={draft.showLiveTranscription}
             liveTranscriptWidth={liveTranscriptWidth}
             liveTranscriptLines={liveTranscriptLines}
-            elapsedMs={elapsedMs}
-            limitMs={limitMs}
+            elapsedMs={previewElapsedMs}
+            limitMs={previewLimitMs}
+            animatedDemo={snapshot.phase === "idle"}
             onCancel={onCancel}
           />
         </div>
