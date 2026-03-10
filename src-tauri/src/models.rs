@@ -6,16 +6,19 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 use crate::constants::{
-    BATCH_MODEL_AUDIO_LIMIT_MS, NEMOTRON_DECODER_DOWNLOAD_URL,
-    NEMOTRON_ENCODER_DATA_DOWNLOAD_URL, NEMOTRON_ENCODER_DOWNLOAD_URL,
-    NEMOTRON_TOKENIZER_DOWNLOAD_URL, PARAKEET_DECODER_DOWNLOAD_URL,
-    PARAKEET_ENCODER_DOWNLOAD_URL, PARAKEET_EOU_DECODER_DOWNLOAD_URL,
-    PARAKEET_EOU_ENCODER_DOWNLOAD_URL, PARAKEET_EOU_TOKENIZER_DOWNLOAD_URL,
-    PARAKEET_VOCAB_DOWNLOAD_URL,
+    BATCH_MODEL_AUDIO_LIMIT_MS, NEMOTRON_DECODER_DOWNLOAD_URL, NEMOTRON_ENCODER_DATA_DOWNLOAD_URL,
+    NEMOTRON_ENCODER_DOWNLOAD_URL, NEMOTRON_TOKENIZER_DOWNLOAD_URL, PARAKEET_DECODER_DOWNLOAD_URL,
+    PARAKEET_CTC_CONFIG_DOWNLOAD_URL, PARAKEET_CTC_MODEL_DATA_DOWNLOAD_URL,
+    PARAKEET_CTC_MODEL_DOWNLOAD_URL, PARAKEET_CTC_PREPROCESSOR_CONFIG_DOWNLOAD_URL,
+    PARAKEET_CTC_SPECIAL_TOKENS_DOWNLOAD_URL, PARAKEET_CTC_TOKENIZER_CONFIG_DOWNLOAD_URL,
+    PARAKEET_CTC_TOKENIZER_DOWNLOAD_URL, PARAKEET_ENCODER_DOWNLOAD_URL,
+    PARAKEET_EOU_DECODER_DOWNLOAD_URL, PARAKEET_EOU_ENCODER_DOWNLOAD_URL,
+    PARAKEET_EOU_TOKENIZER_DOWNLOAD_URL, PARAKEET_VOCAB_DOWNLOAD_URL,
 };
 use crate::parakeet;
 use crate::state::{
-    ModelPathInspection, ModelStatus, Settings, SharedState, TranscriptionModelKind,
+    LivePreviewModelPreference, ModelPathInspection, ModelStatus, Settings, SharedState,
+    TranscriptionModelKind,
 };
 use crate::storage::{
     emit_snapshot, is_managed_model_path, managed_model_dir_for_id, managed_models_dir,
@@ -65,6 +68,36 @@ pub(crate) fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpe
             download_url: PARAKEET_EOU_TOKENIZER_DOWNLOAD_URL,
         },
     ];
+    const PARAKEET_CTC_FILES: &[CatalogDownloadFile] = &[
+        CatalogDownloadFile {
+            file_name: "model_int8.onnx",
+            download_url: PARAKEET_CTC_MODEL_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "model_int8.onnx_data",
+            download_url: PARAKEET_CTC_MODEL_DATA_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "config.json",
+            download_url: PARAKEET_CTC_CONFIG_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "preprocessor_config.json",
+            download_url: PARAKEET_CTC_PREPROCESSOR_CONFIG_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "special_tokens_map.json",
+            download_url: PARAKEET_CTC_SPECIAL_TOKENS_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "tokenizer.json",
+            download_url: PARAKEET_CTC_TOKENIZER_DOWNLOAD_URL,
+        },
+        CatalogDownloadFile {
+            file_name: "tokenizer_config.json",
+            download_url: PARAKEET_CTC_TOKENIZER_CONFIG_DOWNLOAD_URL,
+        },
+    ];
     const NEMOTRON_FILES: &[CatalogDownloadFile] = &[
         CatalogDownloadFile {
             file_name: "encoder.onnx",
@@ -100,6 +133,14 @@ pub(crate) fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpe
             files: PARAKEET_EOU_FILES,
             model_dir_name: "realtime_eou_120m-v1-onnx",
         }),
+        "parakeet-ctc" => Some(CatalogDownloadSpec {
+            model_id: "parakeet-ctc",
+            model_kind: TranscriptionModelKind::ParakeetCtc,
+            display_name: "Parakeet CTC",
+            activates_as_default: false,
+            files: PARAKEET_CTC_FILES,
+            model_dir_name: parakeet::CTC_MODEL_ID,
+        }),
         "nemotron-streaming" => Some(CatalogDownloadSpec {
             model_id: "nemotron-streaming",
             model_kind: TranscriptionModelKind::Parakeet,
@@ -114,6 +155,14 @@ pub(crate) fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpe
 
 pub(crate) fn parakeet_status_for_path(path: &Path) -> ModelStatus {
     if parakeet::model_ready_in_dir(path) || parakeet::model_ready_at(path) {
+        ModelStatus::Ready
+    } else {
+        ModelStatus::Missing
+    }
+}
+
+pub(crate) fn parakeet_ctc_status_for_path(path: &Path) -> ModelStatus {
+    if parakeet::ctc_model_ready_in_dir(path) || parakeet::ctc_model_ready_at(path) {
         ModelStatus::Ready
     } else {
         ModelStatus::Missing
@@ -155,10 +204,7 @@ pub(crate) fn resolved_selected_model_path(settings: &Settings) -> Option<String
         })
 }
 
-pub(crate) fn installed_model_sizes(
-    app: &AppHandle,
-    settings: &Settings,
-) -> BTreeMap<String, u64> {
+pub(crate) fn installed_model_sizes(app: &AppHandle, settings: &Settings) -> BTreeMap<String, u64> {
     let mut sizes = BTreeMap::new();
 
     if let Ok(root) = model_root_dir(app) {
@@ -206,7 +252,7 @@ pub(crate) fn choose_fallback_model_selection(app: &AppHandle, settings: &mut Se
         return;
     }
 
-    let preferred_ids = ["parakeet"];
+    let preferred_ids = ["parakeet", "parakeet-ctc"];
     for model_id in preferred_ids {
         if let Some(path) = settings.installed_model_paths.get(model_id) {
             settings.selected_model_id = model_id.to_string();
@@ -214,13 +260,6 @@ pub(crate) fn choose_fallback_model_selection(app: &AppHandle, settings: &mut Se
             settings.selected_model_path = Some(path.clone());
             return;
         }
-    }
-
-    if let Some((model_id, path)) = settings.installed_model_paths.iter().next() {
-        settings.selected_model_id = model_id.clone();
-        settings.selected_model_kind = model_kind_for_model_id(model_id);
-        settings.selected_model_path = Some(path.clone());
-        return;
     }
 
     settings.selected_model_id = "parakeet".to_string();
@@ -264,7 +303,9 @@ pub(crate) fn current_model_status(app: &AppHandle, settings: &Settings) -> Mode
                 built_in_parakeet_status(app)
             }
         }
-        TranscriptionModelKind::ParakeetCtc => ModelStatus::Missing,
+        TranscriptionModelKind::ParakeetCtc => resolved_selected_model_path(settings)
+            .map(|path| parakeet_ctc_status_for_path(Path::new(&path)))
+            .unwrap_or(ModelStatus::Missing),
     }
 }
 
@@ -430,9 +471,10 @@ pub(crate) fn download_catalog_model(
     } else {
         {
             let mut core = shared.lock();
-            core.settings
-                .installed_model_paths
-                .insert(spec.model_id.to_string(), download_root.display().to_string());
+            core.settings.installed_model_paths.insert(
+                spec.model_id.to_string(),
+                download_root.display().to_string(),
+            );
             core.status_message = format!(
                 "Installed {}. Streaming features are now available.",
                 spec.display_name
@@ -497,6 +539,13 @@ pub(crate) fn remove_catalog_model(
 
         if core.settings.selected_model_id == model_id || selected_path_matches {
             choose_fallback_model_selection(app, &mut core.settings);
+        }
+        if matches!(
+            (&core.settings.live_preview_model, model_id.as_str()),
+            (LivePreviewModelPreference::NemotronStreaming, "nemotron-streaming")
+                | (LivePreviewModelPreference::ParakeetEou, "parakeet-eou")
+        ) {
+            core.settings.live_preview_model = LivePreviewModelPreference::Auto;
         }
 
         core.status_message = format!("Removed {display_name}");

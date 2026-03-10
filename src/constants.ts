@@ -1,6 +1,7 @@
 import type {
   AudioRetentionPolicy,
   EditableOverlayPosition,
+  LivePreviewModel,
   ModelFilter,
   OverlayAnimationStyle,
   SectionId,
@@ -33,7 +34,6 @@ export const modelFilters: Array<{
   { id: "all", label: "All" },
   { id: "available", label: "Available" },
   { id: "streaming", label: "Streaming" },
-  { id: "speaker", label: "Speaker" },
 ];
 
 export const overlayPositionOptions: Array<{
@@ -53,6 +53,28 @@ export const overlayAnimationOptions: Array<{
   { id: "waveform", label: "Wave", description: "Static centered waveform" },
   { id: "spectrum", label: "Bars", description: "Fixed reactive bars" },
   { id: "radial", label: "Radial", description: "Static reactive ring" },
+];
+
+export const livePreviewModelOptions: Array<{
+  id: LivePreviewModel;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "auto",
+    label: "Auto",
+    description: "Prefer Nemotron when installed, otherwise Realtime EOU.",
+  },
+  {
+    id: "nemotron-streaming",
+    label: "Nemotron",
+    description: "Higher-quality streaming preview with punctuation.",
+  },
+  {
+    id: "parakeet-eou",
+    label: "Realtime EOU",
+    description: "Lower-latency streaming preview with EOU detection.",
+  },
 ];
 
 export const DEMO_LEVELS = [

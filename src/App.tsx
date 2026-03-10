@@ -18,6 +18,7 @@ import {
 import {
   buildSettingsUpdate,
   formatBytes,
+  formatInferenceProvider,
   formatInvokeError,
   formatSystemProfile,
   matchesHistory,
@@ -94,6 +95,7 @@ function ControlApp({
     audioRetentionPolicy: "one-day",
     overlayPosition: "bottom-center",
     overlayAnimationStyle: "spectrum",
+    livePreviewModel: "auto",
     showRecordingTimer: false,
     showLiveTranscription: false,
   });
@@ -140,6 +142,7 @@ function ControlApp({
         snapshot.settings.overlayPosition,
       ),
       overlayAnimationStyle: snapshot.settings.overlayAnimationStyle,
+      livePreviewModel: snapshot.settings.livePreviewModel,
       showRecordingTimer: snapshot.settings.showRecordingTimer,
       showLiveTranscription: snapshot.settings.showLiveTranscription,
     });
@@ -638,6 +641,23 @@ function ControlApp({
     snapshot && selectedModel
       ? describeHardwareFit(selectedModel, snapshot.systemProfile)
       : null;
+  const latestSelectedModelCapture = selectedModel
+    ? snapshot?.history.find((item) => item.capture.modelId === selectedModel.id) ?? null
+    : null;
+  const selectedModelAcceleration = selectedModel
+    ? latestSelectedModelCapture
+      ? `Last run used ${formatInferenceProvider(latestSelectedModelCapture.capture.inferenceProvider)}`
+      : selectedModel.directmlCapable
+        ? snapshot?.systemProfile.directmlAvailable
+          ? "Will try DirectML first, then CPU fallback"
+          : "CPU today · DirectML when available"
+        : "CPU"
+    : "Unknown";
+  const selectedModelRole = selectedModel
+    ? selectedModel.tags.includes("streaming")
+      ? "Live preview only. Final dictation still uses Default speech model."
+      : "Used for final microphone and file transcription when selected as Default speech model."
+    : "Unknown";
   const readyModelOptions = modelRows
     .filter((row) => row.selectable)
     .map((row) => ({
@@ -656,14 +676,8 @@ function ControlApp({
         ["Architecture", selectedModel.architecture],
         ["Parameters", selectedModel.footprint],
         ["Runtime", selectedModel.runtime],
-        [
-          "Acceleration",
-          selectedModel.directmlCapable
-            ? snapshot?.systemProfile.directmlAvailable
-              ? "DirectML GPU ready on this PC"
-              : "DirectML-capable model"
-            : "CPU / ONNX",
-        ],
+        ["Role", selectedModelRole],
+        ["Acceleration", selectedModelAcceleration],
         ["Audio limit", formatModelAudioLimit(selectedModel)],
         [
           "Download size",

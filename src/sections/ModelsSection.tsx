@@ -105,7 +105,7 @@ export function ModelsSection({
       <div className="model-library-head">
         <div className="model-library-copy">
           <span className="surface-title-label">Speech models</span>
-          <p>Compare NVIDIA speech runtimes, DirectML-ready streaming add-ons, and speaker-aware pipelines.</p>
+          <p>Compare the NVIDIA speech models Transcribed actually uses today for final dictation and live preview.</p>
         </div>
       </div>
 

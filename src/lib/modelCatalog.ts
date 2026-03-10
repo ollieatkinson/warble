@@ -19,27 +19,29 @@ const MODEL_CATALOG: Array<
     runtime: "Ready in app",
     license: "See model card",
     supportsDefaultSelection: true,
+    directmlCapable: true,
     summary:
-      "Multilingual offline dictation model with fast local ONNX inference and timestamp support.",
+      "Multilingual offline dictation model for final microphone and file transcription.",
     note:
-      "This is the stable in-app speech path today, and the best default for local dictation.",
+      "Transcribed uses parakeet-rs for this model and will prefer DirectML on Windows, then fall back to CPU if needed.",
     bestFor: "Default multilingual dictation",
     capabilities: ["TDT decoder", "Auto language detection", "Token timestamps"],
     featureBadges: [
       { id: "local", label: "Local", icon: "cpu" },
       { id: "tdt", label: "TDT", icon: "spark" },
+      { id: "directml", label: "DirectML", icon: "bolt" },
       { id: "timed", label: "Timed", icon: "clock" },
     ],
     highlights: [
-      "Current default engine in Transcribed",
-      "Stable local Rust ONNX backend",
+      "Current default final transcription engine in Transcribed",
+      "Uses parakeet-rs with DirectML preference on Windows",
       "Best balance of speed and multilingual coverage today",
     ],
     hfUrl: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3",
     artifactUrl: "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8",
     artifactLabel: "Compatible ONNX bundle",
     tags: ["nvidia", "offline", "timestamps", "default"],
-    supportsInstall: true,
+    supportsInstall: false,
     supportsDownload: true,
     downloadSizeBytes: 593_000_000,
     audioLimitMs: 5 * 60 * 1_000,
@@ -60,24 +62,26 @@ const MODEL_CATALOG: Array<
     speed: "Very fast",
     quality: "High",
     footprint: "0.6B",
-    runtime: "Stable runtime pending",
+    runtime: "Ready when installed",
     license: "See model card",
-    supportsDefaultSelection: false,
+    supportsDefaultSelection: true,
+    directmlCapable: true,
     summary:
       "English-first Parakeet variant aimed at fast offline transcription with punctuation and capitalization.",
     note:
-      "Cataloged here because it is part of the Parakeet family, but not yet enabled in the stable Transcribed runtime.",
+      "Uses the same parakeet-rs runtime path as TDT, but with a CTC decoder and English-focused ONNX export.",
     bestFor: "English punctuation-heavy offline transcription",
     capabilities: ["CTC decoding", "Punctuation and caps", "Word timestamps"],
     featureBadges: [
       { id: "offline", label: "Offline", icon: "cpu" },
       { id: "ctc", label: "CTC", icon: "spark" },
+      { id: "directml", label: "DirectML", icon: "bolt" },
       { id: "timed", label: "Timed", icon: "clock" },
     ],
     highlights: [
+      "Real selectable batch model in Transcribed",
       "English-focused Parakeet family variant",
-      "Good fallback when you want a simpler decoding path",
-      "Held back until the stable runtime path is re-enabled",
+      "Useful when you prefer a simpler CTC decoding path",
     ],
     hfUrl: "https://huggingface.co/nvidia/parakeet-ctc-0.6b",
     artifactUrl:
@@ -85,9 +89,11 @@ const MODEL_CATALOG: Array<
     artifactLabel: "Compatible ONNX export",
     tags: ["nvidia", "offline", "timestamps"],
     supportsInstall: false,
-    supportsDownload: false,
-    downloadSizeBytes: 1_240_000_000,
+    supportsDownload: true,
+    downloadSizeBytes: 614_000_000,
     audioLimitMs: 5 * 60 * 1_000,
+    minimumGpuMemoryBytes: 2 * 1024 ** 3,
+    recommendedGpuMemoryBytes: 4 * 1024 ** 3,
     minimumMemoryBytes: 4 * 1024 ** 3,
     recommendedMemoryBytes: 8 * 1024 ** 3,
     minimumCores: 4,
@@ -122,15 +128,15 @@ const MODEL_CATALOG: Array<
       { id: "directml", label: "DirectML", icon: "bolt" },
     ],
     highlights: [
-      "Lowest-footprint speech model in the current NVIDIA set",
+      "Lowest-footprint speech model in the current supported set",
       "Built for real-time incremental updates",
-      "Good long-term preview model candidate",
+      "Used only for live preview, never final pasted text",
     ],
     hfUrl: "https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1",
     artifactUrl:
       "https://huggingface.co/altunenes/parakeet-rs/tree/main/realtime_eou_120m-v1-onnx",
     artifactLabel: "Compatible ONNX export",
-    tags: ["nvidia", "streaming", "future"],
+    tags: ["nvidia", "streaming"],
     supportsInstall: false,
     supportsDownload: true,
     downloadSizeBytes: 480_708_981,
@@ -170,15 +176,15 @@ const MODEL_CATALOG: Array<
       { id: "directml", label: "DirectML", icon: "bolt" },
     ],
     highlights: [
-      "Official NVIDIA streaming ASR family",
-      "Good fit for future low-latency dictation",
-      "Heavier than EOU but better for final streaming quality",
+      "Higher-quality live preview option than EOU",
+      "Better punctuation than the lighter preview path",
+      "Used only for live preview, never final pasted text",
     ],
     hfUrl: "https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b",
     artifactUrl:
       "https://huggingface.co/altunenes/parakeet-rs/tree/main/nemotron-speech-streaming-en-0.6b",
     artifactLabel: "Compatible ONNX export",
-    tags: ["nvidia", "streaming", "future"],
+    tags: ["nvidia", "streaming"],
     supportsInstall: false,
     supportsDownload: true,
     downloadSizeBytes: 2_515_376_329,
@@ -187,129 +193,6 @@ const MODEL_CATALOG: Array<
     minimumMemoryBytes: 8 * 1024 ** 3,
     recommendedMemoryBytes: 16 * 1024 ** 3,
     minimumCores: 8,
-    recommendedCores: 12,
-  },
-  {
-    id: "sortformer-v2",
-    name: "Sortformer v2",
-    modelKind: "parakeet",
-    family: "Sortformer",
-    provider: "NVIDIA",
-    architecture: "Streaming diarization",
-    languages: "Speaker labels",
-    speechMode: "Speaker diarization",
-    speed: "Realtime",
-    quality: "High",
-    footprint: "4 speakers",
-    runtime: "Speaker pipeline pending",
-    license: "See model card",
-    supportsDefaultSelection: false,
-    directmlCapable: true,
-    summary:
-      "Streaming diarization model for splitting live audio into speaker segments before transcription.",
-    note:
-      "Useful if we want speaker-prioritized or per-speaker transcripts instead of a single mixed transcript.",
-    bestFor: "Real-time speaker separation",
-    capabilities: ["Up to 4 speakers", "Streaming diarization", "Raw speaker probabilities"],
-    featureBadges: [
-      { id: "speaker", label: "Speaker", icon: "users" },
-      { id: "stream", label: "Streaming", icon: "bolt" },
-      { id: "four", label: "4 spk", icon: "spark" },
-    ],
-    highlights: [
-      "Speaker-first building block rather than a plain dictation model",
-      "Pairs naturally with a future multitalker ASR path",
-      "Useful for meetings and overlapping speech",
-    ],
-    hfUrl: "https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2",
-    tags: ["nvidia", "speaker", "streaming", "future"],
-    supportsInstall: false,
-    supportsDownload: false,
-    minimumMemoryBytes: 8 * 1024 ** 3,
-    recommendedMemoryBytes: 12 * 1024 ** 3,
-    minimumCores: 8,
-    recommendedCores: 12,
-  },
-  {
-    id: "sortformer-v2-1",
-    name: "Sortformer v2.1",
-    modelKind: "parakeet",
-    family: "Sortformer",
-    provider: "NVIDIA",
-    architecture: "Streaming diarization",
-    languages: "Speaker labels",
-    speechMode: "Speaker diarization",
-    speed: "Realtime",
-    quality: "Higher",
-    footprint: "4 speakers",
-    runtime: "Speaker pipeline pending",
-    license: "See model card",
-    supportsDefaultSelection: false,
-    directmlCapable: true,
-    summary:
-      "Newer Sortformer diarization revision for speaker segmentation in live or chunked audio.",
-    note:
-      "Same integration class as v2, but worth surfacing because it is the newer NVIDIA speaker model card.",
-    bestFor: "Higher-quality diarization",
-    capabilities: ["Up to 4 speakers", "Streaming diarization", "Newer v2.1 revision"],
-    featureBadges: [
-      { id: "speaker", label: "Speaker", icon: "users" },
-      { id: "stream", label: "Streaming", icon: "bolt" },
-      { id: "v21", label: "v2.1", icon: "clock" },
-    ],
-    highlights: [
-      "Newer revision of the Sortformer speaker stack",
-      "Good candidate for speaker-prioritized transcription work",
-      "Would pair with multitalker or segmented batch transcription",
-    ],
-    hfUrl: "https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1",
-    tags: ["nvidia", "speaker", "streaming", "future"],
-    supportsInstall: false,
-    supportsDownload: false,
-    minimumMemoryBytes: 8 * 1024 ** 3,
-    recommendedMemoryBytes: 12 * 1024 ** 3,
-    minimumCores: 8,
-    recommendedCores: 12,
-  },
-  {
-    id: "multitalker-parakeet",
-    name: "Multitalker Parakeet",
-    modelKind: "parakeet",
-    family: "Parakeet + Sortformer",
-    provider: "NVIDIA",
-    architecture: "Speaker-aware streaming ASR",
-    languages: "Speaker-separated",
-    speechMode: "Speaker-aware ASR",
-    speed: "Realtime",
-    quality: "High",
-    footprint: "0.6B pipeline",
-    runtime: "Speaker pipeline pending",
-    license: "See model card",
-    supportsDefaultSelection: false,
-    directmlCapable: true,
-    summary:
-      "Multi-instance streaming ASR pipeline that turns overlapping speech into per-speaker transcripts.",
-    note:
-      "This is the most direct route to speaker prioritization and separated transcripts from the current parakeet-rs feature set.",
-    bestFor: "Per-speaker transcripts from mixed audio",
-    capabilities: ["Per-speaker text", "Streaming pipeline", "Speaker-target injection"],
-    featureBadges: [
-      { id: "speaker", label: "Per speaker", icon: "users" },
-      { id: "stream", label: "Streaming", icon: "bolt" },
-      { id: "pipeline", label: "Pipeline", icon: "spark" },
-    ],
-    highlights: [
-      "Most aligned with future speaker prioritization in Transcribed",
-      "Depends on both ASR and diarization paths",
-      "Heaviest integration in the current NVIDIA set",
-    ],
-    hfUrl: "https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1",
-    tags: ["nvidia", "speaker", "streaming", "future"],
-    supportsInstall: false,
-    supportsDownload: false,
-    minimumMemoryBytes: 12 * 1024 ** 3,
-    recommendedMemoryBytes: 16 * 1024 ** 3,
-    minimumCores: 10,
     recommendedCores: 12,
   },
 ];
@@ -371,8 +254,8 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
         note: builtInReady
           ? entry.note
           : installedPath
-            ? "Downloaded into Transcribed and ready to use as the default local speech engine."
-            : "Parakeet TDT is not bundled on this machine right now, but the compatible ONNX bundle can be downloaded in-app.",
+            ? "Downloaded into Transcribed and ready as the default final transcription engine."
+            : "Download this managed TDT bundle into Transcribed to use it for final microphone and file transcription.",
         path: installedPath,
         diskSizeBytes,
       };
@@ -382,7 +265,6 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
     const isSelectedEngine =
       activeModelId === entry.id &&
       snapshot.settings.selectedModelKind === entry.modelKind;
-    const runtimeDisabled = entry.id === "parakeet-ctc";
     const supportsDefaultSelection = entry.supportsDefaultSelection !== false;
     const isReady = Boolean(installedPath);
     const supportsDownload = Boolean(entry.supportsDownload);
@@ -390,21 +272,14 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
 
     return {
       ...entry,
-      state: runtimeDisabled
-        ? "planned"
-        : isReady
-          ? "ready"
-          : supportsDownload
-            ? "downloadable"
-            : "planned",
+      state: isReady ? "ready" : supportsDownload ? "downloadable" : "planned",
       source: "catalog",
       managed: isManaged,
       active:
-        !runtimeDisabled &&
         supportsDefaultSelection &&
         isSelectedEngine &&
         snapshot.modelStatus === "ready",
-      selectable: !runtimeDisabled && supportsDefaultSelection && isReady,
+      selectable: supportsDefaultSelection && isReady,
       runtime: isReady
         ? supportsDefaultSelection
           ? "Ready in app"
@@ -414,19 +289,15 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
         : supportsDownload
           ? "Download in app"
           : entry.runtime,
-      note: runtimeDisabled
-        ? "Catalog reference only for now. The stable runtime currently falls back to Parakeet TDT."
-        : isReady
+      note: isReady
+        ? supportsDefaultSelection
+          ? "Downloaded into Transcribed and ready as a selectable final transcription engine."
+          : `Installed in Transcribed. Live preview can now use ${entry.name}.`
+        : supportsDownload
           ? supportsDefaultSelection
-            ? isManaged
-              ? "Downloaded into Transcribed and ready to use locally."
-              : "Linked to a local model folder. You can activate it from this catalog entry."
-            : `Installed in Transcribed. Unlocks ${entry.unlockedFeatures?.join(", ") ?? "additional streaming capabilities"}.`
-          : supportsDownload
-            ? entry.supportsInstall
-              ? "Download this NVIDIA speech model or point Transcribed at an existing compatible folder."
-              : "Download this NVIDIA speech model into Transcribed to unlock its add-on capabilities."
-            : entry.note,
+            ? "Download this model into Transcribed, then choose it as the Default speech model for final dictation."
+            : "Download this streaming add-on into Transcribed to unlock live preview with this model."
+          : entry.note,
       path: installedPath,
       diskSizeBytes: snapshot.installedModelSizes[entry.id] ?? 0,
       tags: isReady ? Array.from(new Set([...entry.tags, "available"])) : entry.tags,
@@ -552,12 +423,6 @@ export function modelSpeedScore(row: ModelRow) {
       return 4.9;
     case "nemotron-streaming":
       return 4.2;
-    case "sortformer-v2":
-      return 4.0;
-    case "sortformer-v2-1":
-      return 4.1;
-    case "multitalker-parakeet":
-      return 3.7;
     default:
       return 3;
   }
@@ -573,12 +438,6 @@ export function modelAccuracyScore(row: ModelRow) {
       return 3.9;
     case "nemotron-streaming":
       return 4.4;
-    case "sortformer-v2":
-      return 4.0;
-    case "sortformer-v2-1":
-      return 4.2;
-    case "multitalker-parakeet":
-      return 4.3;
     default:
       return 3.5;
   }
@@ -626,8 +485,6 @@ export function matchesModel(row: ModelRow, query: string, filter: ModelFilter) 
       return row.state === "ready" || row.state === "downloadable";
     case "streaming":
       return row.tags.includes("streaming");
-    case "speaker":
-      return row.tags.includes("speaker");
     case "all":
     default:
       return true;

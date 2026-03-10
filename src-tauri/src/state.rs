@@ -95,6 +95,20 @@ impl Default for OverlayAnimationStyle {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+pub(crate) enum LivePreviewModelPreference {
+    Auto,
+    NemotronStreaming,
+    ParakeetEou,
+}
+
+impl Default for LivePreviewModelPreference {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
 pub(crate) enum AudioRetentionPolicy {
     OneDay,
     SevenDays,
@@ -123,6 +137,7 @@ pub(crate) struct Settings {
     pub(crate) audio_retention_policy: AudioRetentionPolicy,
     pub(crate) overlay_position: OverlayPosition,
     pub(crate) overlay_animation_style: OverlayAnimationStyle,
+    pub(crate) live_preview_model: LivePreviewModelPreference,
     pub(crate) show_recording_timer: bool,
     pub(crate) show_live_transcription: bool,
 }
@@ -143,6 +158,7 @@ impl Default for Settings {
             audio_retention_policy: AudioRetentionPolicy::OneDay,
             overlay_position: OverlayPosition::BottomCenter,
             overlay_animation_style: OverlayAnimationStyle::Spectrum,
+            live_preview_model: LivePreviewModelPreference::Auto,
             show_recording_timer: false,
             show_live_transcription: false,
         }
@@ -212,6 +228,7 @@ pub(crate) struct SettingsUpdate {
     pub(crate) audio_retention_policy: Option<AudioRetentionPolicy>,
     pub(crate) overlay_position: Option<OverlayPosition>,
     pub(crate) overlay_animation_style: Option<OverlayAnimationStyle>,
+    pub(crate) live_preview_model: Option<LivePreviewModelPreference>,
     pub(crate) show_recording_timer: Option<bool>,
     pub(crate) show_live_transcription: Option<bool>,
 }

@@ -10,6 +10,10 @@ export type OverlayPosition =
   | "bottom-right"
   | "caret";
 export type OverlayAnimationStyle = "spectrum" | "waveform" | "radial";
+export type LivePreviewModel =
+  | "auto"
+  | "nemotron-streaming"
+  | "parakeet-eou";
 export type ShortcutFieldName = "holdShortcut" | "toggleShortcut";
 export type SectionId =
   | "overview"
@@ -20,7 +24,7 @@ export type SectionId =
   | "inputs"
   | "history"
   | "about";
-export type ModelFilter = "all" | "available" | "streaming" | "speaker";
+export type ModelFilter = "all" | "available" | "streaming";
 export type EditableOverlayPosition = Exclude<OverlayPosition, "caret">;
 export type AudioRetentionPolicy = "one-day" | "seven-days" | "thirty-days";
 export type ModelFeatureIcon =
@@ -49,6 +53,7 @@ export type Settings = {
   audioRetentionPolicy: AudioRetentionPolicy;
   overlayPosition: OverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
+  livePreviewModel: LivePreviewModel;
   showRecordingTimer: boolean;
   showLiveTranscription: boolean;
 };
@@ -130,6 +135,7 @@ export type SettingsDraft = {
   audioRetentionPolicy: AudioRetentionPolicy;
   overlayPosition: EditableOverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;
+  livePreviewModel: LivePreviewModel;
   showRecordingTimer: boolean;
   showLiveTranscription: boolean;
 };

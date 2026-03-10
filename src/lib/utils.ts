@@ -6,6 +6,7 @@ import type {
   EditableOverlayPosition,
   HistoryItem,
   InferenceProvider,
+  LivePreviewModel,
   OverlayAnimationStyle,
   OverlayPosition,
   SettingsDraft,
@@ -68,6 +69,18 @@ export function formatOverlayAnimationStyle(style: OverlayAnimationStyle) {
     case "spectrum":
     default:
       return "Bars";
+  }
+}
+
+export function formatLivePreviewModel(model: LivePreviewModel) {
+  switch (model) {
+    case "nemotron-streaming":
+      return "Nemotron";
+    case "parakeet-eou":
+      return "Realtime EOU";
+    case "auto":
+    default:
+      return "Auto";
   }
 }
 
@@ -276,6 +289,7 @@ export function buildSettingsUpdate(draft: SettingsDraft) {
     audioRetentionPolicy: draft.audioRetentionPolicy,
     overlayPosition: draft.overlayPosition,
     overlayAnimationStyle: draft.overlayAnimationStyle,
+    livePreviewModel: draft.livePreviewModel,
     showRecordingTimer: draft.showRecordingTimer,
     showLiveTranscription: draft.showLiveTranscription,
   };

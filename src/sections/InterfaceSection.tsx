@@ -1,11 +1,19 @@
-import { overlayAnimationOptions, overlayPositionOptions } from "../constants";
+import {
+  livePreviewModelOptions,
+  overlayAnimationOptions,
+  overlayPositionOptions,
+} from "../constants";
 import { ChoiceDropdown } from "../components/common";
 import {
   AnimationOptionPreview,
   InterfacePreviewCard,
   OverlayPositionPreview,
 } from "../components/TranscriptionPill";
-import { formatOverlayAnimationStyle, formatOverlayPosition } from "../lib/utils";
+import {
+  formatLivePreviewModel,
+  formatOverlayAnimationStyle,
+  formatOverlayPosition,
+} from "../lib/utils";
 import type { SettingsDraft } from "../types";
 
 export function InterfaceSection({
@@ -36,6 +44,22 @@ export function InterfaceSection({
     new Set(installedStreamingModels.flatMap((model) => model.unlockedFeatures)),
   );
   const installedModelLabel = installedStreamingModels.map((model) => model.name).join(" · ");
+  const livePreviewOptions = livePreviewModelOptions.map((option) => {
+    const available =
+      option.id === "auto" ||
+      installedStreamingModels.some((model) => model.id === option.id);
+    return {
+      ...option,
+      description: available
+        ? option.description
+        : `${option.description} Download it in Models first.`,
+    };
+  });
+  const resolvedLivePreviewModel =
+    draft.livePreviewModel === "auto" ||
+    installedStreamingModels.some((model) => model.id === draft.livePreviewModel)
+      ? draft.livePreviewModel
+      : "auto";
 
   return (
     <section className="compact-grid-two">
@@ -91,6 +115,27 @@ export function InterfaceSection({
             </div>
           </div>
 
+          <div className="setting-row">
+            <div className="setting-copy">
+              <strong>Live preview model</strong>
+              <span>
+                Auto prefers Nemotron for richer text, then Realtime EOU for lower latency.
+              </span>
+            </div>
+            <div className="setting-control">
+              <ChoiceDropdown
+                label="Live model"
+                value={resolvedLivePreviewModel}
+                options={livePreviewOptions}
+                onChange={(value) =>
+                  void onApplySettings({
+                    livePreviewModel: value as typeof draft.livePreviewModel,
+                  })
+                }
+              />
+            </div>
+          </div>
+
           <label className="toggle-row toggle-row-card setting-toggle">
             <input
               type="checkbox"
@@ -127,6 +172,7 @@ export function InterfaceSection({
         <div className="mini-meta-row">
           <span>{formatOverlayPosition(draft.overlayPosition)}</span>
           <span>{formatOverlayAnimationStyle(draft.overlayAnimationStyle)}</span>
+          <span>{formatLivePreviewModel(resolvedLivePreviewModel)}</span>
           <span>{draft.showRecordingTimer ? "Timer on" : "Timer off"}</span>
           <span>{draft.showLiveTranscription ? "Expanded HUD" : "Compact HUD"}</span>
         </div>
@@ -145,16 +191,14 @@ export function InterfaceSection({
               <strong>Live transcript</strong>
               <span>
                 {unlockedFeatures.includes("Live transcript")
-                  ? `Unlocked by ${installedModelLabel}`
+                  ? `Uses ${formatLivePreviewModel(resolvedLivePreviewModel)} for preview when available. Installed: ${installedModelLabel}`
                   : "Locked until a streaming model is installed"}
               </span>
             </div>
             <div className="feature-unlock-row">
-              <strong>Long-form guidance</strong>
+              <strong>Final dictation</strong>
               <span>
-                {unlockedFeatures.includes("Long-form guidance")
-                  ? "Unlocked for longer speech workflows"
-                  : "Install a streaming model to remove the short batch-only mental model"}
+                Streaming add-ons only affect the live preview. Final pasted text still comes from the selected batch model.
               </span>
             </div>
             <div className="feature-unlock-row">

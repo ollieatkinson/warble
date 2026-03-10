@@ -2156,6 +2156,9 @@ fn update_settings_command(
         if let Some(overlay_animation_style) = update.overlay_animation_style {
             core.settings.overlay_animation_style = overlay_animation_style;
         }
+        if let Some(live_preview_model) = update.live_preview_model {
+            core.settings.live_preview_model = live_preview_model;
+        }
         if let Some(show_recording_timer) = update.show_recording_timer {
             core.settings.show_recording_timer = show_recording_timer;
         }

@@ -40,6 +40,20 @@ pub(crate) const PARAKEET_DECODER_DOWNLOAD_URL: &str =
     "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/decoder_joint-model.int8.onnx";
 pub(crate) const PARAKEET_VOCAB_DOWNLOAD_URL: &str =
     "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/vocab.txt";
+pub(crate) const PARAKEET_CTC_MODEL_DOWNLOAD_URL: &str =
+    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/onnx/model_int8.onnx";
+pub(crate) const PARAKEET_CTC_MODEL_DATA_DOWNLOAD_URL: &str =
+    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/onnx/model_int8.onnx_data";
+pub(crate) const PARAKEET_CTC_CONFIG_DOWNLOAD_URL: &str =
+    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/config.json";
+pub(crate) const PARAKEET_CTC_PREPROCESSOR_CONFIG_DOWNLOAD_URL: &str =
+    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/preprocessor_config.json";
+pub(crate) const PARAKEET_CTC_SPECIAL_TOKENS_DOWNLOAD_URL: &str =
+    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/special_tokens_map.json";
+pub(crate) const PARAKEET_CTC_TOKENIZER_DOWNLOAD_URL: &str =
+    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/tokenizer.json";
+pub(crate) const PARAKEET_CTC_TOKENIZER_CONFIG_DOWNLOAD_URL: &str =
+    "https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/tokenizer_config.json";
 pub(crate) const PARAKEET_EOU_ENCODER_DOWNLOAD_URL: &str =
     "https://huggingface.co/altunenes/parakeet-rs/resolve/main/realtime_eou_120m-v1-onnx/encoder.onnx";
 pub(crate) const PARAKEET_EOU_DECODER_DOWNLOAD_URL: &str =

@@ -5,7 +5,7 @@ use parakeet_rs::{
 use std::path::{Path, PathBuf};
 
 use crate::runtime;
-use crate::state::{Settings, SystemProfile};
+use crate::state::{LivePreviewModelPreference, Settings, SystemProfile};
 
 const EOU_MODEL_ID: &str = "parakeet-eou";
 const NEMOTRON_MODEL_ID: &str = "nemotron-streaming";
@@ -77,30 +77,43 @@ pub(crate) fn resolve_streaming_preview_config(
     system_profile: &SystemProfile,
 ) -> Option<StreamingPreviewConfig> {
     let directml_enabled = system_profile.directml_available;
-
-    if let Some(nemotron_path) = settings.installed_model_paths.get(NEMOTRON_MODEL_ID) {
-        let nemotron_path = PathBuf::from(nemotron_path);
-        if nemotron_model_ready_in_dir(&nemotron_path) {
-            return Some(StreamingPreviewConfig {
-                backend: StreamingPreviewBackend::Nemotron,
-                model_path: nemotron_path,
-                directml_enabled,
-            });
+    let preferred_order = match settings.live_preview_model {
+        LivePreviewModelPreference::Auto | LivePreviewModelPreference::NemotronStreaming => {
+            [StreamingPreviewBackend::Nemotron, StreamingPreviewBackend::Eou]
         }
-    }
+        LivePreviewModelPreference::ParakeetEou => {
+            [StreamingPreviewBackend::Eou, StreamingPreviewBackend::Nemotron]
+        }
+    };
 
-    if let Some(eou_path) = settings.installed_model_paths.get(EOU_MODEL_ID) {
-        let eou_path = PathBuf::from(eou_path);
-        if eou_model_ready_in_dir(&eou_path) {
-            return Some(StreamingPreviewConfig {
-                backend: StreamingPreviewBackend::Eou,
-                model_path: eou_path,
-                directml_enabled,
-            });
+    for backend in preferred_order {
+        if let Some(config) = ready_streaming_preview_config(settings, directml_enabled, backend) {
+            return Some(config);
         }
     }
 
     None
+}
+
+fn ready_streaming_preview_config(
+    settings: &Settings,
+    directml_enabled: bool,
+    backend: StreamingPreviewBackend,
+) -> Option<StreamingPreviewConfig> {
+    let model_id = match backend {
+        StreamingPreviewBackend::Nemotron => NEMOTRON_MODEL_ID,
+        StreamingPreviewBackend::Eou => EOU_MODEL_ID,
+    };
+    let model_path = PathBuf::from(settings.installed_model_paths.get(model_id)?.as_str());
+    let ready = match backend {
+        StreamingPreviewBackend::Nemotron => nemotron_model_ready_in_dir(&model_path),
+        StreamingPreviewBackend::Eou => eou_model_ready_in_dir(&model_path),
+    };
+    ready.then_some(StreamingPreviewConfig {
+        backend,
+        model_path,
+        directml_enabled,
+    })
 }
 
 pub(crate) struct StreamingPreviewEngine {
