@@ -805,21 +805,21 @@ fn indicator_window_size(settings: &Settings) -> (i32, i32) {
         match settings.overlay_animation_style {
             OverlayAnimationStyle::Radial => {
                 if settings.show_recording_timer {
-                    144
+                    168
                 } else {
                     86
                 }
             }
             OverlayAnimationStyle::Spectrum => {
                 if settings.show_recording_timer {
-                    194
+                    226
                 } else {
                     136
                 }
             }
             OverlayAnimationStyle::Waveform => {
                 if settings.show_recording_timer {
-                    202
+                    234
                 } else {
                     142
                 }
