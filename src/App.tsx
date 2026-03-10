@@ -42,6 +42,23 @@ import type {
   Snapshot,
 } from "./types";
 
+const MEDIA_FILE_EXTENSIONS = [
+  "wav",
+  "mp3",
+  "m4a",
+  "aac",
+  "flac",
+  "ogg",
+  "oga",
+  "mp4",
+  "mov",
+  "mkv",
+  "webm",
+  "avi",
+  "aif",
+  "aiff",
+];
+
 function ControlApp({
   snapshot,
   setSnapshot,
@@ -257,6 +274,41 @@ function ControlApp({
       setMessage(null);
       await invoke("cancel_current_operation_command");
     } catch (error) {
+      setMessage({
+        kind: "error",
+        text: formatInvokeError(error),
+      });
+    }
+  }
+
+  async function transcribeFile() {
+    const actionId = "transcribe-file";
+    setMessage(null);
+    setButtonFeedbackState(actionId, "working");
+
+    try {
+      const selected = await openDialog({
+        directory: false,
+        multiple: false,
+        filters: [
+          {
+            name: "Audio or video",
+            extensions: MEDIA_FILE_EXTENSIONS,
+          },
+        ],
+      });
+
+      if (!selected || Array.isArray(selected)) {
+        clearButtonFeedback(actionId);
+        return;
+      }
+
+      await invoke("transcribe_media_file_command", {
+        path: selected,
+      });
+      finishButtonFeedback(actionId, 900);
+    } catch (error) {
+      clearButtonFeedback(actionId);
       setMessage({
         kind: "error",
         text: formatInvokeError(error),
@@ -744,9 +796,13 @@ function ControlApp({
               limitMs={snapshot.overlay.limitMs}
               recentTranscript={Boolean(recentTranscript)}
               shortcutsActive={snapshot.shortcutsActive}
+              fileActionState={buttonFeedback["transcribe-file"]}
               onStartRecording={startRecording}
               onStopRecording={() => {
                 void stopRecording();
+              }}
+              onTranscribeFile={() => {
+                void transcribeFile();
               }}
               onCancel={() => {
                 void cancelCurrentOperation();

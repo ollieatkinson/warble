@@ -77,6 +77,10 @@ export function InputsSection({
             <button className="secondary" onClick={onStopRecording}>
               Stop
             </button>
+          ) : snapshot.phase === "transcribing" ? (
+            <button className="secondary" onClick={onCancel}>
+              Cancel
+            </button>
           ) : (
             <>
               <button className="secondary" onClick={() => onStartRecording("hold")}>

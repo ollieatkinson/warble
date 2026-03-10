@@ -1,9 +1,16 @@
-import { StatTile, StatusChip } from "../components/common";
+import { ActionButton, StatTile, StatusChip } from "../components/common";
 import { TranscriptionPill } from "../components/TranscriptionPill";
-import { CheckIcon, HistoryIcon, InputIcon, KeysIcon } from "../components/icons";
+import {
+  CheckIcon,
+  DownloadIcon,
+  HistoryIcon,
+  InputIcon,
+  KeysIcon,
+} from "../components/icons";
 import { toneForPhase } from "../lib/utils";
 import type {
   AppPhase,
+  ButtonFeedbackState,
   ModelRow,
   OverlayAnimationStyle,
   SourceInfo,
@@ -25,8 +32,10 @@ export function OverviewSection({
   limitMs,
   recentTranscript,
   shortcutsActive,
+  fileActionState,
   onStartRecording,
   onStopRecording,
+  onTranscribeFile,
   onCancel,
 }: {
   activeModel: ModelRow | null;
@@ -44,8 +53,10 @@ export function OverviewSection({
   limitMs: number | null;
   recentTranscript: boolean;
   shortcutsActive: boolean;
+  fileActionState?: ButtonFeedbackState;
   onStartRecording: (mode: "hold" | "toggle") => void;
   onStopRecording: () => void;
+  onTranscribeFile: () => void | Promise<void>;
   onCancel: () => void;
 }) {
   return (
@@ -88,8 +99,22 @@ export function OverviewSection({
               <button className="secondary" onClick={onStopRecording}>
                 Stop
               </button>
+            ) : phase === "transcribing" ? (
+              <button className="secondary" onClick={onCancel}>
+                Cancel
+              </button>
             ) : (
               <>
+                <ActionButton
+                  className="secondary"
+                  state={fileActionState}
+                  idleLabel="File"
+                  workingLabel="Opening"
+                  doneLabel="Queued"
+                  idleIcon={<DownloadIcon className="small-icon" />}
+                  doneIcon={<CheckIcon className="small-icon" />}
+                  onClick={onTranscribeFile}
+                />
                 <button className="secondary" onClick={() => onStartRecording("hold")}>
                   Hold
                 </button>

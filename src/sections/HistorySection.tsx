@@ -188,7 +188,9 @@ export function HistorySection({
                       </strong>
                     </div>
                     <div className="history-detail-item">
-                      <span>Microphone</span>
+                      <span>
+                        {item.capture.sourceKind === "file" ? "Source file" : "Microphone"}
+                      </span>
                       <strong>{item.sourceName}</strong>
                     </div>
                     <div className="history-detail-item">

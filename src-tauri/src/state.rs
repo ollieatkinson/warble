@@ -43,6 +43,14 @@ pub(crate) enum InferenceProvider {
     Directml,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum CaptureSourceKind {
+    #[default]
+    Microphone,
+    File,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum TranscriptionModelKind {
@@ -144,6 +152,7 @@ impl Default for Settings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub(crate) struct HistoryCaptureDetails {
+    pub(crate) source_kind: CaptureSourceKind,
     pub(crate) model_id: String,
     pub(crate) model_name: String,
     pub(crate) inference_provider: InferenceProvider,
@@ -155,6 +164,7 @@ pub(crate) struct HistoryCaptureDetails {
 impl Default for HistoryCaptureDetails {
     fn default() -> Self {
         Self {
+            source_kind: CaptureSourceKind::Microphone,
             model_id: String::new(),
             model_name: String::new(),
             inference_provider: InferenceProvider::Cpu,

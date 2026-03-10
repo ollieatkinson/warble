@@ -1,4 +1,5 @@
 mod constants;
+mod media;
 mod models;
 pub mod parakeet;
 mod platform;
@@ -6,7 +7,7 @@ mod state;
 mod storage;
 mod streaming_preview;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig, SupportedStreamConfig};
@@ -237,6 +238,86 @@ struct TranscriptionOutput {
     model_name: String,
 }
 
+fn transcribe_audio_segments(
+    app: &AppHandle,
+    shared: Option<&SharedState>,
+    preview_control: Option<(&PreviewControl, u64)>,
+    transcriber: &TranscriberHandle,
+    settings: &Settings,
+    audio: &[f32],
+    progress_label: &str,
+) -> Result<Option<TranscriptionOutput>> {
+    if transcription_cancelled(shared, preview_control) {
+        return Ok(None);
+    }
+
+    let limit_ms = selected_model_audio_limit_ms(settings);
+    let preferred_chunk_ms = limit_ms
+        .map(|value| value.saturating_sub(30_000).max(60_000))
+        .unwrap_or(0);
+    let chunk_samples = if preferred_chunk_ms > 0 {
+        ((preferred_chunk_ms as f64 / 1_000.0) * parakeet::SAMPLE_RATE as f64) as usize
+    } else {
+        0
+    };
+
+    if chunk_samples == 0 || audio.len() <= chunk_samples {
+        let output = transcribe_audio(app, transcriber, settings, audio)?;
+        if transcription_cancelled(shared, preview_control) {
+            return Ok(None);
+        }
+        return Ok(Some(output));
+    }
+
+    let chunks = audio.chunks(chunk_samples).collect::<Vec<_>>();
+    let mut combined = String::new();
+    let mut provider = InferenceProvider::Cpu;
+    let mut model_name = selected_model_display_name(settings);
+
+    for (index, chunk) in chunks.iter().enumerate() {
+        if transcription_cancelled(shared, preview_control) {
+            return Ok(None);
+        }
+
+        if let Some(shared) = shared {
+            {
+                let mut core = shared.lock();
+                core.status_message =
+                    format!("{progress_label} ({}/{})", index + 1, chunks.len());
+                core.overlay.visible = true;
+                core.overlay.title = progress_label.to_string();
+                core.overlay.detail =
+                    format!("Chunk {} of {}", index + 1, chunks.len());
+            }
+            update_indicator_window(app, shared);
+            emit_snapshot(app, shared);
+        }
+
+        let output = transcribe_audio(app, transcriber, settings, chunk)?;
+        if transcription_cancelled(shared, preview_control) {
+            return Ok(None);
+        }
+        provider = output.inference_provider;
+        model_name = output.model_name;
+
+        let trimmed = output.text.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !combined.is_empty() {
+            combined.push_str("\n\n");
+        }
+        combined.push_str(trimmed);
+    }
+
+    Ok(Some(TranscriptionOutput {
+        text: combined,
+        inference_provider: provider,
+        model_name,
+    }))
+}
+
 fn transcribe_audio(
     app: &AppHandle,
     transcriber: &TranscriberHandle,
@@ -429,6 +510,24 @@ fn trim_preview_line(text: &str, max_words: usize) -> String {
     }
 
     words[words.len().saturating_sub(max_words)..].join(" ")
+}
+
+fn transcription_cancelled(
+    shared: Option<&SharedState>,
+    preview_control: Option<(&PreviewControl, u64)>,
+) -> bool {
+    if let Some((preview_control, generation)) = preview_control {
+        if preview_control.current_generation() != generation {
+            return true;
+        }
+    }
+
+    if let Some(shared) = shared {
+        let core = shared.lock();
+        matches!(core.phase, AppPhase::Idle | AppPhase::Error)
+    } else {
+        false
+    }
 }
 
 fn preview_words(text: &str) -> Vec<String> {
@@ -1147,14 +1246,22 @@ fn complete_transcription(
                 let core = shared.lock();
                 core.settings.clone()
             };
-            let result = transcribe_audio(&app, &transcriber, &settings, &completed.samples);
+            let result = transcribe_audio_segments(
+                &app,
+                Some(&shared),
+                Some((&preview_control, generation)),
+                &transcriber,
+                &settings,
+                &completed.samples,
+                "Transcribing",
+            );
 
             if preview_control.current_generation() != generation {
                 return;
             }
 
             match result {
-                Ok(output) => {
+                Ok(Some(output)) => {
                     let text = output.text;
                     let text = cleanup_transcript_text(
                         text.trim(),
@@ -1204,6 +1311,7 @@ fn complete_transcription(
                             pasted,
                             audio_path,
                             capture: HistoryCaptureDetails {
+                                source_kind: CaptureSourceKind::Microphone,
                                 model_id: settings.selected_model_id.clone(),
                                 model_name: output.model_name,
                                 inference_provider: output.inference_provider,
@@ -1232,6 +1340,7 @@ fn complete_transcription(
 
                     let _ = save_persisted_state(&app, &shared);
                 }
+                Ok(None) => {}
                 Err(error) => {
                     let mut core = shared.lock();
                     core.phase = AppPhase::Error;
@@ -1317,6 +1426,202 @@ fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()> {
         transcription_generation,
         completed,
     );
+    Ok(())
+}
+
+fn transcribe_media_file(
+    app: AppHandle,
+    shared: SharedState,
+    transcriber: TranscriberHandle,
+    path: String,
+) -> Result<()> {
+    let preview_control = app.state::<PreviewControl>();
+    let transcription_generation = preview_control.next_generation();
+    let preview_control = preview_control.inner().clone();
+    {
+        let core = shared.lock();
+        if !matches!(core.phase, AppPhase::Idle | AppPhase::Error) {
+            bail!("Finish the current transcription before importing a file");
+        }
+    }
+
+    let file_path = media::canonical_media_path(&path)?;
+    let file_label = media::file_path_label(&file_path);
+
+    {
+        let mut core = shared.lock();
+        core.phase = AppPhase::Transcribing;
+        core.status_message = format!("Decoding {file_label}");
+        core.error_message = None;
+        core.recording_started_at = None;
+        core.overlay.visible = true;
+        core.overlay.title = "Transcribing file".to_string();
+        core.overlay.detail = file_label.clone();
+        core.overlay.levels = default_overlay_levels();
+        core.overlay.elapsed_ms = 0;
+        core.overlay.limit_ms = selected_model_audio_limit_ms(&core.settings);
+        core.overlay.anchor = None;
+    }
+    update_indicator_window(&app, &shared);
+    emit_snapshot(&app, &shared);
+
+    std::thread::spawn(move || {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let decoded = match media::decode_media_file(&file_path) {
+                Ok(decoded) => decoded,
+                Err(error) => {
+                    let mut core = shared.lock();
+                    core.phase = AppPhase::Error;
+                    core.status_message = "File transcription failed".to_string();
+                    core.error_message = Some(error.to_string());
+                    clear_overlay_session_state(&mut core);
+                    drop(core);
+                    update_indicator_window(&app, &shared);
+                    emit_snapshot(&app, &shared);
+                    return;
+                }
+            };
+
+            if preview_control.current_generation() != transcription_generation {
+                return;
+            }
+
+            let input_sample_rate = decoded.sample_rate;
+            let input_channels = decoded.channels;
+            let samples_16khz = if decoded.sample_rate == parakeet::SAMPLE_RATE {
+                decoded.samples.clone()
+            } else {
+                parakeet::resample_to_16khz(&decoded.samples, decoded.sample_rate)
+            };
+
+            {
+                let mut core = shared.lock();
+                core.status_message = format!("Transcribing {}", decoded.display_name);
+                core.overlay.title = "Transcribing file".to_string();
+                core.overlay.detail = decoded.display_name.clone();
+                core.overlay.limit_ms = selected_model_audio_limit_ms(&core.settings);
+            }
+            update_indicator_window(&app, &shared);
+            emit_snapshot(&app, &shared);
+
+            let settings = {
+                let core = shared.lock();
+                core.settings.clone()
+            };
+
+            let result = transcribe_audio_segments(
+                &app,
+                Some(&shared),
+                Some((&preview_control, transcription_generation)),
+                &transcriber,
+                &settings,
+                &samples_16khz,
+                "Transcribing file",
+            );
+
+            match result {
+                Ok(Some(output)) => {
+                    if preview_control.current_generation() != transcription_generation {
+                        return;
+                    }
+
+                    let text = cleanup_transcript_text(
+                        output.text.trim(),
+                        settings.cleanup_enabled,
+                        &settings.cleanup_terms,
+                    );
+
+                    if text.is_empty() {
+                        let mut core = shared.lock();
+                        core.phase = AppPhase::Idle;
+                        core.status_message = "Nothing intelligible was detected".to_string();
+                        core.error_message = None;
+                        core.model_status = current_model_status(&app, &core.settings);
+                        core.parakeet_model_status = built_in_parakeet_status(&app);
+                        clear_overlay_session_state(&mut core);
+                        drop(core);
+                        update_indicator_window(&app, &shared);
+                        emit_snapshot(&app, &shared);
+                        return;
+                    }
+
+                    let duration_ms =
+                        (samples_16khz.len() as f64 / parakeet::SAMPLE_RATE as f64 * 1000.0)
+                            as u64;
+                    let item_id = Uuid::new_v4().to_string();
+                    let mut core = shared.lock();
+                    core.history.insert(
+                        0,
+                        HistoryItem {
+                            id: item_id,
+                            text,
+                            created_at: Utc::now().to_rfc3339(),
+                            source_name: decoded.display_name,
+                            mode: RecordingMode::Toggle,
+                            duration_ms,
+                            pasted: false,
+                            audio_path: None,
+                            capture: HistoryCaptureDetails {
+                                source_kind: CaptureSourceKind::File,
+                                model_id: settings.selected_model_id.clone(),
+                                model_name: output.model_name,
+                                inference_provider: output.inference_provider,
+                                input_sample_rate,
+                                input_channels,
+                                transcription_sample_rate: parakeet::SAMPLE_RATE,
+                            },
+                        },
+                    );
+                    let keep_len = HISTORY_LIMIT.min(core.history.len());
+                    let removed_items = core.history.split_off(keep_len);
+                    for item in &removed_items {
+                        remove_history_audio_file(item);
+                    }
+                    core.phase = AppPhase::Idle;
+                    core.status_message = "File transcribed locally".to_string();
+                    core.error_message = None;
+                    core.model_status = current_model_status(&app, &core.settings);
+                    core.parakeet_model_status = built_in_parakeet_status(&app);
+                    clear_overlay_session_state(&mut core);
+                    drop(core);
+
+                    let _ = save_persisted_state(&app, &shared);
+                    update_indicator_window(&app, &shared);
+                    emit_snapshot(&app, &shared);
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    let mut core = shared.lock();
+                    core.phase = AppPhase::Error;
+                    core.status_message = "File transcription failed".to_string();
+                    core.error_message = Some(error.to_string());
+                    core.model_status = current_model_status(&app, &core.settings);
+                    core.parakeet_model_status = built_in_parakeet_status(&app);
+                    clear_overlay_session_state(&mut core);
+                    drop(core);
+                    update_indicator_window(&app, &shared);
+                    emit_snapshot(&app, &shared);
+                }
+            }
+        }));
+
+        if let Err(error) = outcome {
+            let mut core = shared.lock();
+            core.phase = AppPhase::Error;
+            core.status_message = "File transcription worker failed".to_string();
+            core.error_message = Some(format!(
+                "The file transcription worker crashed unexpectedly: {}",
+                panic_payload_message(error)
+            ));
+            core.model_status = current_model_status(&app, &core.settings);
+            core.parakeet_model_status = built_in_parakeet_status(&app);
+            clear_overlay_session_state(&mut core);
+            drop(core);
+            update_indicator_window(&app, &shared);
+            emit_snapshot(&app, &shared);
+        }
+    });
+
     Ok(())
 }
 
@@ -1754,6 +2059,17 @@ fn stop_manual_recording(app: AppHandle, shared: tauri::State<'_, SharedState>) 
 }
 
 #[tauri::command]
+fn transcribe_media_file_command(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+    path: String,
+) -> Result<(), String> {
+    let transcriber = app.state::<TranscriberHandle>().inner().clone();
+    transcribe_media_file(app, shared.inner().clone(), transcriber, path)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn cancel_current_operation_command(
     app: AppHandle,
     shared: tauri::State<'_, SharedState>,
@@ -1929,6 +2245,7 @@ pub fn run() {
             remove_history_item,
             start_manual_recording,
             stop_manual_recording,
+            transcribe_media_file_command,
             cancel_current_operation_command
         ])
         .run(tauri::generate_context!())

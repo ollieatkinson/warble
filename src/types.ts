@@ -3,6 +3,7 @@ export type AppPhase = "idle" | "recording" | "transcribing" | "error";
 export type ModelStatus = "ready" | "missing";
 export type TranscriptionModelKind = "parakeet" | "parakeet-ctc";
 export type InferenceProvider = "cpu" | "directml";
+export type CaptureSourceKind = "microphone" | "file";
 export type OverlayPosition =
   | "bottom-center"
   | "bottom-left"
@@ -70,6 +71,7 @@ export type HistoryItem = {
   pasted: boolean;
   audioPath: string | null;
   capture: {
+    sourceKind: CaptureSourceKind;
     modelId: string;
     modelName: string;
     inferenceProvider: InferenceProvider;
