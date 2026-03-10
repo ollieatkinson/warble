@@ -450,6 +450,7 @@ pub(crate) fn build_snapshot(app: &AppHandle, shared: &SharedState) -> Snapshot 
         model_status: core.model_status.clone(),
         parakeet_model_status: core.parakeet_model_status.clone(),
         installed_model_sizes: installed_model_sizes(app, &core.settings),
+        model_downloads: core.model_downloads.clone(),
         system_profile: core.system_profile.clone(),
         shortcuts_active: core.shortcuts_active,
         shortcut_message: core.shortcut_message.clone(),

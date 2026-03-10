@@ -143,6 +143,49 @@ input::placeholder {
   justify-content: center;
 }
 
+.progress-ring {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.progress-ring-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+
+.progress-ring-track,
+.progress-ring-meter {
+  fill: none;
+}
+
+.progress-ring-track {
+  stroke: rgba(255, 255, 255, 0.14);
+}
+
+.progress-ring-meter {
+  stroke: #7fb0ff;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 180ms ease;
+  filter: drop-shadow(0 0 4px rgba(127, 176, 255, 0.26));
+}
+
+.progress-ring-indeterminate .progress-ring-meter {
+  animation: progress-ring-spin 1.15s linear infinite;
+}
+
+.progress-ring-content {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .action-button-icon-spin svg {
   animation: action-spin 0.9s linear infinite;
 }
@@ -870,7 +913,7 @@ input::placeholder {
   gap: 0.5rem;
   justify-items: end;
   align-content: start;
-  min-width: 160px;
+  min-width: 190px;
 }
 
 .model-list-stat {
@@ -1120,6 +1163,36 @@ input::placeholder {
   justify-content: flex-end;
   gap: 0.4rem;
   flex-wrap: nowrap;
+}
+
+.model-row-progress {
+  display: grid;
+  gap: 0.12rem;
+  justify-items: end;
+  margin-top: 0.18rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.25;
+}
+
+.model-row-progress strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.model-download-button {
+  position: relative;
+}
+
+.model-download-button-progress {
+  border-color: rgba(111, 157, 255, 0.32);
+  background: rgba(111, 157, 255, 0.08);
+  color: #d9e6ff;
+}
+
+.model-download-button-progress .small-icon {
+  width: 13px;
+  height: 13px;
 }
 
 .model-row-footnote {
@@ -2266,6 +2339,16 @@ input::placeholder {
 }
 
 @keyframes action-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes progress-ring-spin {
   from {
     transform: rotate(0deg);
   }

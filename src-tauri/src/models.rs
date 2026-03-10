@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 use crate::constants::{
@@ -17,8 +18,8 @@ use crate::constants::{
 };
 use crate::parakeet;
 use crate::state::{
-    LivePreviewModelPreference, ModelPathInspection, ModelStatus, Settings, SharedState,
-    TranscriptionModelKind,
+    LivePreviewModelPreference, ModelDownloadProgress, ModelPathInspection, ModelStatus,
+    Settings, SharedState, TranscriptionModelKind,
 };
 use crate::storage::{
     emit_snapshot, is_managed_model_path, managed_model_dir_for_id, managed_models_dir,
@@ -402,88 +403,251 @@ pub(crate) fn download_catalog_model(
 ) -> Result<(), String> {
     let spec = catalog_download_spec(&model_id)
         .ok_or_else(|| format!("No managed download is configured for {model_id}"))?;
+    let result = (|| -> Result<(), String> {
+        {
+            let mut core = shared.lock();
+            if core.model_downloads.contains_key(&model_id) {
+                return Err(format!("{} is already downloading.", spec.display_name));
+            }
+            core.status_message = format!("Downloading {} from Hugging Face…", spec.display_name);
+            core.error_message = None;
+        }
+        emit_snapshot(app, shared);
 
-    {
-        let mut core = shared.lock();
-        core.status_message = format!("Downloading {} from Hugging Face…", spec.display_name);
-        core.error_message = None;
+        let model_dir = managed_models_dir(app)
+            .map_err(|error| error.to_string())?
+            .join(spec.model_id);
+        fs::create_dir_all(&model_dir).map_err(|error| error.to_string())?;
+        let download_root = model_dir.join(spec.model_dir_name);
+        fs::create_dir_all(&download_root).map_err(|error| error.to_string())?;
+
+        let client = Client::builder()
+            .build()
+            .map_err(|error| format!("Couldn't prepare download client: {error}"))?;
+
+        let total_bytes = resolve_total_download_bytes(&client, &download_root, &spec.files);
+        let started_at = Instant::now();
+        let mut downloaded_bytes = existing_downloaded_bytes(&download_root, &spec.files);
+
+        update_download_progress(
+            app,
+            shared,
+            spec.model_id,
+            spec.display_name,
+            "Preparing download",
+            downloaded_bytes,
+            total_bytes,
+            started_at,
+        );
+
+        for file in spec.files {
+            let destination = download_root.join(file.file_name);
+            let partial = destination.with_extension("part");
+            let _ = fs::remove_file(&partial);
+
+            if destination.exists() {
+                continue;
+            }
+
+            let mut response = client
+                .get(file.download_url)
+                .send()
+                .map_err(|error| format!("Couldn't download model: {error}"))?;
+            if !response.status().is_success() {
+                return Err(format!("Download failed with status {}", response.status()));
+            }
+
+            let mut output =
+                fs::File::create(&partial).map_err(|error| format!("Couldn't create file: {error}"))?;
+            let mut buffer = [0u8; 64 * 1024];
+            let mut last_emit_at = Instant::now();
+            let mut last_emit_bytes = downloaded_bytes;
+
+            update_download_progress(
+                app,
+                shared,
+                spec.model_id,
+                spec.display_name,
+                file.file_name,
+                downloaded_bytes,
+                total_bytes,
+                started_at,
+            );
+
+            loop {
+                let read = response
+                    .read(&mut buffer)
+                    .map_err(|error| format!("Download interrupted: {error}"))?;
+                if read == 0 {
+                    break;
+                }
+                output
+                    .write_all(&buffer[..read])
+                    .map_err(|error| format!("Couldn't write model file: {error}"))?;
+                downloaded_bytes += read as u64;
+
+                if downloaded_bytes.saturating_sub(last_emit_bytes) >= 1_048_576
+                    || last_emit_at.elapsed() >= Duration::from_millis(220)
+                {
+                    update_download_progress(
+                        app,
+                        shared,
+                        spec.model_id,
+                        spec.display_name,
+                        file.file_name,
+                        downloaded_bytes,
+                        total_bytes,
+                        started_at,
+                    );
+                    last_emit_bytes = downloaded_bytes;
+                    last_emit_at = Instant::now();
+                }
+            }
+            output
+                .flush()
+                .map_err(|error| format!("Couldn't finalize model file: {error}"))?;
+            fs::rename(&partial, &destination)
+                .map_err(|error| format!("Couldn't move downloaded model into place: {error}"))?;
+
+            update_download_progress(
+                app,
+                shared,
+                spec.model_id,
+                spec.display_name,
+                file.file_name,
+                downloaded_bytes,
+                total_bytes,
+                started_at,
+            );
+        }
+
+        clear_download_progress(app, shared, spec.model_id);
+
+        if spec.activates_as_default {
+            let inspection = inspect_model_candidate(&model_dir.display().to_string())?;
+            activate_catalog_model(
+                app,
+                shared,
+                spec.model_id.to_string(),
+                spec.model_kind,
+                inspection,
+            )
+        } else {
+            {
+                let mut core = shared.lock();
+                core.settings.installed_model_paths.insert(
+                    spec.model_id.to_string(),
+                    download_root.display().to_string(),
+                );
+                core.status_message = format!(
+                    "Installed {}. Streaming features are now available.",
+                    spec.display_name
+                );
+                core.error_message = None;
+            }
+
+            persist_and_emit_settings_change(app, shared)
+        }
+    })();
+
+    if let Err(error) = &result {
+        {
+            let mut core = shared.lock();
+            core.model_downloads.remove(&model_id);
+            core.status_message = "Model download failed".to_string();
+        }
+        emit_snapshot(app, shared);
+        return Err(error.clone());
     }
-    emit_snapshot(app, shared);
 
-    let model_dir = managed_models_dir(app)
-        .map_err(|error| error.to_string())?
-        .join(spec.model_id);
-    fs::create_dir_all(&model_dir).map_err(|error| error.to_string())?;
-    let download_root = model_dir.join(spec.model_dir_name);
-    fs::create_dir_all(&download_root).map_err(|error| error.to_string())?;
+    result
+}
 
-    let client = Client::builder()
-        .build()
-        .map_err(|error| format!("Couldn't prepare download client: {error}"))?;
+fn existing_downloaded_bytes(download_root: &Path, files: &[CatalogDownloadFile]) -> u64 {
+    files
+        .iter()
+        .map(|file| {
+            fs::metadata(download_root.join(file.file_name))
+                .map(|metadata| metadata.len())
+                .unwrap_or(0)
+        })
+        .sum()
+}
 
-    for file in spec.files {
+fn resolve_total_download_bytes(
+    client: &Client,
+    download_root: &Path,
+    files: &[CatalogDownloadFile],
+) -> Option<u64> {
+    let mut total = 0u64;
+
+    for file in files {
         let destination = download_root.join(file.file_name);
-        let partial = destination.with_extension("part");
-        let _ = fs::remove_file(&partial);
-
-        if destination.exists() {
+        if let Ok(metadata) = fs::metadata(&destination) {
+            total = total.saturating_add(metadata.len());
             continue;
         }
 
-        let mut response = client
-            .get(file.download_url)
-            .send()
-            .map_err(|error| format!("Couldn't download model: {error}"))?;
+        let response = client.head(file.download_url).send().ok()?;
         if !response.status().is_success() {
-            return Err(format!("Download failed with status {}", response.status()));
+            return None;
         }
-
-        let mut output =
-            fs::File::create(&partial).map_err(|error| format!("Couldn't create file: {error}"))?;
-        let mut buffer = [0u8; 64 * 1024];
-        loop {
-            let read = response
-                .read(&mut buffer)
-                .map_err(|error| format!("Download interrupted: {error}"))?;
-            if read == 0 {
-                break;
-            }
-            output
-                .write_all(&buffer[..read])
-                .map_err(|error| format!("Couldn't write model file: {error}"))?;
-        }
-        output
-            .flush()
-            .map_err(|error| format!("Couldn't finalize model file: {error}"))?;
-        fs::rename(&partial, &destination)
-            .map_err(|error| format!("Couldn't move downloaded model into place: {error}"))?;
+        let content_length = response.content_length()?;
+        total = total.saturating_add(content_length);
     }
 
-    if spec.activates_as_default {
-        let inspection = inspect_model_candidate(&model_dir.display().to_string())?;
-        activate_catalog_model(
-            app,
-            shared,
-            spec.model_id.to_string(),
-            spec.model_kind,
-            inspection,
-        )
+    Some(total)
+}
+
+fn update_download_progress(
+    app: &AppHandle,
+    shared: &SharedState,
+    model_id: &str,
+    display_name: &str,
+    file_name: &str,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+    started_at: Instant,
+) {
+    let elapsed_seconds = started_at.elapsed().as_secs_f64().max(0.001);
+    let bytes_per_second = if downloaded_bytes == 0 {
+        None
     } else {
-        {
-            let mut core = shared.lock();
-            core.settings.installed_model_paths.insert(
-                spec.model_id.to_string(),
-                download_root.display().to_string(),
-            );
-            core.status_message = format!(
-                "Installed {}. Streaming features are now available.",
-                spec.display_name
-            );
-            core.error_message = None;
+        Some((downloaded_bytes as f64 / elapsed_seconds).round() as u64)
+    };
+    let seconds_remaining = match (total_bytes, bytes_per_second) {
+        (Some(total), Some(speed)) if speed > 0 && total > downloaded_bytes => {
+            Some(((total - downloaded_bytes) as f64 / speed as f64).ceil() as u64)
         }
+        (Some(total), _) if total <= downloaded_bytes => Some(0),
+        _ => None,
+    };
 
-        persist_and_emit_settings_change(app, shared)
+    {
+        let mut core = shared.lock();
+        core.model_downloads.insert(
+            model_id.to_string(),
+            ModelDownloadProgress {
+                display_name: display_name.to_string(),
+                file_name: file_name.to_string(),
+                downloaded_bytes,
+                total_bytes,
+                bytes_per_second,
+                seconds_remaining,
+            },
+        );
+        core.status_message = format!("Downloading {}…", display_name);
+        core.error_message = None;
     }
+    emit_snapshot(app, shared);
+}
+
+fn clear_download_progress(app: &AppHandle, shared: &SharedState, model_id: &str) {
+    {
+        let mut core = shared.lock();
+        core.model_downloads.remove(model_id);
+    }
+    emit_snapshot(app, shared);
 }
 
 pub(crate) fn remove_catalog_model(

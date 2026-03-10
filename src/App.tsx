@@ -439,7 +439,6 @@ function ControlApp({
 
     const actionId = `model-download:${row.id}`;
     setMessage(null);
-    setButtonFeedbackState(actionId, "working");
 
     try {
       await invoke("download_catalog_model", {
@@ -447,7 +446,6 @@ function ControlApp({
       });
       finishButtonFeedback(actionId, 1500);
     } catch (error) {
-      clearButtonFeedback(actionId);
       setMessage({
         kind: "error",
         text: formatInvokeError(error),

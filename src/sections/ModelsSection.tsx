@@ -1,4 +1,11 @@
-import { ActionButton, ChoiceDropdown, ModelFeatureBadge, ModelPickerPreview, StatusChip } from "../components/common";
+import {
+  ActionButton,
+  ChoiceDropdown,
+  ModelFeatureBadge,
+  ModelPickerPreview,
+  ProgressRing,
+  StatusChip,
+} from "../components/common";
 import {
   BoltIcon,
   CheckIcon,
@@ -10,11 +17,12 @@ import {
   TrashIcon,
 } from "../components/icons";
 import { describeHardwareFit, formatModelAudioLimit, formatModelSizeLabel, modelFeatureItems } from "../lib/modelCatalog";
-import { formatSystemProfile } from "../lib/utils";
+import { formatBytes, formatEta, formatSystemProfile } from "../lib/utils";
 import type {
   ButtonFeedbackState,
   ChoiceOption,
   LivePreviewModel,
+  ModelDownloadProgress,
   ModelRow,
   Snapshot,
 } from "../types";
@@ -31,6 +39,93 @@ function featureIcon(icon: "spark" | "cpu" | "bolt" | "users" | "clock") {
     default:
       return <SparkIcon className="small-icon" />;
   }
+}
+
+function ModelDownloadAction({
+  row,
+  progress,
+  buttonFeedback,
+  onDownloadCatalogModel,
+}: {
+  row: ModelRow;
+  progress?: ModelDownloadProgress;
+  buttonFeedback: Record<string, ButtonFeedbackState>;
+  onDownloadCatalogModel: (row: ModelRow) => void | Promise<void>;
+}) {
+  if (!row.supportsDownload || row.state === "ready") {
+    return null;
+  }
+
+  if (progress) {
+    const progressValue =
+      progress.totalBytes && progress.totalBytes > 0
+        ? progress.downloadedBytes / progress.totalBytes
+        : null;
+    const titleParts = [
+      `Downloading ${progress.displayName}`,
+      progress.fileName,
+      progress.totalBytes
+        ? `${Math.round(progressValue! * 100)}%`
+        : "Preparing progress",
+      formatEta(progress.secondsRemaining),
+    ].filter(Boolean);
+
+    return (
+      <button
+        type="button"
+        className="secondary small icon-only-button model-download-button model-download-button-progress"
+        disabled
+        aria-label={titleParts.join(" · ")}
+        title={titleParts.join(" · ")}
+      >
+        <ProgressRing progress={progressValue}>
+          <DownloadIcon className="small-icon" />
+        </ProgressRing>
+      </button>
+    );
+  }
+
+  return (
+    <ActionButton
+      className="secondary small model-download-button"
+      state={buttonFeedback[`model-download:${row.id}`]}
+      idleLabel="Download"
+      workingLabel="Downloading"
+      doneLabel="Downloaded"
+      idleIcon={<DownloadIcon className="small-icon" />}
+      workingIcon={<DownloadIcon className="small-icon" />}
+      doneIcon={<CheckIcon className="small-icon" />}
+      onClick={() => onDownloadCatalogModel(row)}
+      iconOnly
+    />
+  );
+}
+
+function ModelDownloadProgressMeta({
+  progress,
+}: {
+  progress?: ModelDownloadProgress;
+}) {
+  if (!progress) {
+    return null;
+  }
+
+  const progressLabel =
+    progress.totalBytes && progress.totalBytes > 0
+      ? `${Math.round((progress.downloadedBytes / progress.totalBytes) * 100)}%`
+      : "Preparing";
+  const amountLabel = progress.totalBytes && progress.totalBytes > 0
+    ? `${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalBytes)}`
+    : formatBytes(progress.downloadedBytes);
+  const etaLabel = formatEta(progress.secondsRemaining);
+
+  return (
+    <div className="model-row-progress">
+      <strong>{progressLabel}</strong>
+      <span>{amountLabel}</span>
+      <span>{etaLabel ?? progress.fileName}</span>
+    </div>
+  );
 }
 
 function BatchModelRow({
@@ -51,6 +146,7 @@ function BatchModelRow({
   onOpenModelReference: (row: ModelRow) => void | Promise<void>;
 }) {
   const fit = describeHardwareFit(row, snapshot.systemProfile);
+  const downloadProgress = snapshot.modelDownloads[row.id];
 
   return (
     <article className={`model-list-row ${row.active ? "model-list-row-active" : ""}`}>
@@ -94,20 +190,12 @@ function BatchModelRow({
               Use
             </button>
           ) : null}
-          {row.supportsDownload && row.state !== "ready" ? (
-            <ActionButton
-              className="secondary small"
-              state={buttonFeedback[`model-download:${row.id}`]}
-              idleLabel="Download"
-              workingLabel="Downloading"
-              doneLabel="Downloaded"
-              idleIcon={<DownloadIcon className="small-icon" />}
-              workingIcon={<DownloadIcon className="small-icon" />}
-              doneIcon={<CheckIcon className="small-icon" />}
-              onClick={() => onDownloadCatalogModel(row)}
-              iconOnly
-            />
-          ) : null}
+          <ModelDownloadAction
+            row={row}
+            progress={downloadProgress}
+            buttonFeedback={buttonFeedback}
+            onDownloadCatalogModel={onDownloadCatalogModel}
+          />
           {row.managed ? (
             <ActionButton
               className="secondary small"
@@ -132,6 +220,7 @@ function BatchModelRow({
             </button>
           ) : null}
         </div>
+        <ModelDownloadProgressMeta progress={downloadProgress} />
       </div>
     </article>
   );
@@ -159,6 +248,7 @@ function StreamingModelRow({
   const fit = describeHardwareFit(row, snapshot.systemProfile);
   const isEffective = effectiveLivePreviewModelId === row.id;
   const isExplicit = explicitLivePreviewModel !== "auto" && explicitLivePreviewModel === row.id;
+  const downloadProgress = snapshot.modelDownloads[row.id];
 
   return (
     <article className={`model-list-row ${isEffective ? "model-list-row-active" : ""}`}>
@@ -198,20 +288,12 @@ function StreamingModelRow({
       <div className="model-list-side">
         <span className="model-list-stat">{fit.label}</span>
         <div className="model-row-actions">
-          {row.supportsDownload && row.state !== "ready" ? (
-            <ActionButton
-              className="secondary small"
-              state={buttonFeedback[`model-download:${row.id}`]}
-              idleLabel="Download"
-              workingLabel="Downloading"
-              doneLabel="Downloaded"
-              idleIcon={<DownloadIcon className="small-icon" />}
-              workingIcon={<DownloadIcon className="small-icon" />}
-              doneIcon={<CheckIcon className="small-icon" />}
-              onClick={() => onDownloadCatalogModel(row)}
-              iconOnly
-            />
-          ) : null}
+          <ModelDownloadAction
+            row={row}
+            progress={downloadProgress}
+            buttonFeedback={buttonFeedback}
+            onDownloadCatalogModel={onDownloadCatalogModel}
+          />
           {row.managed ? (
             <ActionButton
               className="secondary small"
@@ -236,6 +318,7 @@ function StreamingModelRow({
             </button>
           ) : null}
         </div>
+        <ModelDownloadProgressMeta progress={downloadProgress} />
       </div>
     </article>
   );

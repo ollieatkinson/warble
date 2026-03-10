@@ -140,6 +140,18 @@ export function formatBytes(bytes?: number | null) {
   return `${value.toFixed(decimals)} ${units[unitIndex]}`;
 }
 
+export function formatEta(seconds?: number | null) {
+  if (seconds == null) {
+    return null;
+  }
+
+  if (seconds <= 0) {
+    return "Almost done";
+  }
+
+  return `${formatElapsedClock(seconds * 1000)} left`;
+}
+
 export function formatSystemProfile(profile: SystemProfile) {
   const memoryLabel =
     profile.totalMemoryBytes > 0

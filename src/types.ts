@@ -99,6 +99,15 @@ export type OverlaySnapshot = {
   limitMs: number | null;
 };
 
+export type ModelDownloadProgress = {
+  displayName: string;
+  fileName: string;
+  downloadedBytes: number;
+  totalBytes: number | null;
+  bytesPerSecond: number | null;
+  secondsRemaining: number | null;
+};
+
 export type SystemProfile = {
   logicalCores: number;
   totalMemoryBytes: number;
@@ -115,6 +124,7 @@ export type Snapshot = {
   modelStatus: ModelStatus;
   parakeetModelStatus: ModelStatus;
   installedModelSizes: Record<string, number>;
+  modelDownloads: Record<string, ModelDownloadProgress>;
   systemProfile: SystemProfile;
   shortcutsActive: boolean;
   shortcutMessage: string;

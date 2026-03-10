@@ -86,6 +86,57 @@ export function ActionButton({
   );
 }
 
+export function ProgressRing({
+  progress,
+  size = 18,
+  strokeWidth = 2,
+  children,
+}: {
+  progress?: number | null;
+  size?: number;
+  strokeWidth?: number;
+  children?: ReactNode;
+}) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const normalized = progress == null ? null : Math.max(0, Math.min(1, progress));
+  const dashOffset =
+    normalized == null ? circumference * 0.68 : circumference * (1 - normalized);
+
+  return (
+    <span
+      className={[
+        "progress-ring",
+        normalized == null ? "progress-ring-indeterminate" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      style={{ width: size, height: size }}
+      aria-hidden="true"
+    >
+      <svg viewBox={`0 0 ${size} ${size}`} className="progress-ring-svg">
+        <circle
+          className="progress-ring-track"
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          strokeWidth={strokeWidth}
+        />
+        <circle
+          className="progress-ring-meter"
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          strokeWidth={strokeWidth}
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={dashOffset}
+        />
+      </svg>
+      <span className="progress-ring-content">{children}</span>
+    </span>
+  );
+}
+
 export function ShortcutField({
   label,
   value,

@@ -313,6 +313,17 @@ impl Default for PreviewDiagnostics {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct ModelDownloadProgress {
+    pub(crate) display_name: String,
+    pub(crate) file_name: String,
+    pub(crate) downloaded_bytes: u64,
+    pub(crate) total_bytes: Option<u64>,
+    pub(crate) bytes_per_second: Option<u64>,
+    pub(crate) seconds_remaining: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Snapshot {
     pub(crate) phase: AppPhase,
     pub(crate) settings: Settings,
@@ -321,6 +332,7 @@ pub(crate) struct Snapshot {
     pub(crate) model_status: ModelStatus,
     pub(crate) parakeet_model_status: ModelStatus,
     pub(crate) installed_model_sizes: BTreeMap<String, u64>,
+    pub(crate) model_downloads: BTreeMap<String, ModelDownloadProgress>,
     pub(crate) system_profile: SystemProfile,
     pub(crate) shortcuts_active: bool,
     pub(crate) shortcut_message: String,
@@ -395,6 +407,7 @@ pub(crate) struct AppCore {
     pub(crate) preview_diagnostics: PreviewDiagnostics,
     pub(crate) model_status: ModelStatus,
     pub(crate) parakeet_model_status: ModelStatus,
+    pub(crate) model_downloads: BTreeMap<String, ModelDownloadProgress>,
     pub(crate) overlay: OverlaySnapshot,
     pub(crate) indicator_window_size: Option<(i32, i32)>,
     pub(crate) recording_started_at: Option<Instant>,
@@ -415,6 +428,7 @@ impl AppCore {
             preview_diagnostics: PreviewDiagnostics::default(),
             model_status: ModelStatus::Missing,
             parakeet_model_status: ModelStatus::Missing,
+            model_downloads: BTreeMap::new(),
             overlay: OverlaySnapshot {
                 visible: false,
                 title: String::new(),
