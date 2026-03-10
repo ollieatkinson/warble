@@ -3,33 +3,36 @@ mod media;
 mod models;
 pub mod parakeet;
 mod platform;
+mod runtime;
 mod state;
 mod storage;
 mod streaming_preview;
 
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
+use constants::*;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig, SupportedStreamConfig};
+use cpal::{
+    FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig, SupportedStreamConfig,
+};
+use models::*;
 use regex::{Regex, RegexBuilder};
+use state::*;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use storage::*;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
     AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl,
     WebviewWindowBuilder, WindowEvent,
 };
+use tauri_plugin_autostart::ManagerExt as AutostartExt;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
-use tauri_plugin_autostart::ManagerExt as AutostartExt;
 use uuid::Uuid;
-use constants::*;
-use models::*;
-use state::*;
-use storage::*;
 
 fn make_source_id(index: usize, name: &str) -> String {
     format!("{index}:{name}")
@@ -37,7 +40,9 @@ fn make_source_id(index: usize, name: &str) -> String {
 
 fn enumerate_sources() -> Vec<SourceInfo> {
     let host = cpal::default_host();
-    let default_name = host.default_input_device().and_then(|device| device.name().ok());
+    let default_name = host
+        .default_input_device()
+        .and_then(|device| device.name().ok());
 
     host.input_devices()
         .map(|devices| {
@@ -53,7 +58,10 @@ fn enumerate_sources() -> Vec<SourceInfo> {
                         name: name.clone(),
                         sample_rate: config.as_ref().map(|cfg| cfg.sample_rate().0).unwrap_or(0),
                         channels: config.as_ref().map(|cfg| cfg.channels()).unwrap_or(0),
-                        is_default: default_name.as_ref().map(|value| value == &name).unwrap_or(false),
+                        is_default: default_name
+                            .as_ref()
+                            .map(|value| value == &name)
+                            .unwrap_or(false),
                     }
                 })
                 .collect()
@@ -65,8 +73,12 @@ fn resolve_selected_device(
     selected_source_id: Option<&str>,
 ) -> Result<(cpal::Device, SourceInfo, SupportedStreamConfig)> {
     let host = cpal::default_host();
-    let default_name = host.default_input_device().and_then(|device| device.name().ok());
-    let devices = host.input_devices().context("failed to read input devices")?;
+    let default_name = host
+        .default_input_device()
+        .and_then(|device| device.name().ok());
+    let devices = host
+        .input_devices()
+        .context("failed to read input devices")?;
 
     let mut first_candidate: Option<(cpal::Device, SourceInfo, SupportedStreamConfig)> = None;
 
@@ -83,14 +95,20 @@ fn resolve_selected_device(
             name: name.clone(),
             sample_rate: config.sample_rate().0,
             channels: config.channels(),
-            is_default: default_name.as_ref().map(|value| value == &name).unwrap_or(false),
+            is_default: default_name
+                .as_ref()
+                .map(|value| value == &name)
+                .unwrap_or(false),
         };
 
         if first_candidate.is_none() {
             first_candidate = Some((device.clone(), info.clone(), config.clone()));
         }
 
-        if selected_source_id.map(|value| value == info.id).unwrap_or(info.is_default) {
+        if selected_source_id
+            .map(|value| value == info.id)
+            .unwrap_or(info.is_default)
+        {
             return Ok((device, info, config));
         }
     }
@@ -105,10 +123,7 @@ where
 {
     let mut samples = destination.lock().expect("recording buffer poisoned");
     for frame in input.chunks(channels) {
-        let sum: f32 = frame
-            .iter()
-            .map(|sample| f32::from_sample(*sample))
-            .sum();
+        let sum: f32 = frame.iter().map(|sample| f32::from_sample(*sample)).sum();
         samples.push(sum / channels as f32);
     }
 }
@@ -289,12 +304,10 @@ fn transcribe_audio_segments(
         if let Some(shared) = shared {
             {
                 let mut core = shared.lock();
-                core.status_message =
-                    format!("{progress_label} ({}/{})", index + 1, chunks.len());
+                core.status_message = format!("{progress_label} ({}/{})", index + 1, chunks.len());
                 core.overlay.visible = true;
                 core.overlay.title = progress_label.to_string();
-                core.overlay.detail =
-                    format!("Chunk {} of {}", index + 1, chunks.len());
+                core.overlay.detail = format!("Chunk {} of {}", index + 1, chunks.len());
             }
             update_indicator_window(app, shared);
             emit_snapshot(app, shared);
@@ -375,7 +388,7 @@ fn transcribe_audio(
         }),
         TranscriberEngine::ParakeetCtc(model) => Ok(TranscriptionOutput {
             text: model.transcribe_audio(audio)?,
-            inference_provider: InferenceProvider::Cpu,
+            inference_provider: model.provider(),
             model_name,
         }),
     }
@@ -433,10 +446,12 @@ fn cleanup_patterns_from_terms(terms: &[String]) -> Vec<Regex> {
         .into_iter()
         .filter_map(|term| {
             let escaped = regex::escape(&term).replace("\\ ", r"\s+");
-            let pattern = format!(
-                r#"(?i)(^|[\s\(\[\{{"'“”‘’,.;:!?]+){escaped}([\s\)\]\}}"'“”‘’,.;:!?]+|$)"#
-            );
-            RegexBuilder::new(&pattern).case_insensitive(true).build().ok()
+            let pattern =
+                format!(r#"(?i)(^|[\s\(\[\{{"'“”‘’,.;:!?]+){escaped}([\s\)\]\}}"'“”‘’,.;:!?]+|$)"#);
+            RegexBuilder::new(&pattern)
+                .case_insensitive(true)
+                .build()
+                .ok()
         })
         .collect()
 }
@@ -459,7 +474,9 @@ fn cleanup_transcript_text(text: &str, cleanup_enabled: bool, cleanup_terms: &[S
     let cleaned = repeated_commas.replace_all(&cleaned, ", ").into_owned();
 
     cleaned
-        .trim_matches(|character: char| character.is_whitespace() || [',', ';', ':'].contains(&character))
+        .trim_matches(|character: char| {
+            character.is_whitespace() || [',', ';', ':'].contains(&character)
+        })
         .trim()
         .to_string()
 }
@@ -550,12 +567,7 @@ fn note_preview_diagnostic(
 
     append_live_preview_log(
         app,
-        &format!(
-            "{} [{}] {}",
-            Utc::now().to_rfc3339(),
-            backend,
-            event_line
-        ),
+        &format!("{} [{}] {}", Utc::now().to_rfc3339(), backend, event_line),
     );
     emit_snapshot(app, shared);
 }
@@ -587,7 +599,18 @@ fn normalize_preview_word(word: &str) -> String {
         character.is_whitespace()
             || matches!(
                 character,
-                ',' | '.' | ';' | ':' | '!' | '?' | '"' | '\'' | '(' | ')' | '[' | ']' | '{'
+                ',' | '.'
+                    | ';'
+                    | ':'
+                    | '!'
+                    | '?'
+                    | '"'
+                    | '\''
+                    | '('
+                    | ')'
+                    | '['
+                    | ']'
+                    | '{'
                     | '}'
                     | '“'
                     | '”'
@@ -722,11 +745,7 @@ fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
         })
         .collect::<Vec<_>>();
 
-    let max_power = powers
-        .iter()
-        .copied()
-        .fold(0.0f32, f32::max)
-        .max(1e-9);
+    let max_power = powers.iter().copied().fold(0.0f32, f32::max).max(1e-9);
     let rms_drive = ((rms - LIVE_METER_SILENCE_RMS_THRESHOLD)
         / (LIVE_METER_FULL_RMS - LIVE_METER_SILENCE_RMS_THRESHOLD))
         .clamp(0.0, 1.0);
@@ -751,7 +770,11 @@ fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
 
 fn indicator_window_size(settings: &Settings) -> (i32, i32) {
     let content_height = if settings.show_live_transcription {
-        if settings.show_recording_timer { 102 } else { 94 }
+        if settings.show_recording_timer {
+            102
+        } else {
+            94
+        }
     } else {
         58
     };
@@ -943,8 +966,10 @@ fn register_shortcuts(app: &AppHandle, shared: &SharedState) -> Result<()> {
         }
 
         app.global_shortcut().unregister_all()?;
-        app.global_shortcut().register(settings.hold_shortcut.as_str())?;
-        app.global_shortcut().register(settings.toggle_shortcut.as_str())?;
+        app.global_shortcut()
+            .register(settings.hold_shortcut.as_str())?;
+        app.global_shortcut()
+            .register(settings.toggle_shortcut.as_str())?;
         let escape_registered = app.global_shortcut().register(CANCEL_SHORTCUT).is_ok();
 
         let mut core = shared.lock();
@@ -1010,16 +1035,19 @@ fn spawn_live_preview(
     std::thread::spawn(move || {
         let streaming_config = {
             let core = shared.lock();
-            streaming_preview::resolve_streaming_preview_config(&core.settings, &core.system_profile)
+            streaming_preview::resolve_streaming_preview_config(
+                &core.settings,
+                &core.system_profile,
+            )
         };
 
         if let Some(config) = streaming_config {
             note_preview_diagnostic(
                 &app,
                 &shared,
-                "streaming-eou",
+                config.diagnostic_backend(),
                 "Trying streaming preview",
-                "Using Parakeet Realtime EOU first",
+                config.trying_detail(),
             );
             match run_streaming_live_preview_loop(
                 &app,
@@ -1087,7 +1115,8 @@ fn run_streaming_live_preview_loop(
 
         {
             let core = shared.lock();
-            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
+            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription
+            {
                 break;
             }
         }
@@ -1143,9 +1172,9 @@ fn run_streaming_live_preview_loop(
             note_preview_diagnostic(
                 app,
                 shared,
-                "streaming-eou",
+                engine.diagnostic_backend(),
                 "Streaming live preview active",
-                "Realtime EOU is emitting text",
+                engine.active_detail(),
             );
         }
         preview_emitted = true;
@@ -1153,7 +1182,8 @@ fn run_streaming_live_preview_loop(
 
         {
             let mut core = shared.lock();
-            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
+            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription
+            {
                 break;
             }
             core.overlay.visible = true;
@@ -1194,7 +1224,8 @@ fn run_batch_live_preview_loop(
 
         {
             let core = shared.lock();
-            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
+            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription
+            {
                 break;
             }
         }
@@ -1225,11 +1256,8 @@ fn run_batch_live_preview_loop(
         };
         let preview = match transcribe_audio(app, transcriber, &settings, &preview_audio) {
             Ok(output) => {
-                let cleaned_preview = live_preview_text(
-                    &output.text,
-                    cleanup_enabled,
-                    &cleanup_terms,
-                );
+                let cleaned_preview =
+                    live_preview_text(&output.text, cleanup_enabled, &cleanup_terms);
 
                 if cleaned_preview.is_empty() {
                     unstable_preview_passes = 0;
@@ -1276,7 +1304,8 @@ fn run_batch_live_preview_loop(
 
         {
             let mut core = shared.lock();
-            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription {
+            if !matches!(core.phase, AppPhase::Recording) || !core.settings.show_live_transcription
+            {
                 break;
             }
             core.overlay.visible = true;
@@ -1526,7 +1555,9 @@ fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()> {
     let (response_tx, response_rx) = mpsc::channel();
     recorder
         .sender
-        .send(RecorderRequest::Stop { response: response_tx })
+        .send(RecorderRequest::Stop {
+            response: response_tx,
+        })
         .map_err(|_| anyhow!("Recording worker is unavailable"))?;
 
     let completed = response_rx
@@ -1690,8 +1721,7 @@ fn transcribe_media_file(
                     }
 
                     let duration_ms =
-                        (samples_16khz.len() as f64 / parakeet::SAMPLE_RATE as f64 * 1000.0)
-                            as u64;
+                        (samples_16khz.len() as f64 / parakeet::SAMPLE_RATE as f64 * 1000.0) as u64;
                     let item_id = Uuid::new_v4().to_string();
                     let mut core = shared.lock();
                     core.history.insert(
@@ -1783,7 +1813,9 @@ fn cancel_current_operation(app: &AppHandle, shared: &SharedState) -> Result<()>
             let (response_tx, response_rx) = mpsc::channel();
             recorder
                 .sender
-                .send(RecorderRequest::Stop { response: response_tx })
+                .send(RecorderRequest::Stop {
+                    response: response_tx,
+                })
                 .map_err(|_| anyhow!("Recording worker is unavailable"))?;
             let _ = response_rx
                 .recv()
@@ -1931,7 +1963,9 @@ fn spawn_recorder_thread() -> RecorderHandle {
                 }
                 RecorderRequest::Stop { response } => {
                     let result = match current.take() {
-                        Some(session) => finalize_recording(session).map_err(|error| error.to_string()),
+                        Some(session) => {
+                            finalize_recording(session).map_err(|error| error.to_string())
+                        }
                         None => Ok(None),
                     };
                     let _ = response.send(result);
@@ -1970,15 +2004,23 @@ fn install_catalog_model(
     let inspection = inspect_model_candidate(&path)?;
     if !inspection.ready || !inspection.compatible {
         return Err(match model_kind {
-            TranscriptionModelKind::Parakeet => "That folder is not a usable Parakeet TDT model.".to_string(),
-            TranscriptionModelKind::ParakeetCtc => "That folder is not a usable Parakeet CTC model.".to_string(),
+            TranscriptionModelKind::Parakeet => {
+                "That folder is not a usable Parakeet TDT model.".to_string()
+            }
+            TranscriptionModelKind::ParakeetCtc => {
+                "That folder is not a usable Parakeet CTC model.".to_string()
+            }
         });
     }
 
     if inspection.model_kind != model_kind {
         return Err(match model_kind {
-            TranscriptionModelKind::Parakeet => "Choose a compatible Parakeet TDT folder for this catalog entry.".to_string(),
-            TranscriptionModelKind::ParakeetCtc => "Choose a compatible Parakeet CTC folder for this catalog entry.".to_string(),
+            TranscriptionModelKind::Parakeet => {
+                "Choose a compatible Parakeet TDT folder for this catalog entry.".to_string()
+            }
+            TranscriptionModelKind::ParakeetCtc => {
+                "Choose a compatible Parakeet CTC folder for this catalog entry.".to_string()
+            }
         });
     }
 
@@ -2124,7 +2166,12 @@ fn add_cleanup_term(
 
     {
         let mut core = shared.lock();
-        if core.settings.cleanup_terms.iter().any(|existing| existing == &normalized) {
+        if core
+            .settings
+            .cleanup_terms
+            .iter()
+            .any(|existing| existing == &normalized)
+        {
             return Ok(());
         }
         core.settings.cleanup_terms.push(normalized);
@@ -2198,7 +2245,10 @@ fn start_manual_recording(
 }
 
 #[tauri::command]
-fn stop_manual_recording(app: AppHandle, shared: tauri::State<'_, SharedState>) -> Result<(), String> {
+fn stop_manual_recording(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
     stop_recording(&app, &shared).map_err(|error| error.to_string())
 }
 
@@ -2259,23 +2309,19 @@ pub fn run() {
             }
         })
         .setup(move |app| {
+            let runtime_error = runtime::ensure_ort_initialized().err();
             let persisted = load_persisted_state(app.handle());
             {
                 let mut core = shared.lock();
                 core.settings = persisted.settings;
                 core.history = persisted.history;
-                if matches!(
-                    core.settings.selected_model_kind,
-                    TranscriptionModelKind::ParakeetCtc
-                ) {
-                    choose_fallback_model_selection(app.handle(), &mut core.settings);
-                    core.status_message =
-                        "Fell back to Parakeet TDT because CTC is not enabled in the stable runtime"
-                            .to_string();
-                }
                 core.sources = enumerate_sources();
                 core.model_status = current_model_status(app.handle(), &core.settings);
                 core.parakeet_model_status = built_in_parakeet_status(app.handle());
+                if let Some(error) = runtime_error.as_ref() {
+                    core.error_message = Some(format!("Couldn't initialize ONNX Runtime: {error}"));
+                    core.status_message = "ONNX Runtime needs attention".to_string();
+                }
             }
             if prune_history_audio(app.handle(), &shared) {
                 let _ = save_persisted_state(app.handle(), &shared);
@@ -2306,7 +2352,9 @@ pub fn run() {
                             let shortcut_text = normalize_shortcut(&shortcut_text);
                             let cancel_shortcut = normalize_shortcut(CANCEL_SHORTCUT);
 
-                            if shortcut_text == cancel_shortcut && matches!(event.state, ShortcutState::Pressed) {
+                            if shortcut_text == cancel_shortcut
+                                && matches!(event.state, ShortcutState::Pressed)
+                            {
                                 let _ = cancel_current_operation(app, &state_for_shortcuts);
                                 return;
                             }
@@ -2314,7 +2362,11 @@ pub fn run() {
                             if shortcut_text == hold_shortcut {
                                 match event.state {
                                     ShortcutState::Pressed => {
-                                        let _ = begin_recording(app, &state_for_shortcuts, RecordingMode::Hold);
+                                        let _ = begin_recording(
+                                            app,
+                                            &state_for_shortcuts,
+                                            RecordingMode::Hold,
+                                        );
                                     }
                                     ShortcutState::Released => {
                                         let phase = {
@@ -2329,7 +2381,9 @@ pub fn run() {
                                 return;
                             }
 
-                            if shortcut_text == toggle_shortcut && matches!(event.state, ShortcutState::Pressed) {
+                            if shortcut_text == toggle_shortcut
+                                && matches!(event.state, ShortcutState::Pressed)
+                            {
                                 let phase = {
                                     let core = state_for_shortcuts.lock();
                                     core.phase.clone()
@@ -2338,7 +2392,11 @@ pub fn run() {
                                 if matches!(phase, AppPhase::Recording) {
                                     let _ = stop_recording(app, &state_for_shortcuts);
                                 } else {
-                                    let _ = begin_recording(app, &state_for_shortcuts, RecordingMode::Toggle);
+                                    let _ = begin_recording(
+                                        app,
+                                        &state_for_shortcuts,
+                                        RecordingMode::Toggle,
+                                    );
                                 }
                             }
                         })
@@ -2399,9 +2457,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        cleanup_transcript_text, common_prefix_len, default_cleanup_terms,
-        live_preview_text, measure_overlay_levels, normalize_cleanup_term,
-        normalize_cleanup_terms,
+        cleanup_transcript_text, common_prefix_len, default_cleanup_terms, live_preview_text,
+        measure_overlay_levels, normalize_cleanup_term, normalize_cleanup_terms,
     };
 
     #[test]

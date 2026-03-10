@@ -3,10 +3,10 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde_json::Value;
 use std::fs;
 use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "windows")]
 use std::process::Command;
-use std::io::Write;
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(target_os = "windows")]
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
@@ -158,8 +158,7 @@ pub(crate) fn detect_system_profile() -> SystemProfile {
     };
 
     #[cfg(not(target_os = "windows"))]
-    let (total_memory_bytes, gpu_name, gpu_memory_bytes, directml_available) =
-        (0, None, 0, false);
+    let (total_memory_bytes, gpu_name, gpu_memory_bytes, directml_available) = (0, None, 0, false);
 
     SystemProfile {
         logical_cores,
@@ -172,11 +171,7 @@ pub(crate) fn detect_system_profile() -> SystemProfile {
 
 #[cfg(target_os = "windows")]
 fn directml_runtime_available() -> bool {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|parent| parent.join("DirectML.dll")))
-        .map(|path| path.exists())
-        .unwrap_or(false)
+    crate::runtime::directml_runtime_available()
 }
 
 #[cfg(target_os = "windows")]
@@ -334,7 +329,9 @@ pub(crate) fn prune_history_audio(app: &AppHandle, shared: &SharedState) -> bool
                 let path = entry.path();
                 let path_string = path.display().to_string();
                 if path.extension().and_then(|value| value.to_str()) == Some("wav")
-                    && !referenced_paths.iter().any(|existing| existing == &path_string)
+                    && !referenced_paths
+                        .iter()
+                        .any(|existing| existing == &path_string)
                 {
                     let _ = fs::remove_file(path);
                 }

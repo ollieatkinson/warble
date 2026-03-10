@@ -28,13 +28,13 @@ arboard = "3"
 chrono = { version = "0.4", features = ["serde", "clock"] }
 cpal = "0.15"
 hound = "3"
-ort = { version = "=2.0.0-rc.10", features = ["download-binaries", "copy-dylibs", "directml"] }
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "api-24", "load-dynamic", "directml"] }
+parakeet-rs = { version = "0.3.4", default-features = false, features = ["cpu", "ort-defaults", "load-dynamic", "directml"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 symphonia = { version = "0.5.5", features = ["aac", "mp3", "flac", "isomp4", "mkv", "ogg", "vorbis", "wav", "pcm", "aiff"] }
-tokenizers = { version = "0.22.2", default-features = false, features = ["onig"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 windows = { version = "0.61", features = [
   "Win32_Foundation",

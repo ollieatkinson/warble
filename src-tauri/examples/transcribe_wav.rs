@@ -10,8 +10,12 @@ fn main() -> Result<()> {
         bail!("usage: cargo run --example transcribe_wav -- <wav-path> <model-root>");
     };
 
+    eprintln!("loading model...");
     let mut transcriber = transcribed_lib::parakeet::ParakeetTdt::load(&PathBuf::from(model_root))?;
+    eprintln!("model loaded");
+    eprintln!("transcribing wav...");
     let text = transcriber.transcribe_wav_path(&PathBuf::from(wav_path))?;
+    eprintln!("transcription finished");
     println!("{text}");
     Ok(())
 }
