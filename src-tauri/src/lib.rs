@@ -785,47 +785,51 @@ fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f32> {
     levels
 }
 
+fn compact_indicator_row_width(style: OverlayAnimationStyle, show_timer: bool) -> i32 {
+    const STATUS_WIDTH: i32 = 18;
+    const TIMER_WIDTH: i32 = 96;
+    const GAP_WIDTH: i32 = 10;
+
+    let signal_width = match style {
+        OverlayAnimationStyle::Radial => 30,
+        OverlayAnimationStyle::Spectrum => 60,
+        OverlayAnimationStyle::Waveform => 62,
+    };
+
+    let base_width = if matches!(style, OverlayAnimationStyle::Radial) {
+        signal_width
+    } else {
+        STATUS_WIDTH + GAP_WIDTH + signal_width
+    };
+
+    if show_timer {
+        base_width + GAP_WIDTH + TIMER_WIDTH
+    } else {
+        base_width
+    }
+}
+
 fn indicator_window_size(settings: &Settings) -> (i32, i32) {
     let content_height = if settings.show_live_transcription {
-        if settings.show_recording_timer {
-            102
-        } else {
-            94
-        }
+        if settings.show_recording_timer { 100 } else { 92 }
     } else {
         58
     };
+
+    let pill_padding_width = if settings.show_live_transcription { 34 } else { 30 };
     let content_width = if settings.show_live_transcription {
-        if settings.show_recording_timer {
-            364
-        } else {
-            324
-        }
+        let live_text_width = if settings.show_recording_timer { 320 } else { 292 };
+        let row_width = compact_indicator_row_width(
+            settings.overlay_animation_style.clone(),
+            settings.show_recording_timer,
+        );
+        live_text_width.max(row_width) + pill_padding_width
     } else {
-        match settings.overlay_animation_style {
-            OverlayAnimationStyle::Radial => {
-                if settings.show_recording_timer {
-                    196
-                } else {
-                    86
-                }
-            }
-            OverlayAnimationStyle::Spectrum => {
-                if settings.show_recording_timer {
-                    258
-                } else {
-                    136
-                }
-            }
-            OverlayAnimationStyle::Waveform => {
-                if settings.show_recording_timer {
-                    266
-                } else {
-                    142
-                }
-            }
-        }
-    } as i32;
+        compact_indicator_row_width(
+            settings.overlay_animation_style.clone(),
+            settings.show_recording_timer,
+        ) + pill_padding_width
+    };
 
     (
         content_width + INDICATOR_WINDOW_PADDING * 2,

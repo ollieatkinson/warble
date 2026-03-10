@@ -29,13 +29,14 @@ function latestIndicatorCopy(value: string): string {
     .map((line) => line.trim())
     .filter(Boolean);
   const latestLine = lines.length > 0 ? lines[lines.length - 1] : "";
-  const words = latestLine.split(" ").filter(Boolean);
+  const compactLine = latestLine.replace(/\s+/g, " ").trim();
+  const maxChars = 54;
 
-  if (words.length <= 10) {
-    return latestLine;
+  if (compactLine.length <= maxChars) {
+    return compactLine;
   }
 
-  return `…${words.slice(-10).join(" ")}`;
+  return `…${compactLine.slice(-maxChars).trimStart()}`;
 }
 
 export function SignalBars({
@@ -259,6 +260,13 @@ export function TranscriptionPill({
           ? "warning"
           : "muted"
       : "muted";
+  const rowClassName = [
+    "indicator-row",
+    showLiveTranscription ? "indicator-row-detail" : "indicator-row-compact",
+    usesRadialCore ? "indicator-row-radial" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div
@@ -275,14 +283,47 @@ export function TranscriptionPill({
           <span>{copy}</span>
         </div>
       ) : null}
-      <div className={["indicator-meter-row", showLiveTranscription ? "indicator-meter-row-detail" : ""].filter(Boolean).join(" ")}>
-        <div className={["indicator-mark", usesRadialCore ? "indicator-mark-radial" : ""].filter(Boolean).join(" ")}>
-          {usesRadialCore ? null : (
+      <div className={rowClassName}>
+        {usesRadialCore ? null : (
+          <button
+            type="button"
+            className={[
+              "indicator-status-button",
+              "indicator-status-button-inline",
+              canCancel && onCancel ? "indicator-status-button-cancelable" : "",
+              `indicator-status-button-${phase}`,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => onCancel?.()}
+            disabled={!canCancel || !onCancel}
+            aria-label={canCancel ? "Cancel current dictation" : "Dictation status"}
+            title={canCancel ? "Cancel current dictation" : "Dictation status"}
+          >
+            <span className="indicator-dot" />
+          </button>
+        )}
+        <div
+          className={[
+            "indicator-signal",
+            usesRadialCore ? "" : "indicator-signal-linear",
+            usesRadialCore ? "indicator-signal-radial" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <SignalBars
+            phase={phase}
+            levels={levels}
+            compact
+            animationStyle={animationStyle}
+          />
+          {usesRadialCore ? (
             <button
               type="button"
               className={[
                 "indicator-status-button",
-                "indicator-status-button-inline",
+                "indicator-status-button-radial",
                 canCancel && onCancel ? "indicator-status-button-cancelable" : "",
                 `indicator-status-button-${phase}`,
               ]
@@ -295,53 +336,18 @@ export function TranscriptionPill({
             >
               <span className="indicator-dot" />
             </button>
-          )}
-          <div
-            className={[
-              "indicator-signal",
-              usesRadialCore ? "" : "indicator-signal-linear",
-              usesRadialCore ? "indicator-signal-radial" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            <SignalBars
-              phase={phase}
-              levels={levels}
-              compact
-              animationStyle={animationStyle}
-            />
-            {usesRadialCore ? (
-              <button
-                type="button"
-                className={[
-                  "indicator-status-button",
-                  "indicator-status-button-radial",
-                  canCancel && onCancel ? "indicator-status-button-cancelable" : "",
-                  `indicator-status-button-${phase}`,
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                onClick={() => onCancel?.()}
-                disabled={!canCancel || !onCancel}
-                aria-label={canCancel ? "Cancel current dictation" : "Dictation status"}
-                title={canCancel ? "Cancel current dictation" : "Dictation status"}
-              >
-                <span className="indicator-dot" />
-              </button>
-            ) : null}
-          </div>
-          {hasTimer ? (
-            <span
-              className={[
-                "indicator-timer",
-                `indicator-timer-${timerTone}`,
-              ].join(" ")}
-            >
-              {timerText}
-            </span>
           ) : null}
         </div>
+        {hasTimer ? (
+          <span
+            className={[
+              "indicator-timer",
+              `indicator-timer-${timerTone}`,
+            ].join(" ")}
+          >
+            {timerText}
+          </span>
+        ) : null}
       </div>
     </div>
   );
