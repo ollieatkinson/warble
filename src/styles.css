@@ -1683,6 +1683,12 @@ input::placeholder {
   opacity: 0;
 }
 
+.indicator-measure {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+}
+
 .indicator-shell {
   display: inline-flex;
   align-items: center;

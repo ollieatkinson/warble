@@ -345,6 +345,7 @@ pub(crate) struct AppCore {
     pub(crate) model_status: ModelStatus,
     pub(crate) parakeet_model_status: ModelStatus,
     pub(crate) overlay: OverlaySnapshot,
+    pub(crate) indicator_window_size: Option<(i32, i32)>,
     pub(crate) recording_started_at: Option<Instant>,
 }
 
@@ -372,6 +373,7 @@ impl AppCore {
                 limit_ms: None,
                 anchor: None,
             },
+            indicator_window_size: None,
             recording_started_at: None,
         }
     }

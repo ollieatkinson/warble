@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { useLayoutEffect, useRef } from "react";
 
 import { DEMO_LEVELS } from "../constants";
 import { formatElapsedClock, resampleLevels, smoothLevels } from "../lib/utils";
@@ -354,6 +355,9 @@ export function TranscriptionPill({
 }
 
 export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const lastReportedSizeRef = useRef<string>("");
+
   async function cancelFromOverlay() {
     try {
       await invoke("cancel_current_operation_command");
@@ -362,24 +366,102 @@ export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
     }
   }
 
+  useLayoutEffect(() => {
+    if (!snapshot?.overlay.visible || !measureRef.current) {
+      return;
+    }
+
+    const node = measureRef.current;
+    const root = node.parentElement;
+    let frameId = 0;
+
+    const reportSize = () => {
+      const rect = node.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
+
+      const styles = root ? window.getComputedStyle(root) : null;
+      const horizontalPadding =
+        (styles ? Number.parseFloat(styles.paddingLeft) : 0) +
+        (styles ? Number.parseFloat(styles.paddingRight) : 0);
+      const verticalPadding =
+        (styles ? Number.parseFloat(styles.paddingTop) : 0) +
+        (styles ? Number.parseFloat(styles.paddingBottom) : 0);
+      const scale = window.devicePixelRatio || 1;
+      const width = Math.ceil((rect.width + horizontalPadding) * scale);
+      const height = Math.ceil((rect.height + verticalPadding) * scale);
+      const sizeKey = `${width}x${height}`;
+
+      if (lastReportedSizeRef.current === sizeKey) {
+        return;
+      }
+      lastReportedSizeRef.current = sizeKey;
+
+      void invoke("report_indicator_layout_command", {
+        width,
+        height,
+      }).catch(() => {
+        // Keep overlay measurement failures quiet.
+      });
+    };
+
+    const scheduleReport = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(reportSize);
+    };
+
+    scheduleReport();
+
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            scheduleReport();
+          })
+        : null;
+    observer?.observe(node);
+    if (root) {
+      observer?.observe(root);
+    }
+    window.addEventListener("resize", scheduleReport);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer?.disconnect();
+      window.removeEventListener("resize", scheduleReport);
+    };
+  }, [
+    snapshot?.overlay.visible,
+    snapshot?.phase,
+    snapshot?.overlay.title,
+    snapshot?.overlay.detail,
+    snapshot?.overlay.elapsedMs,
+    snapshot?.overlay.limitMs,
+    snapshot?.settings.overlayAnimationStyle,
+    snapshot?.settings.showLiveTranscription,
+    snapshot?.settings.showRecordingTimer,
+  ]);
+
   if (!snapshot || !snapshot.overlay.visible) {
     return <div className="indicator-root indicator-root-hidden" />;
   }
 
   return (
     <main className="indicator-root">
-      <TranscriptionPill
-        phase={snapshot.phase}
-        title={snapshot.overlay.title}
-        detail={snapshot.overlay.detail}
-        levels={snapshot.overlay.levels}
-        animationStyle={snapshot.settings.overlayAnimationStyle}
-        showRecordingTimer={snapshot.settings.showRecordingTimer}
-        showLiveTranscription={snapshot.settings.showLiveTranscription}
-        elapsedMs={snapshot.overlay.elapsedMs}
-        limitMs={snapshot.overlay.limitMs}
-        onCancel={cancelFromOverlay}
-      />
+      <div ref={measureRef} className="indicator-measure">
+        <TranscriptionPill
+          phase={snapshot.phase}
+          title={snapshot.overlay.title}
+          detail={snapshot.overlay.detail}
+          levels={snapshot.overlay.levels}
+          animationStyle={snapshot.settings.overlayAnimationStyle}
+          showRecordingTimer={snapshot.settings.showRecordingTimer}
+          showLiveTranscription={snapshot.settings.showLiveTranscription}
+          elapsedMs={snapshot.overlay.elapsedMs}
+          limitMs={snapshot.overlay.limitMs}
+          onCancel={cancelFromOverlay}
+        />
+      </div>
     </main>
   );
 }

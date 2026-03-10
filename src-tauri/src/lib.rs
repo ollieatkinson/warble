@@ -809,7 +809,7 @@ fn compact_indicator_row_width(style: OverlayAnimationStyle, show_timer: bool) -
     }
 }
 
-fn indicator_window_size(settings: &Settings) -> (i32, i32) {
+fn fallback_indicator_window_size(settings: &Settings) -> (i32, i32) {
     let content_height = if settings.show_live_transcription {
         if settings.show_recording_timer { 100 } else { 92 }
     } else {
@@ -1013,16 +1013,21 @@ fn register_shortcuts(app: &AppHandle, shared: &SharedState) -> Result<()> {
 }
 
 fn update_indicator_window(app: &AppHandle, shared: &SharedState) {
-    let (overlay, settings) = {
+    let (overlay, settings, measured_size) = {
         let core = shared.lock();
-        (core.overlay.clone(), core.settings.clone())
+        (
+            core.overlay.clone(),
+            core.settings.clone(),
+            core.indicator_window_size,
+        )
     };
 
     let Some(window) = app.get_webview_window("indicator") else {
         return;
     };
 
-    let (indicator_width, indicator_height) = indicator_window_size(&settings);
+    let (indicator_width, indicator_height) =
+        measured_size.unwrap_or_else(|| fallback_indicator_window_size(&settings));
     let _ = window.set_size(Size::Physical(PhysicalSize::new(
         indicator_width.max(1) as u32,
         indicator_height.max(1) as u32,
@@ -1042,6 +1047,34 @@ fn update_indicator_window(app: &AppHandle, shared: &SharedState) {
     } else {
         let _ = window.hide();
     }
+}
+
+#[tauri::command]
+fn report_indicator_layout_command(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    let width = width.clamp(1, 4096) as i32;
+    let height = height.clamp(1, 2048) as i32;
+    let shared = shared.inner();
+
+    let mut should_update = false;
+    {
+        let mut core = shared.lock();
+        let next = (width, height);
+        if core.indicator_window_size != Some(next) {
+            core.indicator_window_size = Some(next);
+            should_update = true;
+        }
+    }
+
+    if should_update {
+        update_indicator_window(&app, shared);
+    }
+
+    Ok(())
 }
 
 fn spawn_live_preview(
@@ -1877,7 +1910,7 @@ fn create_indicator_window(app: &AppHandle) -> Result<()> {
         return Ok(());
     }
 
-    let (indicator_width, indicator_height) = indicator_window_size(&Settings::default());
+    let (indicator_width, indicator_height) = fallback_indicator_window_size(&Settings::default());
     let window = WebviewWindowBuilder::new(
         app,
         "indicator",
@@ -2489,6 +2522,7 @@ pub fn run() {
             clear_error_message_command,
             remove_history_item,
             clear_history,
+            report_indicator_layout_command,
             start_manual_recording,
             stop_manual_recording,
             transcribe_media_file_command,
