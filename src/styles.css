@@ -1692,11 +1692,12 @@ input::placeholder {
 
 .indicator-shell-detail {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.54rem;
   align-items: stretch;
-  width: min(100%, 320px);
-  max-width: min(100%, 320px);
-  padding: 0.72rem 0.9rem 0.82rem;
+  justify-items: center;
+  width: min(100%, 328px);
+  max-width: min(100%, 328px);
+  padding: 0.76rem 1rem 0.88rem;
   border-radius: 18px;
 }
 
@@ -1708,7 +1709,7 @@ input::placeholder {
 }
 
 .indicator-meter-row-detail {
-  justify-content: flex-start;
+  justify-content: center;
 }
 
 .indicator-mark {
@@ -1804,11 +1805,13 @@ input::placeholder {
 
 .indicator-copy {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
   max-width: 100%;
   min-width: 0;
   flex: 1 1 auto;
   min-height: 0;
+  text-align: center;
 }
 
 .indicator-copy-floating {
@@ -1850,8 +1853,19 @@ input::placeholder {
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.indicator-shell-detail .indicator-mark {
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.indicator-shell-detail .indicator-signal-linear {
+  padding-right: 0;
 }
 
 .signal-bars,

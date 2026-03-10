@@ -438,6 +438,10 @@ fn condense_whitespace(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+fn normalize_live_preview_line(text: &str) -> String {
+    condense_whitespace(&text.replace('_', " "))
+}
+
 fn cleanup_patterns_from_terms(terms: &[String]) -> Vec<Regex> {
     let mut ordered = normalize_cleanup_terms(terms);
     ordered.sort_by(|left, right| right.len().cmp(&left.len()));
@@ -484,12 +488,17 @@ fn cleanup_transcript_text(text: &str, cleanup_enabled: bool, cleanup_terms: &[S
 fn live_preview_text(text: &str, cleanup_enabled: bool, cleanup_terms: &[String]) -> String {
     let mut lines = text
         .lines()
-        .map(|line| cleanup_transcript_text(line, cleanup_enabled, cleanup_terms))
+        .map(normalize_live_preview_line)
+        .map(|line| cleanup_transcript_text(&line, cleanup_enabled, cleanup_terms))
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>();
 
     if lines.is_empty() {
-        let cleaned = cleanup_transcript_text(text, cleanup_enabled, cleanup_terms);
+        let cleaned = cleanup_transcript_text(
+            &normalize_live_preview_line(text),
+            cleanup_enabled,
+            cleanup_terms,
+        );
         if cleaned.is_empty() {
             return String::new();
         }
@@ -2530,6 +2539,20 @@ mod tests {
         assert_eq!(
             preview,
             "second line with more words\nthird line stays visible\nfourth line is newest"
+        );
+    }
+
+    #[test]
+    fn live_preview_text_normalizes_sentencepiece_style_underscores() {
+        let preview = live_preview_text(
+            "_this_is_a_test_and_we're_just_making_sure_streaming_works",
+            true,
+            &default_cleanup_terms(),
+        );
+
+        assert_eq!(
+            preview,
+            "this is a test and we're just making sure streaming works"
         );
     }
 
