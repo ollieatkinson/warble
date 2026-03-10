@@ -21,10 +21,10 @@ const MODEL_CATALOG: Array<
     supportsDefaultSelection: true,
     directmlCapable: true,
     summary:
-      "Multilingual offline dictation model for final microphone and file transcription.",
+      "Multilingual long-form offline dictation model for final microphone and file transcription.",
     note:
-      "Transcribed uses parakeet-rs for this model and will prefer DirectML on Windows, then fall back to CPU if needed.",
-    bestFor: "Default multilingual dictation",
+      "Transcribed uses parakeet-rs for this model and will prefer DirectML on Windows, then fall back to CPU if needed. In-app chunking now treats TDT v3 as the long-form batch option.",
+    bestFor: "Long-form multilingual dictation",
     capabilities: ["TDT decoder", "Auto language detection", "Token timestamps"],
     featureBadges: [
       { id: "local", label: "Local", icon: "cpu" },
@@ -35,7 +35,7 @@ const MODEL_CATALOG: Array<
     highlights: [
       "Current default final transcription engine in Transcribed",
       "Uses parakeet-rs with DirectML preference on Windows",
-      "Best balance of speed and multilingual coverage today",
+      "Best balance of speed, multilingual coverage, and long-form support today",
     ],
     hfUrl: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3",
     artifactUrl: "https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8",
@@ -44,7 +44,7 @@ const MODEL_CATALOG: Array<
     supportsInstall: false,
     supportsDownload: true,
     downloadSizeBytes: 593_000_000,
-    audioLimitMs: 5 * 60 * 1_000,
+    audioLimitMs: 24 * 60 * 1_000,
     minimumMemoryBytes: 4 * 1024 ** 3,
     recommendedMemoryBytes: 8 * 1024 ** 3,
     minimumCores: 4,
@@ -69,7 +69,7 @@ const MODEL_CATALOG: Array<
     summary:
       "English-first Parakeet variant aimed at fast offline transcription with punctuation and capitalization.",
     note:
-      "Uses the same parakeet-rs runtime path as TDT, but with a CTC decoder and English-focused ONNX export.",
+      "Uses the same parakeet-rs runtime path as TDT, but with a CTC decoder and English-focused ONNX export. Kept on a shorter soft chunk size than TDT in Transcribed.",
     bestFor: "English punctuation-heavy offline transcription",
     capabilities: ["CTC decoding", "Punctuation and caps", "Word timestamps"],
     featureBadges: [
@@ -91,7 +91,7 @@ const MODEL_CATALOG: Array<
     supportsInstall: false,
     supportsDownload: true,
     downloadSizeBytes: 614_000_000,
-    audioLimitMs: 5 * 60 * 1_000,
+    audioLimitMs: 10 * 60 * 1_000,
     minimumGpuMemoryBytes: 2 * 1024 ** 3,
     recommendedGpuMemoryBytes: 4 * 1024 ** 3,
     minimumMemoryBytes: 4 * 1024 ** 3,
@@ -211,10 +211,16 @@ export function formatModelSizeLabel(row: ModelRow) {
 
 export function formatModelAudioLimit(row: ModelRow) {
   if (typeof row.audioLimitMs === "number" && row.audioLimitMs > 0) {
+    const hours = row.audioLimitMs / 3_600_000;
     const minutes = row.audioLimitMs / 60_000;
-    const label = Number.isInteger(minutes)
-      ? `${minutes.toFixed(0)} min`
-      : `${minutes.toFixed(1)} min`;
+    const label =
+      hours >= 1
+        ? Number.isInteger(hours)
+          ? `${hours.toFixed(0)} hr`
+          : `${hours.toFixed(1)} hr`
+        : Number.isInteger(minutes)
+          ? `${minutes.toFixed(0)} min`
+          : `${minutes.toFixed(1)} min`;
     return `~${label} per pass`;
   }
 

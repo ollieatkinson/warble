@@ -316,11 +316,7 @@ export function TranscriptionPill({
   const usesRadialCore = animationStyle === "radial";
   const canCancel = phase === "recording" || phase === "transcribing";
   const hasTimer = showRecordingTimer && canCancel;
-  const timerText = hasTimer
-    ? limitMs && limitMs > 0
-      ? `${formatElapsedClock(elapsedMs)} / ${formatElapsedClock(limitMs)}`
-      : formatElapsedClock(elapsedMs)
-    : "";
+  const timerText = hasTimer ? formatElapsedClock(elapsedMs) : "";
   const timerTone =
     limitMs && limitMs > 0
       ? elapsedMs >= limitMs

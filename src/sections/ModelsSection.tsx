@@ -406,7 +406,7 @@ export function ModelsSection({
               }}
             />
             <p className="model-decision-note">
-              TDT and CTC are batch models with a soft per-pass limit of about five minutes.
+              TDT v3 is the long-form batch option here at about 24 minutes per pass; CTC stays on a shorter 10 minute soft pass.
             </p>
           </div>
 
