@@ -15,6 +15,23 @@ import type {
   Snapshot,
 } from "../types";
 
+const DEMO_ANIMATION = {
+  SWAY_SPEED: 0.95,
+  SWAY_SPREAD: 0.62,
+  SWAY_AMPLITUDE: 0.18,
+  PULSE_SPEED: 0.34,
+  PULSE_SPREAD: 0.21,
+  PULSE_AMPLITUDE: 0.14,
+  FLUTTER_SPEED: 1.75,
+  FLUTTER_SPREAD: 1.1,
+  FLUTTER_AMPLITUDE: 0.05,
+  BASE_SCALE: 0.68,
+  BASE_OFFSET: 0.16,
+  LEVEL_FLOOR: 0.04,
+  TIME_DIVISOR: 320,
+  FRAME_INTERVAL_MS: 90,
+} as const;
+
 function normalizeIndicatorCopy(value: string): string {
   return value
     .replace(/[_▁Ġ]+/g, " ")
@@ -30,10 +47,26 @@ function normalizeLiveIndicatorCopy(value: string): string {
 
 function buildDemoLevels(time: number) {
   return DEMO_LEVELS.map((level, index) => {
-    const sway = Math.sin(time * 0.95 + index * 0.62) * 0.18;
-    const pulse = Math.sin(time * 0.34 - index * 0.21) * 0.14;
-    const flutter = Math.sin(time * 1.75 + index * 1.1) * 0.05;
-    return Math.max(0.04, Math.min(1, level * 0.68 + 0.16 + sway + pulse + flutter));
+    const sway =
+      Math.sin(time * DEMO_ANIMATION.SWAY_SPEED + index * DEMO_ANIMATION.SWAY_SPREAD) *
+      DEMO_ANIMATION.SWAY_AMPLITUDE;
+    const pulse =
+      Math.sin(time * DEMO_ANIMATION.PULSE_SPEED - index * DEMO_ANIMATION.PULSE_SPREAD) *
+      DEMO_ANIMATION.PULSE_AMPLITUDE;
+    const flutter =
+      Math.sin(time * DEMO_ANIMATION.FLUTTER_SPEED + index * DEMO_ANIMATION.FLUTTER_SPREAD) *
+      DEMO_ANIMATION.FLUTTER_AMPLITUDE;
+    return Math.max(
+      DEMO_ANIMATION.LEVEL_FLOOR,
+      Math.min(
+        1,
+        level * DEMO_ANIMATION.BASE_SCALE +
+          DEMO_ANIMATION.BASE_OFFSET +
+          sway +
+          pulse +
+          flutter,
+      ),
+    );
   });
 }
 
@@ -48,11 +81,11 @@ function useAnimatedDemoLevels(enabled: boolean) {
 
     let timer = 0;
     const update = () => {
-      setLevels(buildDemoLevels(performance.now() / 320));
+      setLevels(buildDemoLevels(performance.now() / DEMO_ANIMATION.TIME_DIVISOR));
     };
 
     update();
-    timer = window.setInterval(update, 90);
+    timer = window.setInterval(update, DEMO_ANIMATION.FRAME_INTERVAL_MS);
 
     return () => {
       window.clearInterval(timer);

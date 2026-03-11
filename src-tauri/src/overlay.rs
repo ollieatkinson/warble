@@ -10,6 +10,39 @@ use crate::state::{
     OverlaySnapshot, Settings, SharedState,
 };
 
+// Frequency analysis
+const MIN_ANALYSIS_FREQ_HZ: f32 = 120.0;
+const MAX_ANALYSIS_FREQ_HZ: f32 = 5_800.0;
+const NYQUIST_FRACTION: f32 = 0.82;
+const ACTIVITY_EXPONENT: f32 = 0.85;
+const ACTIVITY_GATE_THRESHOLD: f32 = 0.01;
+const LEVEL_GATE_THRESHOLD: f32 = 0.025;
+
+// Signal animation widths
+const RADIAL_SIGNAL_WIDTH: i32 = 30;
+const SPECTRUM_SIGNAL_WIDTH: i32 = 60;
+const WAVEFORM_SIGNAL_WIDTH: i32 = 62;
+
+// Transcript panel widths
+const COMPACT_TRANSCRIPT_WIDTH: i32 = 256;
+const BALANCED_TRANSCRIPT_WIDTH: i32 = 320;
+const WIDE_TRANSCRIPT_WIDTH: i32 = 392;
+
+// Indicator layout
+const STATUS_WIDTH: i32 = 18;
+const GAP_WIDTH: i32 = 10;
+const TIMER_CHARACTER_COUNT: i32 = 11;
+const TIMER_CHARACTER_WIDTH: i32 = 9;
+const TIMER_INSET_WIDTH: i32 = 12;
+const TRANSCRIPT_LINE_HEIGHT: i32 = 16;
+const RADIAL_ROW_HEIGHT: i32 = 30;
+const NON_RADIAL_ROW_HEIGHT: i32 = 20;
+const TRANSCRIPT_GAP_HEIGHT: i32 = 9;
+const SHELL_PADDING_HEIGHT: i32 = 28;
+const COMPACT_INDICATOR_HEIGHT: i32 = 58;
+const PILL_PADDING_WITH_TRANSCRIPT: i32 = 34;
+const PILL_PADDING_WITHOUT_TRANSCRIPT: i32 = 30;
+
 pub(crate) fn default_overlay_levels() -> Vec<f32> {
     vec![0.0; LIVE_METER_BAR_COUNT]
 }
@@ -66,8 +99,8 @@ pub(crate) fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f
     }
 
     let nyquist = sample_rate as f32 * 0.5;
-    let min_frequency = 120.0f32;
-    let max_frequency = (nyquist * 0.82).min(5_800.0).max(min_frequency * 1.5);
+    let min_frequency = MIN_ANALYSIS_FREQ_HZ;
+    let max_frequency = (nyquist * NYQUIST_FRACTION).min(MAX_ANALYSIS_FREQ_HZ).max(min_frequency * 1.5);
     let ratio = (max_frequency / min_frequency).powf(1.0 / (LIVE_METER_BAR_COUNT as f32 - 1.0));
 
     let powers = (0..LIVE_METER_BAR_COUNT)
@@ -84,9 +117,9 @@ pub(crate) fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f
     let peak_drive = ((peak - LIVE_METER_SILENCE_PEAK_THRESHOLD)
         / (LIVE_METER_FULL_PEAK - LIVE_METER_SILENCE_PEAK_THRESHOLD))
         .clamp(0.0, 1.0);
-    let activity = rms_drive.max(peak_drive).powf(0.85);
+    let activity = rms_drive.max(peak_drive).powf(ACTIVITY_EXPONENT);
 
-    if activity <= 0.01 {
+    if activity <= ACTIVITY_GATE_THRESHOLD {
         return default_overlay_levels();
     }
 
@@ -94,24 +127,19 @@ pub(crate) fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f
     for (index, level) in levels.iter_mut().enumerate() {
         let normalized = (powers[index] / max_power).clamp(0.0, 1.0).sqrt();
         let gated = (normalized * activity).clamp(0.0, 1.0);
-        *level = if gated < 0.025 { 0.0 } else { gated };
+        *level = if gated < LEVEL_GATE_THRESHOLD { 0.0 } else { gated };
     }
 
     levels
 }
 
 fn compact_indicator_row_width(style: &OverlayAnimationStyle, show_timer: bool) -> i32 {
-    const STATUS_WIDTH: i32 = 18;
-    const GAP_WIDTH: i32 = 10;
-    const TIMER_CHARACTER_COUNT: i32 = 11;
-    const TIMER_CHARACTER_WIDTH: i32 = 9;
-    const TIMER_INSET_WIDTH: i32 = 12;
     let timer_width = TIMER_CHARACTER_COUNT * TIMER_CHARACTER_WIDTH + TIMER_INSET_WIDTH;
 
     let signal_width = match style {
-        OverlayAnimationStyle::Radial => 30,
-        OverlayAnimationStyle::Spectrum => 60,
-        OverlayAnimationStyle::Waveform => 62,
+        OverlayAnimationStyle::Radial => RADIAL_SIGNAL_WIDTH,
+        OverlayAnimationStyle::Spectrum => SPECTRUM_SIGNAL_WIDTH,
+        OverlayAnimationStyle::Waveform => WAVEFORM_SIGNAL_WIDTH,
     };
 
     let base_width = if matches!(style, OverlayAnimationStyle::Radial) {
@@ -129,9 +157,9 @@ fn compact_indicator_row_width(style: &OverlayAnimationStyle, show_timer: bool) 
 
 fn live_transcript_width_px(width: &LiveTranscriptWidth) -> i32 {
     match width {
-        LiveTranscriptWidth::Compact => 256,
-        LiveTranscriptWidth::Balanced => 320,
-        LiveTranscriptWidth::Wide => 392,
+        LiveTranscriptWidth::Compact => COMPACT_TRANSCRIPT_WIDTH,
+        LiveTranscriptWidth::Balanced => BALANCED_TRANSCRIPT_WIDTH,
+        LiveTranscriptWidth::Wide => WIDE_TRANSCRIPT_WIDTH,
     }
 }
 
@@ -145,26 +173,24 @@ fn live_transcript_line_count(lines: &LiveTranscriptLines) -> i32 {
 
 pub(crate) fn fallback_indicator_window_size(settings: &Settings) -> (i32, i32) {
     let content_height = if settings.show_live_transcription {
-        let copy_height = live_transcript_line_count(&settings.live_transcript_lines) * 16;
+        let copy_height = live_transcript_line_count(&settings.live_transcript_lines) * TRANSCRIPT_LINE_HEIGHT;
         let row_height = if matches!(
             settings.overlay_animation_style,
             OverlayAnimationStyle::Radial
         ) {
-            30
+            RADIAL_ROW_HEIGHT
         } else {
-            20
+            NON_RADIAL_ROW_HEIGHT
         };
-        let copy_gap_height = 9;
-        let shell_padding_height = 28;
-        copy_height + row_height + copy_gap_height + shell_padding_height
+        copy_height + row_height + TRANSCRIPT_GAP_HEIGHT + SHELL_PADDING_HEIGHT
     } else {
-        58
+        COMPACT_INDICATOR_HEIGHT
     };
 
     let pill_padding_width = if settings.show_live_transcription {
-        34
+        PILL_PADDING_WITH_TRANSCRIPT
     } else {
-        30
+        PILL_PADDING_WITHOUT_TRANSCRIPT
     };
     let content_width = if settings.show_live_transcription {
         let live_text_width = live_transcript_width_px(&settings.live_transcript_width);

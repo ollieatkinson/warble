@@ -11,8 +11,9 @@ use crate::constants::{DEFAULT_HOLD_SHORTCUT, DEFAULT_TOGGLE_SHORTCUT};
 use crate::overlay::default_overlay_levels;
 use crate::parakeet;
 use crate::platform;
+use crate::storage::path_if_not_empty;
 use crate::system::detect_system_profile;
-use crate::transcript::default_cleanup_terms;
+use crate::transcript::{default_cleanup_terms, normalize_cleanup_terms};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -196,6 +197,77 @@ impl Default for Settings {
             show_recording_timer: false,
             show_live_transcription: false,
         }
+    }
+}
+
+impl Settings {
+    pub(crate) fn apply_update(&mut self, update: &SettingsUpdate) -> bool {
+        let hold_shortcut = update
+            .hold_shortcut
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let toggle_shortcut = update
+            .toggle_shortcut
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        if let Some(hold_shortcut) = hold_shortcut {
+            self.hold_shortcut = hold_shortcut;
+        }
+        if let Some(toggle_shortcut) = toggle_shortcut {
+            self.toggle_shortcut = toggle_shortcut;
+        }
+        if let Some(selected_source_id) = update.selected_source_id.as_ref() {
+            self.selected_source_id = Some(selected_source_id.clone());
+        }
+        if let Some(auto_paste) = update.auto_paste {
+            self.auto_paste = auto_paste;
+        }
+        if let Some(selected_model_id) = update.selected_model_id.as_ref() {
+            self.selected_model_id = selected_model_id.clone();
+        }
+        if let Some(selected_model_kind) = update.selected_model_kind {
+            self.selected_model_kind = selected_model_kind;
+        }
+        if let Some(selected_model_path) = update.selected_model_path.as_ref() {
+            self.selected_model_path = path_if_not_empty(selected_model_path.clone());
+        }
+        if let Some(cleanup_enabled) = update.cleanup_enabled {
+            self.cleanup_enabled = cleanup_enabled;
+        }
+        if let Some(cleanup_terms) = update.cleanup_terms.as_ref() {
+            self.cleanup_terms = normalize_cleanup_terms(cleanup_terms);
+        }
+        if let Some(audio_retention_policy) = update.audio_retention_policy.as_ref() {
+            self.audio_retention_policy = audio_retention_policy.clone();
+        }
+        if let Some(overlay_position) = update.overlay_position.as_ref() {
+            self.overlay_position = overlay_position.clone();
+        }
+        if let Some(overlay_animation_style) = update.overlay_animation_style.as_ref() {
+            self.overlay_animation_style = overlay_animation_style.clone();
+        }
+        if let Some(live_preview_model) = update.live_preview_model.as_ref() {
+            self.live_preview_model = live_preview_model.clone();
+        }
+        if let Some(live_transcript_width) = update.live_transcript_width.as_ref() {
+            self.live_transcript_width = live_transcript_width.clone();
+        }
+        if let Some(live_transcript_lines) = update.live_transcript_lines.as_ref() {
+            self.live_transcript_lines = live_transcript_lines.clone();
+        }
+        if let Some(show_recording_timer) = update.show_recording_timer {
+            self.show_recording_timer = show_recording_timer;
+        }
+
+        let hides_live_transcription = matches!(update.show_live_transcription, Some(false));
+        if let Some(show_live_transcription) = update.show_live_transcription {
+            self.show_live_transcription = show_live_transcription;
+        }
+
+        hides_live_transcription
     }
 }
 

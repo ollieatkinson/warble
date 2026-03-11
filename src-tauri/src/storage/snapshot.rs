@@ -1,0 +1,78 @@
+use anyhow::Result;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::PathBuf;
+use tauri::{AppHandle, Emitter};
+
+use super::history::prune_history_audio;
+use super::paths::diagnostics_dir;
+use super::persistence::save_persisted_state;
+use crate::constants::EVENT_SNAPSHOT;
+use crate::models::{built_in_parakeet_status, current_model_status, installed_model_sizes};
+use crate::overlay::update_indicator_window;
+use crate::state::{SharedState, Snapshot};
+
+pub(crate) fn live_preview_log_path(app: &AppHandle) -> Result<PathBuf> {
+    Ok(diagnostics_dir(app)?.join("live-preview.log"))
+}
+
+pub(crate) fn append_live_preview_log(app: &AppHandle, line: &str) {
+    let Ok(path) = live_preview_log_path(app) else {
+        return;
+    };
+
+    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) else {
+        return;
+    };
+
+    let _ = writeln!(file, "{line}");
+}
+
+pub(crate) fn build_snapshot(app: &AppHandle, shared: &SharedState) -> Snapshot {
+    let core = shared.lock();
+    let mut preview_diagnostics = core.preview_diagnostics.clone();
+    preview_diagnostics.log_path = live_preview_log_path(app)
+        .ok()
+        .map(|path| path.to_string_lossy().into_owned());
+    Snapshot {
+        phase: core.phase.clone(),
+        settings: core.settings.clone(),
+        sources: core.sources.clone(),
+        history: core.history.clone(),
+        model_status: core.model_status.clone(),
+        parakeet_model_status: core.parakeet_model_status.clone(),
+        installed_model_sizes: installed_model_sizes(app, &core.settings),
+        model_downloads: core.model_downloads.clone(),
+        system_profile: core.system_profile.clone(),
+        shortcuts_active: core.shortcuts_active,
+        shortcut_message: core.shortcut_message.clone(),
+        status_message: core.status_message.clone(),
+        error_message: core.error_message.clone(),
+        preview_diagnostics,
+        overlay: core.overlay.clone(),
+    }
+}
+
+pub(crate) fn emit_snapshot(app: &AppHandle, shared: &SharedState) {
+    let snapshot = build_snapshot(app, shared);
+    let _ = app.emit(EVENT_SNAPSHOT, snapshot);
+}
+
+pub(crate) fn persist_and_emit_settings_change(
+    app: &AppHandle,
+    shared: &SharedState,
+) -> Result<(), String> {
+    let audio_changed = prune_history_audio(app, shared);
+    {
+        let mut core = shared.lock();
+        core.model_status = current_model_status(app, &core.settings);
+        core.parakeet_model_status = built_in_parakeet_status(app);
+        if audio_changed && core.history.iter().all(|item| item.audio_path.is_none()) {
+            core.status_message = "Expired audio clips were cleaned up".to_string();
+        }
+    }
+    save_persisted_state(app, shared).map_err(|error| error.to_string())?;
+    update_indicator_window(app, shared);
+    emit_snapshot(app, shared);
+    Ok(())
+}
