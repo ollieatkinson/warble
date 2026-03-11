@@ -14,8 +14,12 @@ pub(crate) fn get_snapshot(
 }
 
 #[tauri::command]
-pub(crate) fn refresh_devices(app: AppHandle, shared: tauri::State<'_, SharedState>) {
-    crate::recording::refresh_sources(&app, &shared);
+pub(crate) fn refresh_devices(
+    app: AppHandle,
+    shared: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    crate::recording::refresh_sources_after_permission_check(&app, &shared)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

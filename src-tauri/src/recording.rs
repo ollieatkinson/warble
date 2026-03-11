@@ -11,11 +11,59 @@ use crate::models::*;
 use crate::overlay::{
     clear_overlay_session_state, default_overlay_levels, update_indicator_window,
 };
+use crate::permissions::{
+    ensure_microphone_access, microphone_access_error_message, microphone_access_status_message,
+    MicrophoneAccess,
+};
 use crate::state::*;
 use crate::storage::*;
 use crate::transcript::note_preview_diagnostic;
 use crate::transcription;
 use crate::{audio, parakeet, platform};
+
+fn report_runtime_error(
+    app: &AppHandle,
+    shared: &SharedState,
+    status_message: &str,
+    error_message: String,
+) {
+    {
+        let mut core = shared.lock();
+        core.phase = AppPhase::Error;
+        core.status_message = status_message.to_string();
+        core.error_message = Some(error_message);
+        core.recording_started_at = None;
+        clear_overlay_session_state(&mut core);
+    }
+
+    update_indicator_window(app, shared);
+    emit_snapshot(app, shared);
+}
+
+fn ensure_recording_access(app: &AppHandle, shared: &SharedState) -> Result<()> {
+    match ensure_microphone_access() {
+        Ok(MicrophoneAccess::Authorized) => Ok(()),
+        Ok(state) => {
+            let error_message = microphone_access_error_message(state).to_string();
+            report_runtime_error(
+                app,
+                shared,
+                microphone_access_status_message(state),
+                error_message.clone(),
+            );
+            Err(anyhow!(error_message))
+        }
+        Err(error) => {
+            report_runtime_error(
+                app,
+                shared,
+                "Microphone access check failed",
+                error.to_string(),
+            );
+            Err(error)
+        }
+    }
+}
 
 pub(crate) fn begin_recording(
     app: &AppHandle,
@@ -32,6 +80,8 @@ pub(crate) fn begin_recording(
         return Ok(());
     }
 
+    ensure_recording_access(app, shared)?;
+
     let recorder = app.state::<RecorderHandle>();
     let transcriber = app.state::<TranscriberHandle>();
     let preview_control = app.state::<PreviewControl>();
@@ -47,10 +97,17 @@ pub(crate) fn begin_recording(
         })
         .map_err(|_| anyhow!("Recording worker is unavailable"))?;
 
-    let started = response_rx
+    let started = match response_rx
         .recv()
         .map_err(|_| anyhow!("Recording worker did not respond"))?
-        .map_err(|error| anyhow!(error))?;
+        .map_err(|error| anyhow!(error))
+    {
+        Ok(started) => started,
+        Err(error) => {
+            report_runtime_error(app, shared, "Recording couldn't start", error.to_string());
+            return Err(error);
+        }
+    };
 
     let should_spawn_preview = {
         let mut core = shared.lock();
@@ -244,6 +301,15 @@ pub(crate) fn refresh_sources(app: &AppHandle, shared: &SharedState) {
         core.parakeet_model_status = built_in_parakeet_status(app);
     }
     emit_snapshot(app, shared);
+}
+
+pub(crate) fn refresh_sources_after_permission_check(
+    app: &AppHandle,
+    shared: &SharedState,
+) -> Result<()> {
+    ensure_recording_access(app, shared)?;
+    refresh_sources(app, shared);
+    Ok(())
 }
 
 pub(crate) fn spawn_recorder_thread() -> RecorderHandle {
