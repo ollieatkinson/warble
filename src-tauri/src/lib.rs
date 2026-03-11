@@ -1,5 +1,6 @@
 mod constants;
 mod media;
+mod model_catalog;
 mod models;
 mod overlay;
 pub mod parakeet;
@@ -8,6 +9,7 @@ mod runtime;
 mod state;
 mod storage;
 mod streaming_preview;
+mod system;
 mod transcript;
 
 use anyhow::{anyhow, bail, Context, Result};

@@ -11,7 +11,7 @@ use crate::constants::{DEFAULT_HOLD_SHORTCUT, DEFAULT_TOGGLE_SHORTCUT};
 use crate::overlay::default_overlay_levels;
 use crate::parakeet;
 use crate::platform;
-use crate::storage::detect_system_profile;
+use crate::system::detect_system_profile;
 use crate::transcript::default_cleanup_terms;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

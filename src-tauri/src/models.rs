@@ -6,154 +6,17 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
-use crate::constants::{
-    NEMOTRON_DECODER_DOWNLOAD_URL, NEMOTRON_ENCODER_DATA_DOWNLOAD_URL,
-    NEMOTRON_ENCODER_DOWNLOAD_URL, NEMOTRON_TOKENIZER_DOWNLOAD_URL, PARAKEET_CTC_AUDIO_LIMIT_MS,
-    PARAKEET_DECODER_DOWNLOAD_URL, PARAKEET_CTC_CONFIG_DOWNLOAD_URL,
-    PARAKEET_CTC_MODEL_DATA_DOWNLOAD_URL, PARAKEET_CTC_MODEL_DOWNLOAD_URL,
-    PARAKEET_CTC_PREPROCESSOR_CONFIG_DOWNLOAD_URL, PARAKEET_CTC_SPECIAL_TOKENS_DOWNLOAD_URL,
-    PARAKEET_CTC_TOKENIZER_CONFIG_DOWNLOAD_URL, PARAKEET_CTC_TOKENIZER_DOWNLOAD_URL,
-    PARAKEET_ENCODER_DOWNLOAD_URL, PARAKEET_EOU_DECODER_DOWNLOAD_URL,
-    PARAKEET_EOU_ENCODER_DOWNLOAD_URL, PARAKEET_EOU_TOKENIZER_DOWNLOAD_URL,
-    PARAKEET_TDT_AUDIO_LIMIT_MS, PARAKEET_VOCAB_DOWNLOAD_URL,
-};
+use crate::constants::{PARAKEET_CTC_AUDIO_LIMIT_MS, PARAKEET_TDT_AUDIO_LIMIT_MS};
+use crate::model_catalog::{catalog_download_spec, CatalogDownloadFile};
 use crate::parakeet;
 use crate::state::{
-    LivePreviewModelPreference, ModelDownloadProgress, ModelPathInspection, ModelStatus,
-    Settings, SharedState, TranscriptionModelKind,
+    LivePreviewModelPreference, ModelDownloadProgress, ModelPathInspection, ModelStatus, Settings,
+    SharedState, TranscriptionModelKind,
 };
 use crate::storage::{
     emit_snapshot, is_managed_model_path, managed_model_dir_for_id, managed_models_dir,
     model_root_dir, path_size_bytes, persist_and_emit_settings_change,
 };
-
-struct CatalogDownloadFile {
-    file_name: &'static str,
-    download_url: &'static str,
-}
-
-pub(crate) struct CatalogDownloadSpec {
-    pub(crate) model_id: &'static str,
-    pub(crate) model_kind: TranscriptionModelKind,
-    pub(crate) display_name: &'static str,
-    activates_as_default: bool,
-    files: &'static [CatalogDownloadFile],
-    model_dir_name: &'static str,
-}
-
-pub(crate) fn catalog_download_spec(model_id: &str) -> Option<CatalogDownloadSpec> {
-    const PARAKEET_FILES: &[CatalogDownloadFile] = &[
-        CatalogDownloadFile {
-            file_name: "encoder-model.int8.onnx",
-            download_url: PARAKEET_ENCODER_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "decoder_joint-model.int8.onnx",
-            download_url: PARAKEET_DECODER_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "vocab.txt",
-            download_url: PARAKEET_VOCAB_DOWNLOAD_URL,
-        },
-    ];
-    const PARAKEET_EOU_FILES: &[CatalogDownloadFile] = &[
-        CatalogDownloadFile {
-            file_name: "encoder.onnx",
-            download_url: PARAKEET_EOU_ENCODER_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "decoder_joint.onnx",
-            download_url: PARAKEET_EOU_DECODER_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "tokenizer.json",
-            download_url: PARAKEET_EOU_TOKENIZER_DOWNLOAD_URL,
-        },
-    ];
-    const PARAKEET_CTC_FILES: &[CatalogDownloadFile] = &[
-        CatalogDownloadFile {
-            file_name: "model_int8.onnx",
-            download_url: PARAKEET_CTC_MODEL_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "model_int8.onnx_data",
-            download_url: PARAKEET_CTC_MODEL_DATA_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "config.json",
-            download_url: PARAKEET_CTC_CONFIG_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "preprocessor_config.json",
-            download_url: PARAKEET_CTC_PREPROCESSOR_CONFIG_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "special_tokens_map.json",
-            download_url: PARAKEET_CTC_SPECIAL_TOKENS_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "tokenizer.json",
-            download_url: PARAKEET_CTC_TOKENIZER_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "tokenizer_config.json",
-            download_url: PARAKEET_CTC_TOKENIZER_CONFIG_DOWNLOAD_URL,
-        },
-    ];
-    const NEMOTRON_FILES: &[CatalogDownloadFile] = &[
-        CatalogDownloadFile {
-            file_name: "encoder.onnx",
-            download_url: NEMOTRON_ENCODER_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "encoder.onnx.data",
-            download_url: NEMOTRON_ENCODER_DATA_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "decoder_joint.onnx",
-            download_url: NEMOTRON_DECODER_DOWNLOAD_URL,
-        },
-        CatalogDownloadFile {
-            file_name: "tokenizer.model",
-            download_url: NEMOTRON_TOKENIZER_DOWNLOAD_URL,
-        },
-    ];
-    match model_id {
-        "parakeet" => Some(CatalogDownloadSpec {
-            model_id: "parakeet",
-            model_kind: TranscriptionModelKind::Parakeet,
-            display_name: "Parakeet TDT",
-            activates_as_default: true,
-            files: PARAKEET_FILES,
-            model_dir_name: parakeet::MODEL_ID,
-        }),
-        "parakeet-eou" => Some(CatalogDownloadSpec {
-            model_id: "parakeet-eou",
-            model_kind: TranscriptionModelKind::Parakeet,
-            display_name: "Parakeet Realtime EOU",
-            activates_as_default: false,
-            files: PARAKEET_EOU_FILES,
-            model_dir_name: "realtime_eou_120m-v1-onnx",
-        }),
-        "parakeet-ctc" => Some(CatalogDownloadSpec {
-            model_id: "parakeet-ctc",
-            model_kind: TranscriptionModelKind::ParakeetCtc,
-            display_name: "Parakeet CTC",
-            activates_as_default: false,
-            files: PARAKEET_CTC_FILES,
-            model_dir_name: parakeet::CTC_MODEL_ID,
-        }),
-        "nemotron-streaming" => Some(CatalogDownloadSpec {
-            model_id: "nemotron-streaming",
-            model_kind: TranscriptionModelKind::Parakeet,
-            display_name: "Nemotron Streaming",
-            activates_as_default: false,
-            files: NEMOTRON_FILES,
-            model_dir_name: "nemotron-speech-streaming-en-0.6b",
-        }),
-        _ => None,
-    }
-}
 
 pub(crate) fn parakeet_status_for_path(path: &Path) -> ModelStatus {
     if parakeet::model_ready_in_dir(path) || parakeet::model_ready_at(path) {
@@ -459,8 +322,8 @@ pub(crate) fn download_catalog_model(
                 return Err(format!("Download failed with status {}", response.status()));
             }
 
-            let mut output =
-                fs::File::create(&partial).map_err(|error| format!("Couldn't create file: {error}"))?;
+            let mut output = fs::File::create(&partial)
+                .map_err(|error| format!("Couldn't create file: {error}"))?;
             let mut buffer = [0u8; 64 * 1024];
             let mut last_emit_at = Instant::now();
             let mut last_emit_bytes = downloaded_bytes;
@@ -708,8 +571,10 @@ pub(crate) fn remove_catalog_model(
         }
         if matches!(
             (&core.settings.live_preview_model, model_id.as_str()),
-            (LivePreviewModelPreference::NemotronStreaming, "nemotron-streaming")
-                | (LivePreviewModelPreference::ParakeetEou, "parakeet-eou")
+            (
+                LivePreviewModelPreference::NemotronStreaming,
+                "nemotron-streaming"
+            ) | (LivePreviewModelPreference::ParakeetEou, "parakeet-eou")
         ) {
             core.settings.live_preview_model = LivePreviewModelPreference::Auto;
         }
