@@ -455,7 +455,7 @@ export function ModelsSection({
           </div>
 
           <div className="model-group-copy">
-            <p>Pick the TDT or CTC variant you want Transcribed to use for final text.</p>
+            <p>Pick the TDT or CTC variant you want Warble to use for final text.</p>
           </div>
 
           <div className="model-list">

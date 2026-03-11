@@ -30,7 +30,7 @@ Start-Process cmd.exe -WorkingDirectory $repoRoot -ArgumentList @(
 
 Wait-ForDevServer -Url "http://localhost:1420"
 
-Write-Host "Starting Transcribed desktop app..." -ForegroundColor Cyan
+Write-Host "Starting Warble desktop app..." -ForegroundColor Cyan
 Start-Process cmd.exe -WorkingDirectory $tauriDir -ArgumentList @(
   "/k",
   "cd /d `"$tauriDir`" && cargo run"

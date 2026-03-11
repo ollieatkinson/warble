@@ -89,6 +89,19 @@ export function InterfaceIcon(props: IconProps) {
   );
 }
 
+export function DebugIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <rect x="5" y="6" width="14" height="12" rx="2.5" />
+      <path d="M9 10h6" />
+      <path d="M9 14h4" />
+      <path d="M12 3.5v2" />
+      <path d="M7 4.5 8.2 6" />
+      <path d="M17 4.5 15.8 6" />
+    </GlyphBase>
+  );
+}
+
 export function HistoryIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
@@ -113,6 +126,16 @@ export function SparkIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
       <path d="M12 3.5 13.7 8l4.8 1.7L13.7 11.4 12 16l-1.7-4.6L5.5 9.7 10.3 8 12 3.5Z" />
+    </GlyphBase>
+  );
+}
+
+export function WarbleIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <path d="M5 12c1.5-2.8 3-2.8 4.5 0s3 2.8 4.5 0 3-2.8 4.5 0" />
+      <path d="M6.2 8.5c1.1-2 2.2-2 3.3 0s2.2 2 3.3 0 2.2-2 3.3 0" />
+      <path d="M6.2 15.5c1.1-2 2.2-2 3.3 0s2.2 2 3.3 0 2.2-2 3.3 0" />
     </GlyphBase>
   );
 }
@@ -280,6 +303,8 @@ export function SectionIcon({
       return <KeysIcon className={className} />;
     case "interface":
       return <InterfaceIcon className={className} />;
+    case "debug":
+      return <DebugIcon className={className} />;
     case "cleanup":
       return <CleanupIcon className={className} />;
     case "inputs":

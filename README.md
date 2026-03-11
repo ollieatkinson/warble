@@ -1,4 +1,4 @@
-# Transcribed
+# Warble
 
 Local-first desktop transcription built with Tauri, React, and TypeScript.
 

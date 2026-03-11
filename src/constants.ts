@@ -10,8 +10,8 @@ import type {
   SectionId,
 } from "./types";
 
-export const SNAPSHOT_EVENT = "transcribed://snapshot";
-export const SIDEBAR_COLLAPSED_KEY = "transcribed:sidebar-collapsed";
+export const SNAPSHOT_EVENT = "warble://snapshot";
+export const SIDEBAR_COLLAPSED_KEY = "warble:sidebar-collapsed";
 export const CLEAR_HISTORY_CONFIRMATION_WINDOW_MS = 2_500;
 export const isIndicatorWindow = new URLSearchParams(window.location.search).has(
   "indicator",
@@ -41,6 +41,7 @@ export const sections: Array<{
   { id: "models", label: "Models" },
   { id: "keybindings", label: "Keys" },
   { id: "interface", label: "Interface" },
+  { id: "debug", label: "Debug" },
   { id: "cleanup", label: "Cleanup" },
   { id: "inputs", label: "Input" },
   { id: "history", label: "History" },

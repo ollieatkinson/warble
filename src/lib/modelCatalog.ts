@@ -34,7 +34,7 @@ const MODEL_CATALOG: Array<
     summary:
       "Multilingual long-form offline dictation model for final microphone and file transcription.",
     note:
-      "Transcribed uses parakeet-rs for this model and will prefer DirectML on Windows, WebGPU on macOS/Linux, then fall back to CPU if needed. In-app chunking treats TDT v3 as the long-form batch option.",
+      "Warble uses parakeet-rs for this model and will prefer DirectML on Windows, WebGPU on macOS/Linux, then fall back to CPU if needed. In-app chunking treats TDT v3 as the long-form batch option.",
     bestFor: "Long-form multilingual dictation",
     capabilities: ["TDT decoder", "Auto language detection", "Token timestamps"],
     featureBadges: [
@@ -44,7 +44,7 @@ const MODEL_CATALOG: Array<
       { id: "timed", label: "Timed", icon: "clock" },
     ],
     highlights: [
-      "Current default final transcription engine in Transcribed",
+      "Current default final transcription engine in Warble",
       "Uses DirectML on Windows and WebGPU on macOS/Linux when available",
       "Best balance of speed, multilingual coverage, and long-form support today",
     ],
@@ -80,7 +80,7 @@ const MODEL_CATALOG: Array<
     summary:
       "English-first Parakeet variant aimed at fast offline transcription with punctuation and capitalization.",
     note:
-      "Uses the same parakeet-rs runtime path as TDT, but with a CTC decoder and English-focused ONNX export. Kept on a shorter soft chunk size than TDT in Transcribed.",
+      "Uses the same parakeet-rs runtime path as TDT, but with a CTC decoder and English-focused ONNX export. Kept on a shorter soft chunk size than TDT in Warble.",
     bestFor: "English punctuation-heavy offline transcription",
     capabilities: ["CTC decoding", "Punctuation and caps", "Word timestamps"],
     featureBadges: [
@@ -90,7 +90,7 @@ const MODEL_CATALOG: Array<
       { id: "timed", label: "Timed", icon: "clock" },
     ],
     highlights: [
-      "Real selectable batch model in Transcribed",
+      "Real selectable batch model in Warble",
       "English-focused Parakeet family variant",
       "Useful when you prefer a simpler CTC decoding path",
     ],
@@ -283,8 +283,8 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
         note: builtInReady
           ? entry.note
           : installedPath
-            ? "Downloaded into Transcribed and ready as the default final transcription engine."
-            : "Download this managed TDT bundle into Transcribed to use it for final microphone and file transcription.",
+            ? "Downloaded into Warble and ready as the default final transcription engine."
+            : "Download this managed TDT bundle into Warble to use it for final microphone and file transcription.",
         path: installedPath,
         diskSizeBytes,
       };
@@ -328,12 +328,12 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
           : entry.runtime,
       note: isReady
         ? supportsDefaultSelection
-          ? "Downloaded into Transcribed and ready as a selectable final transcription engine."
-          : `Installed in Transcribed. Live preview can now use ${entry.name}.`
+          ? "Downloaded into Warble and ready as a selectable final transcription engine."
+          : `Installed in Warble. Live preview can now use ${entry.name}.`
         : supportsDownload
           ? supportsDefaultSelection
-            ? "Download this model into Transcribed, then choose it as the Default speech model for final dictation."
-            : "Download this streaming add-on into Transcribed to unlock live preview with this model."
+            ? "Download this model into Warble, then choose it as the Default speech model for final dictation."
+            : "Download this streaming add-on into Warble to unlock live preview with this model."
           : entry.note,
       path: installedPath,
       diskSizeBytes: snapshot.installedModelSizes[entry.id] ?? 0,
