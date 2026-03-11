@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 
-import { audioRetentionOptions } from "../constants";
+import {
+  audioRetentionOptions,
+  CLEAR_HISTORY_CONFIRMATION_WINDOW_MS,
+} from "../constants";
 import { ActionButton } from "../components/common";
 import {
   AboutIcon,
@@ -53,7 +56,7 @@ export function HistorySection({
 
     const timeout = window.setTimeout(() => {
       setConfirmClearAll(false);
-    }, 2500);
+    }, CLEAR_HISTORY_CONFIRMATION_WINDOW_MS);
 
     return () => {
       window.clearTimeout(timeout);

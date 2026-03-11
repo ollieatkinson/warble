@@ -11,9 +11,26 @@ import type {
 
 export const SNAPSHOT_EVENT = "transcribed://snapshot";
 export const SIDEBAR_COLLAPSED_KEY = "transcribed:sidebar-collapsed";
+export const CLEAR_HISTORY_CONFIRMATION_WINDOW_MS = 2_500;
 export const isIndicatorWindow = new URLSearchParams(window.location.search).has(
   "indicator",
 );
+export const MEDIA_FILE_EXTENSIONS = [
+  "wav",
+  "mp3",
+  "m4a",
+  "aac",
+  "flac",
+  "ogg",
+  "oga",
+  "mp4",
+  "mov",
+  "mkv",
+  "webm",
+  "avi",
+  "aif",
+  "aiff",
+] as const;
 
 export const sections: Array<{
   id: SectionId;

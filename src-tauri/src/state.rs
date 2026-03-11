@@ -8,9 +8,11 @@ use std::time::Instant;
 use cpal::Stream;
 
 use crate::constants::{DEFAULT_HOLD_SHORTCUT, DEFAULT_TOGGLE_SHORTCUT};
+use crate::overlay::default_overlay_levels;
+use crate::parakeet;
 use crate::platform;
 use crate::storage::detect_system_profile;
-use crate::{default_cleanup_terms, default_overlay_levels, parakeet};
+use crate::transcript::default_cleanup_terms;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]

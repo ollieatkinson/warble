@@ -1,12 +1,12 @@
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 
 import { SNAPSHOT_EVENT } from "../constants";
+import { getSnapshot } from "../lib/tauriApi";
 import type { Snapshot } from "../types";
 
 export async function fetchSnapshot() {
-  return invoke<Snapshot>("get_snapshot");
+  return getSnapshot();
 }
 
 export function useSnapshotState() {

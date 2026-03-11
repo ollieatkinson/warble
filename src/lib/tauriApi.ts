@@ -1,0 +1,67 @@
+import { invoke } from "@tauri-apps/api/core";
+
+import type { RecordingMode, Snapshot } from "../types";
+
+export function getSnapshot() {
+  return invoke<Snapshot>("get_snapshot");
+}
+
+export function refreshDevices() {
+  return invoke<void>("refresh_devices");
+}
+
+export function updateSettings(update: Record<string, unknown>) {
+  return invoke<void>("update_settings_command", { update });
+}
+
+export function clearErrorMessage() {
+  return invoke<void>("clear_error_message_command");
+}
+
+export function startManualRecording(mode: RecordingMode) {
+  return invoke<void>("start_manual_recording", { mode });
+}
+
+export function stopManualRecording() {
+  return invoke<void>("stop_manual_recording");
+}
+
+export function cancelCurrentOperation() {
+  return invoke<void>("cancel_current_operation_command");
+}
+
+export function transcribeMediaFile(path: string) {
+  return invoke<void>("transcribe_media_file_command", { path });
+}
+
+export function removeHistoryItem(id: string) {
+  return invoke<void>("remove_history_item", { id });
+}
+
+export function clearHistory() {
+  return invoke<void>("clear_history");
+}
+
+export function downloadCatalogModel(modelId: string) {
+  return invoke<void>("download_catalog_model", { modelId });
+}
+
+export function removeCatalogModel(modelId: string) {
+  return invoke<void>("remove_catalog_model", { modelId });
+}
+
+export function addCleanupTerm(term: string) {
+  return invoke<void>("add_cleanup_term", { term });
+}
+
+export function removeCleanupTerm(term: string) {
+  return invoke<void>("remove_cleanup_term", { term });
+}
+
+export function restoreDefaultCleanupTerms() {
+  return invoke<void>("restore_default_cleanup_terms");
+}
+
+export function reportIndicatorLayout(width: number, height: number) {
+  return invoke<void>("report_indicator_layout_command", { width, height });
+}

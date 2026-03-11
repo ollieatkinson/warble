@@ -1,7 +1,10 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { DEMO_LEVELS } from "../constants";
+import {
+  cancelCurrentOperation,
+  reportIndicatorLayout,
+} from "../lib/tauriApi";
 import { formatElapsedClock, resampleLevels, smoothLevels } from "../lib/utils";
 import type {
   AppPhase,
@@ -474,7 +477,7 @@ export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
 
   async function cancelFromOverlay() {
     try {
-      await invoke("cancel_current_operation_command");
+      await cancelCurrentOperation();
     } catch {
       // Keep the overlay interaction quiet if cancel fails.
     }
@@ -512,10 +515,7 @@ export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
       }
       lastReportedSizeRef.current = sizeKey;
 
-      void invoke("report_indicator_layout_command", {
-        width,
-        height,
-      }).catch(() => {
+      void reportIndicatorLayout(width, height).catch(() => {
         // Keep overlay measurement failures quiet.
       });
     };

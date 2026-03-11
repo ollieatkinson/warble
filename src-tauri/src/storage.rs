@@ -10,7 +10,7 @@ use std::process::Command;
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Dxgi::{
-    CreateDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE, IDXGIAdapter1, IDXGIFactory1,
+    CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE,
 };
 #[cfg(target_os = "windows")]
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
@@ -21,11 +21,11 @@ use crate::constants::{
     RECORDINGS_DIR,
 };
 use crate::models::{built_in_parakeet_status, current_model_status, installed_model_sizes};
+use crate::overlay::update_indicator_window;
 use crate::state::{
     AudioRetentionPolicy, HistoryItem, PersistedState, Settings, SharedState, Snapshot,
     SystemProfile,
 };
-use crate::update_indicator_window;
 
 pub(crate) fn normalize_shortcut(shortcut: &str) -> String {
     shortcut.to_ascii_lowercase().replace(' ', "")
@@ -228,7 +228,10 @@ fn detect_primary_gpu_via_dxgi() -> Option<(Option<String>, u64)> {
 
 #[cfg(target_os = "windows")]
 fn wide_string_to_string(wide: &[u16]) -> String {
-    let length = wide.iter().position(|character| *character == 0).unwrap_or(wide.len());
+    let length = wide
+        .iter()
+        .position(|character| *character == 0)
+        .unwrap_or(wide.len());
     String::from_utf16_lossy(&wide[..length]).trim().to_string()
 }
 
