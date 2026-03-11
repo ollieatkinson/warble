@@ -243,7 +243,6 @@ export function ChoiceDropdown({
           ) : null}
           <div className="choice-trigger-copy">
             <strong>{selected?.label ?? placeholder}</strong>
-            {selected?.description ? <span>{selected.description}</span> : null}
           </div>
           <ChevronDownIcon className="choice-chevron" />
         </button>
