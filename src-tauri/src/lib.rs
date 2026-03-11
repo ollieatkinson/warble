@@ -8,6 +8,7 @@ mod model_catalog;
 mod models;
 mod overlay;
 pub mod parakeet;
+mod permissions;
 mod platform;
 mod recording;
 mod runtime;
