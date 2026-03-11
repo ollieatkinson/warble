@@ -127,9 +127,7 @@ jobs:
           STAGING_ROOT="$(mktemp -d)"
 
           cleanup() {
-            if mount | grep -q "on ${MOUNT_ROOT} "; then
-              hdiutil detach "$MOUNT_ROOT" -quiet || true
-            fi
+            hdiutil detach "$MOUNT_ROOT" -quiet || true
             rm -rf "$MOUNT_ROOT" "$STAGING_ROOT"
           }
 
@@ -190,7 +188,7 @@ jobs:
           test -x "$APPIMAGE_ROOT/squashfs-root/usr/bin/$APP_BINARY"
 
           dpkg-deb --info "$DEB_PATH" >/dev/null
-          dpkg-deb --contents "$DEB_PATH" | grep -q "[[:space:]]\\./usr/bin/$APP_BINARY$"
+          dpkg-deb --contents "$DEB_PATH" | grep -Eq "(^|[[:space:]])(\\./)?usr/bin/$APP_BINARY$"
           dpkg-deb -x "$DEB_PATH" "$DEB_ROOT"
           test -x "$DEB_ROOT/usr/bin/$APP_BINARY"
 
