@@ -100,8 +100,8 @@ function ModelDownloadAction({
       className="secondary small model-download-button"
       state={buttonFeedback[`model-download:${row.id}`]}
       idleLabel="Download"
-      workingLabel="Downloading"
-      doneLabel="Downloaded"
+      workingLabel="Starting"
+      doneLabel="Queued"
       idleIcon={<DownloadIcon className="small-icon" />}
       workingIcon={<DownloadIcon className="small-icon" />}
       doneIcon={<CheckIcon className="small-icon" />}
