@@ -93,7 +93,22 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build release artifacts
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && '-' || '' }}
         run: pnpm release:artifacts
+
+      - name: Verify macOS app bundle signature
+        if: runner.os == 'macOS'
+        run: |
+          APP_PATH="$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "No macOS app bundle found to verify" >&2
+            exit 1
+          fi
+
+          codesign --verify --deep --strict "$APP_PATH"
+          codesign -dv --verbose=4 "$APP_PATH"
+          spctl -a -vvv --type exec "$APP_PATH" || true
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
