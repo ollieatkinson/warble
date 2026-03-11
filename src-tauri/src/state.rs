@@ -542,7 +542,7 @@ pub(crate) enum RecorderRequest {
         response: mpsc::Sender<std::result::Result<StartRecordingResponse, String>>,
     },
     Stop {
-        response: mpsc::Sender<std::result::Result<CompletedRecording, String>>,
+        response: mpsc::Sender<std::result::Result<Option<CompletedRecording>, String>>,
     },
 }
 

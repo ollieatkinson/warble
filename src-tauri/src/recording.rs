@@ -179,7 +179,7 @@ pub(crate) fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()
     let preview_control = app.state::<PreviewControl>();
     let transcription_generation = preview_control.next_generation();
     let (response_tx, response_rx) = mpsc::channel();
-    let completed = match (|| -> Result<CompletedRecording> {
+    let completed = match (|| -> Result<Option<CompletedRecording>> {
         recorder
             .sender
             .send(RecorderRequest::Stop {
@@ -198,6 +198,9 @@ pub(crate) fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()
             note_capture_diagnostic(app, shared, "Capture stop failed", detail.clone());
             return Err(anyhow!(detail));
         }
+    };
+    let Some(completed) = completed else {
+        return Ok(());
     };
 
     {
@@ -300,7 +303,12 @@ pub(crate) fn cancel_current_operation(app: &AppHandle, shared: &SharedState) ->
                 clear_overlay_session_state(&mut core);
             }
 
-            note_capture_diagnostic(app, shared, "Recording cancelled", "Stopped before transcription");
+            note_capture_diagnostic(
+                app,
+                shared,
+                "Recording cancelled",
+                "Stopped before transcription",
+            );
             update_indicator_window(app, shared);
             emit_snapshot(app, shared);
             Ok(())
@@ -315,7 +323,12 @@ pub(crate) fn cancel_current_operation(app: &AppHandle, shared: &SharedState) ->
                 clear_overlay_session_state(&mut core);
             }
 
-            note_capture_diagnostic(app, shared, "Transcription cancelled", "Stopped current microphone job");
+            note_capture_diagnostic(
+                app,
+                shared,
+                "Transcription cancelled",
+                "Stopped current microphone job",
+            );
             update_indicator_window(app, shared);
             emit_snapshot(app, shared);
             Ok(())
@@ -389,8 +402,10 @@ pub(crate) fn spawn_recorder_thread() -> RecorderHandle {
                 }
                 RecorderRequest::Stop { response } => {
                     let result = match current.take() {
-                        Some(session) => finalize_recording(session).map_err(|error| error.to_string()),
-                        None => Err("Recording session was not active".to_string()),
+                        Some(session) => finalize_recording(session)
+                            .map(Some)
+                            .map_err(|error| error.to_string()),
+                        None => Ok(None),
                     };
                     let _ = response.send(result);
                 }

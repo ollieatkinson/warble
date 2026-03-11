@@ -1,7 +1,6 @@
 use anyhow::Result;
-use std::fs;
-use std::fs::OpenOptions;
-use std::io::Write;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
 
@@ -47,11 +46,31 @@ pub(crate) fn append_capture_log(app: &AppHandle, line: &str) {
 }
 
 fn read_log_tail(path: PathBuf, max_bytes: usize) -> String {
-    let Ok(bytes) = fs::read(path) else {
+    let Ok(mut file) = File::open(path) else {
         return String::new();
     };
-    let start = bytes.len().saturating_sub(max_bytes);
-    String::from_utf8_lossy(&bytes[start..]).into_owned()
+
+    let Ok(file_len) = file.metadata().map(|metadata| metadata.len()) else {
+        return String::new();
+    };
+
+    let start = file_len.saturating_sub(max_bytes as u64);
+    if file.seek(SeekFrom::Start(start)).is_err() {
+        return String::new();
+    }
+
+    let mut bytes = Vec::with_capacity((file_len - start) as usize);
+    if file.read_to_end(&mut bytes).is_err() {
+        return String::new();
+    }
+
+    if start > 0 {
+        if let Some(first_newline) = bytes.iter().position(|byte| *byte == b'\n') {
+            bytes.drain(..=first_newline);
+        }
+    }
+
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 pub(crate) fn read_live_preview_log(app: &AppHandle) -> String {
