@@ -155,6 +155,97 @@ jobs:
           codesign -dv --verbose=4 "$INSTALLED_APP_PATH"
           spctl -a -vvv --type exec "$INSTALLED_APP_PATH" || true
 
+      - name: Verify Linux package install paths
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+
+          APP_BINARY="$(node -p "require('./package.json').name")"
+          APPIMAGE_PATH="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)"
+          DEB_PATH="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          RPM_PATH="$(find src-tauri/target/release/bundle/rpm -maxdepth 1 -name '*.rpm' -print -quit)"
+
+          if [ -z "$APPIMAGE_PATH" ] || [ -z "$DEB_PATH" ] || [ -z "$RPM_PATH" ]; then
+            echo "Missing one or more Linux artifacts to verify" >&2
+            exit 1
+          fi
+
+          APPIMAGE_ROOT="$(mktemp -d)"
+          DEB_ROOT="$(mktemp -d)"
+
+          cleanup() {
+            rm -rf "$APPIMAGE_ROOT" "$DEB_ROOT"
+          }
+
+          trap cleanup EXIT
+
+          cp "$APPIMAGE_PATH" "$APPIMAGE_ROOT/app.AppImage"
+          chmod +x "$APPIMAGE_ROOT/app.AppImage"
+          (
+            cd "$APPIMAGE_ROOT"
+            ./app.AppImage --appimage-extract >/dev/null
+          )
+
+          test -f "$APPIMAGE_ROOT/squashfs-root/AppRun"
+          test -x "$APPIMAGE_ROOT/squashfs-root/usr/bin/$APP_BINARY"
+
+          dpkg-deb --info "$DEB_PATH" >/dev/null
+          dpkg-deb --contents "$DEB_PATH" | grep -q "[[:space:]]\\./usr/bin/$APP_BINARY$"
+          dpkg-deb -x "$DEB_PATH" "$DEB_ROOT"
+          test -x "$DEB_ROOT/usr/bin/$APP_BINARY"
+
+          rpm -qip "$RPM_PATH" >/dev/null
+          rpm -qlp "$RPM_PATH" | grep -q "^/usr/bin/$APP_BINARY$"
+
+      - name: Verify Windows package install paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $appBinaryBase = (node -p "require('./package.json').name").Trim()
+          $appBinary = "$appBinaryBase.exe"
+          $portableZip = Get-ChildItem 'artifacts/windows' -Filter '*_portable.zip' | Select-Object -First 1
+          $msiPath = Get-ChildItem 'src-tauri/target/release/bundle/msi' -Filter '*.msi' | Select-Object -First 1
+
+          if (-not $portableZip -or -not $msiPath) {
+            throw 'Missing one or more Windows artifacts to verify'
+          }
+
+          $portableRoot = Join-Path $env:RUNNER_TEMP 'portable-check'
+          $msiRoot = Join-Path $env:RUNNER_TEMP 'msi-check'
+          $msiLog = Join-Path $env:RUNNER_TEMP 'msi-admin.log'
+
+          Remove-Item $portableRoot -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $msiRoot -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $msiLog -Force -ErrorAction SilentlyContinue
+
+          Expand-Archive -Path $portableZip.FullName -DestinationPath $portableRoot -Force
+
+          $portableExe = Get-ChildItem $portableRoot -Recurse -Filter $appBinary | Select-Object -First 1
+          if (-not $portableExe) {
+            throw "Portable zip is missing $appBinary"
+          }
+
+          foreach ($runtimeFile in @('onnxruntime.dll', 'DirectML.dll', 'dxcompiler.dll', 'dxil.dll')) {
+            if (-not (Get-ChildItem $portableRoot -Recurse -Filter $runtimeFile | Select-Object -First 1)) {
+              throw "Portable zip is missing $runtimeFile"
+            }
+          }
+
+          $process = Start-Process msiexec.exe -ArgumentList @('/a', $msiPath.FullName, '/qn', "TARGETDIR=$msiRoot", '/L*V', $msiLog) -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            if (Test-Path $msiLog) {
+              Get-Content $msiLog
+            }
+            throw "MSI administrative extraction failed with exit code $($process.ExitCode)"
+          }
+
+          $msiExe = Get-ChildItem $msiRoot -Recurse -Filter $appBinary | Select-Object -First 1
+          if (-not $msiExe) {
+            throw "MSI extraction is missing $appBinary"
+          }
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
