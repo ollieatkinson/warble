@@ -29,6 +29,7 @@ export type SectionId =
 export type ModelFilter = "all" | "available" | "streaming";
 export type EditableOverlayPosition = Exclude<OverlayPosition, "caret">;
 export type AudioRetentionPolicy = "one-day" | "seven-days" | "thirty-days";
+export type ColorTheme = "system" | "light" | "dark";
 export type ModelFeatureIcon =
   | "spark"
   | "cpu"
@@ -60,6 +61,7 @@ export type Settings = {
   liveTranscriptLines: LiveTranscriptLines;
   showRecordingTimer: boolean;
   showLiveTranscription: boolean;
+  colorTheme: ColorTheme;
 };
 
 export type SourceInfo = {
@@ -154,6 +156,7 @@ export type SettingsDraft = {
   liveTranscriptLines: LiveTranscriptLines;
   showRecordingTimer: boolean;
   showLiveTranscription: boolean;
+  colorTheme: ColorTheme;
 };
 
 export type FlashMessage =

@@ -1,4 +1,5 @@
 import {
+  colorThemeOptions,
   liveTranscriptLineOptions,
   liveTranscriptWidthOptions,
   overlayAnimationOptions,
@@ -48,6 +49,35 @@ export function InterfaceSection({
   const installedModelLabel = installedStreamingModels.map((model) => model.name).join(" · ");
   return (
     <section className="compact-grid-two">
+      <article className="surface preference-surface">
+        <div className="surface-bar">
+          <div className="surface-title">
+            <span className="surface-title-label">Appearance</span>
+          </div>
+        </div>
+
+        <div className="setting-list">
+          <div className="setting-row">
+            <div className="setting-copy">
+              <strong>Theme</strong>
+              <span>Choose light, dark, or follow your system setting.</span>
+            </div>
+            <div className="setting-control">
+              <ChoiceDropdown
+                label="Theme"
+                value={draft.colorTheme}
+                options={colorThemeOptions}
+                onChange={(value) =>
+                  void onApplySettings({
+                    colorTheme: value as typeof draft.colorTheme,
+                  })
+                }
+              />
+            </div>
+          </div>
+        </div>
+      </article>
+
       <article className="surface preference-surface">
         <div className="surface-bar">
           <div className="surface-title">

@@ -20,6 +20,7 @@ const DEFAULT_DRAFT: SettingsDraft = {
   liveTranscriptLines: "one",
   showRecordingTimer: false,
   showLiveTranscription: false,
+  colorTheme: "system",
 };
 
 type UseSettingsSyncArgs = {

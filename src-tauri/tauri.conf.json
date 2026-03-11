@@ -16,8 +16,8 @@
         "title": "Transcribed",
         "width": 1180,
         "height": 860,
-        "resizable": false,
-        "maximizable": false,
+        "resizable": true,
+        "maximizable": true,
         "minWidth": 960,
         "minHeight": 700,
         "visible": false

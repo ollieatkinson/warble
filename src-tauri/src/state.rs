@@ -138,6 +138,20 @@ impl Default for LiveTranscriptLines {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ColorTheme {
+    System,
+    Light,
+    Dark,
+}
+
+impl Default for ColorTheme {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum AudioRetentionPolicy {
@@ -173,6 +187,7 @@ pub(crate) struct Settings {
     pub(crate) live_transcript_lines: LiveTranscriptLines,
     pub(crate) show_recording_timer: bool,
     pub(crate) show_live_transcription: bool,
+    pub(crate) color_theme: ColorTheme,
 }
 
 impl Default for Settings {
@@ -196,6 +211,7 @@ impl Default for Settings {
             live_transcript_lines: LiveTranscriptLines::One,
             show_recording_timer: false,
             show_live_transcription: false,
+            color_theme: ColorTheme::System,
         }
     }
 }
@@ -260,6 +276,10 @@ impl Settings {
         }
         if let Some(show_recording_timer) = update.show_recording_timer {
             self.show_recording_timer = show_recording_timer;
+        }
+
+        if let Some(color_theme) = update.color_theme {
+            self.color_theme = color_theme;
         }
 
         let hides_live_transcription = matches!(update.show_live_transcription, Some(false));
@@ -339,6 +359,7 @@ pub(crate) struct SettingsUpdate {
     pub(crate) live_transcript_lines: Option<LiveTranscriptLines>,
     pub(crate) show_recording_timer: Option<bool>,
     pub(crate) show_live_transcription: Option<bool>,
+    pub(crate) color_theme: Option<ColorTheme>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react";
 import type {
   AppPhase,
   AudioRetentionPolicy,
+  ColorTheme,
   EditableOverlayPosition,
   HistoryItem,
   InferenceProvider,
@@ -107,6 +108,18 @@ export function formatLiveTranscriptLines(lines: LiveTranscriptLines) {
     case "two":
     default:
       return "2 lines";
+  }
+}
+
+export function formatColorTheme(theme: ColorTheme) {
+  switch (theme) {
+    case "light":
+      return "Light";
+    case "dark":
+      return "Dark";
+    case "system":
+    default:
+      return "System";
   }
 }
 
@@ -332,6 +345,7 @@ export function buildSettingsUpdate(draft: SettingsDraft) {
     liveTranscriptLines: draft.liveTranscriptLines,
     showRecordingTimer: draft.showRecordingTimer,
     showLiveTranscription: draft.showLiveTranscription,
+    colorTheme: draft.colorTheme,
   };
 }
 

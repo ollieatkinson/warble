@@ -1,5 +1,6 @@
 import type {
   AudioRetentionPolicy,
+  ColorTheme,
   EditableOverlayPosition,
   LivePreviewModel,
   LiveTranscriptLines,
@@ -114,6 +115,16 @@ export const liveTranscriptLineOptions: Array<{
   { id: "one", label: "1 line", description: "Keep the pill single-line." },
   { id: "two", label: "2 lines", description: "Show a little more live text." },
   { id: "three", label: "3 lines", description: "Show the deepest live preview." },
+];
+
+export const colorThemeOptions: Array<{
+  id: ColorTheme;
+  label: string;
+  description: string;
+}> = [
+  { id: "system", label: "System", description: "Follow Windows appearance." },
+  { id: "light", label: "Light", description: "Always use light theme." },
+  { id: "dark", label: "Dark", description: "Always use dark theme." },
 ];
 
 export const DEMO_LEVELS = [

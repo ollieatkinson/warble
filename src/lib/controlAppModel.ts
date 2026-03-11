@@ -23,6 +23,7 @@ export function buildDraftFromSnapshot(snapshot: Snapshot): SettingsDraft {
     liveTranscriptLines: snapshot.settings.liveTranscriptLines,
     showRecordingTimer: snapshot.settings.showRecordingTimer,
     showLiveTranscription: snapshot.settings.showLiveTranscription,
+    colorTheme: snapshot.settings.colorTheme,
   };
 }
 

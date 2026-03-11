@@ -23,6 +23,7 @@ import { useHistoryActions } from "./useHistoryActions";
 import { useModelActions } from "./useModelActions";
 import { useRecordingActions } from "./useRecordingActions";
 import { useSettingsSync } from "./useSettingsSync";
+import { useTheme } from "./useTheme";
 
 function loadSidebarCollapsedPreference() {
   try {
@@ -103,6 +104,8 @@ export function useControlApp({
     showError,
     clearMessage,
   });
+
+  useTheme(draft.colorTheme);
 
   const {
     startRecording,
