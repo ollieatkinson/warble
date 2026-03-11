@@ -245,7 +245,12 @@ fn run_batch_live_preview_loop(
                 core.settings.cleanup_terms.clone(),
             )
         };
-        let preview = match crate::transcription::transcribe_audio(app, transcriber, &settings, &preview_audio) {
+        let preview = match crate::transcription::transcribe_audio(
+            app,
+            transcriber,
+            &settings,
+            &preview_audio,
+        ) {
             Ok(output) => {
                 let cleaned_preview =
                     live_preview_text(&output.text, cleanup_enabled, &cleanup_terms);

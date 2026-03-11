@@ -7,7 +7,8 @@
     "dev": "node node_modules/vite/bin/vite.js",
     "build": "node node_modules/typescript/bin/tsc && node node_modules/vite/bin/vite.js build",
     "preview": "node node_modules/vite/bin/vite.js preview",
-    "tauri": "node node_modules/@tauri-apps/cli/tauri.js"
+    "tauri": "node node_modules/@tauri-apps/cli/tauri.js",
+    "release:artifacts": "node scripts/build-release-artifacts.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -17,10 +18,7 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@esbuild/win32-x64": "^0.27.3",
-    "@rollup/rollup-win32-x64-msvc": "^4.59.0",
     "@tauri-apps/cli": "^2",
-    "@tauri-apps/cli-win32-x64-msvc": "2.10.1",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",

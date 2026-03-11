@@ -2,8 +2,11 @@ export type RecordingMode = "hold" | "toggle";
 export type AppPhase = "idle" | "recording" | "transcribing" | "error";
 export type ModelStatus = "ready" | "missing";
 export type TranscriptionModelKind = "parakeet" | "parakeet-ctc";
-export type InferenceProvider = "cpu" | "directml";
+export type InferenceProvider = "cpu" | "directml" | "webgpu";
+export type AccelerationProvider = Exclude<InferenceProvider, "cpu">;
 export type CaptureSourceKind = "microphone" | "file";
+export type PlatformKind = "windows" | "macos" | "linux";
+export type AutoPasteSupport = "active-app" | "clipboard-only";
 export type OverlayPosition =
   | "bottom-center"
   | "bottom-left"
@@ -115,11 +118,13 @@ export type SystemProfile = {
   totalMemoryBytes: number;
   gpuName: string | null;
   gpuMemoryBytes: number;
-  directmlAvailable: boolean;
+  supportedAccelerationProviders: AccelerationProvider[];
 };
 
 export type Snapshot = {
   phase: AppPhase;
+  platform: PlatformKind;
+  autoPasteSupport: AutoPasteSupport;
   settings: Settings;
   sources: SourceInfo[];
   history: HistoryItem[];
@@ -185,7 +190,7 @@ export type ModelRow = {
   runtime: string;
   license: string;
   supportsDefaultSelection?: boolean;
-  directmlCapable?: boolean;
+  supportedAccelerationProviders?: AccelerationProvider[];
   unlockedFeatures?: string[];
   state: ModelRowState;
   source: "built-in" | "catalog";

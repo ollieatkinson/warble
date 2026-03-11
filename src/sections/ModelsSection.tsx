@@ -16,8 +16,18 @@ import {
   SparkIcon,
   TrashIcon,
 } from "../components/icons";
-import { describeHardwareFit, formatModelAudioLimit, formatModelSizeLabel, modelFeatureItems } from "../lib/modelCatalog";
-import { formatBytes, formatEta, formatSystemProfile } from "../lib/utils";
+import {
+  describeHardwareFit,
+  formatModelAudioLimit,
+  formatModelSizeLabel,
+  modelFeatureItems,
+} from "../lib/modelCatalog";
+import {
+  formatAccelerationProvider,
+  formatBytes,
+  formatEta,
+  formatSystemProfile,
+} from "../lib/utils";
 import type {
   ButtonFeedbackState,
   ChoiceOption,
@@ -359,7 +369,7 @@ export function ModelsSection({
   onRemoveCatalogModel: (row: ModelRow) => void | Promise<void>;
   onOpenModelReference: (row: ModelRow) => void | Promise<void>;
 }) {
-  const directmlReady = snapshot.systemProfile.directmlAvailable;
+  const supportedProviders = snapshot.systemProfile.supportedAccelerationProviders;
 
   return (
     <section className="model-page">
@@ -374,7 +384,13 @@ export function ModelsSection({
               label={activeModel ? `${activeModel.name} active` : "No batch model"}
               tone={snapshot.modelStatus === "ready" ? "success" : "warning"}
             />
-            {directmlReady ? <StatusChip label="DirectML ready" tone="accent" /> : null}
+            {supportedProviders.map((provider) => (
+              <StatusChip
+                key={provider}
+                label={`${formatAccelerationProvider(provider)} available`}
+                tone="accent"
+              />
+            ))}
             <span className="model-selector-footnote">
               {formatSystemProfile(snapshot.systemProfile)}
             </span>

@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait};
-use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig, SupportedStreamConfig};
+use cpal::{
+    FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig, SupportedStreamConfig,
+};
 use std::sync::{Arc, Mutex};
 
 use crate::state::SourceInfo;
@@ -109,9 +111,27 @@ pub(crate) fn build_input_stream(
     let error_callback = |error| eprintln!("audio stream error: {error}");
 
     let stream = match supported_config.sample_format() {
-        SampleFormat::F32 => build_typed_stream::<f32>(&device, &config, channels, destination.clone(), error_callback)?,
-        SampleFormat::I16 => build_typed_stream::<i16>(&device, &config, channels, destination.clone(), error_callback)?,
-        SampleFormat::U16 => build_typed_stream::<u16>(&device, &config, channels, destination.clone(), error_callback)?,
+        SampleFormat::F32 => build_typed_stream::<f32>(
+            &device,
+            &config,
+            channels,
+            destination.clone(),
+            error_callback,
+        )?,
+        SampleFormat::I16 => build_typed_stream::<i16>(
+            &device,
+            &config,
+            channels,
+            destination.clone(),
+            error_callback,
+        )?,
+        SampleFormat::U16 => build_typed_stream::<u16>(
+            &device,
+            &config,
+            channels,
+            destination.clone(),
+            error_callback,
+        )?,
         other => return Err(anyhow!("Unsupported sample format: {other:?}")),
     };
 

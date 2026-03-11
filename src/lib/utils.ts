@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from "react";
 
 import type {
+  AccelerationProvider,
   AppPhase,
   AudioRetentionPolicy,
   ColorTheme,
@@ -179,17 +180,41 @@ export function formatSystemProfile(profile: SystemProfile) {
   if (profile.gpuMemoryBytes > 0) {
     parts.push(`${formatBytes(profile.gpuMemoryBytes)} VRAM`);
   }
-  if (profile.directmlAvailable) {
-    parts.push("DirectML ready");
+  if (profile.supportedAccelerationProviders.length > 0) {
+    parts.push(formatAccelerationProviders(profile.supportedAccelerationProviders));
   }
 
   return parts.join(" · ");
+}
+
+export function formatAccelerationProvider(provider: AccelerationProvider) {
+  switch (provider) {
+    case "directml":
+      return "DirectML";
+    case "webgpu":
+      return "WebGPU";
+    default:
+      return provider;
+  }
+}
+
+export function formatAccelerationProviders(
+  providers: AccelerationProvider[],
+  fallback = "CPU only",
+) {
+  if (providers.length === 0) {
+    return fallback;
+  }
+
+  return providers.map(formatAccelerationProvider).join(" + ");
 }
 
 export function formatInferenceProvider(provider: InferenceProvider) {
   switch (provider) {
     case "directml":
       return "DirectML";
+    case "webgpu":
+      return "WebGPU";
     case "cpu":
     default:
       return "CPU";

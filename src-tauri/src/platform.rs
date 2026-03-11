@@ -1,10 +1,67 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
+use arboard::Clipboard;
 use serde::Serialize;
+use std::thread;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct CaretAnchor {
     pub x: i32,
     pub y: i32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PlatformKind {
+    Windows,
+    Macos,
+    Linux,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AutoPasteSupport {
+    ActiveApp,
+    ClipboardOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PasteOutcome {
+    ActiveApp,
+    ClipboardOnly,
+}
+
+pub fn current_platform() -> PlatformKind {
+    match std::env::consts::OS {
+        "windows" => PlatformKind::Windows,
+        "macos" => PlatformKind::Macos,
+        "linux" => PlatformKind::Linux,
+        _ => PlatformKind::Linux,
+    }
+}
+
+pub fn auto_paste_support() -> AutoPasteSupport {
+    #[cfg(target_os = "windows")]
+    {
+        return AutoPasteSupport::ActiveApp;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return AutoPasteSupport::ActiveApp;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if x11_display_available() {
+            return AutoPasteSupport::ActiveApp;
+        }
+
+        return AutoPasteSupport::ClipboardOnly;
+    }
+
+    #[allow(unreachable_code)]
+    AutoPasteSupport::ClipboardOnly
 }
 
 #[cfg(target_os = "windows")]
@@ -62,12 +119,65 @@ pub fn detect_caret_anchor() -> Option<CaretAnchor> {
     None
 }
 
+pub fn paste_text(text: &str) -> Result<PasteOutcome> {
+    #[cfg(target_os = "windows")]
+    {
+        return paste_text_windows(text);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return paste_text_macos(text);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        return paste_text_linux(text);
+    }
+
+    #[allow(unreachable_code)]
+    copy_to_clipboard(text).map(|()| PasteOutcome::ClipboardOnly)
+}
+
+fn copy_to_clipboard(text: &str) -> Result<()> {
+    let mut clipboard = Clipboard::new()?;
+    clipboard.set_text(text.to_owned())?;
+    Ok(())
+}
+
+fn prepare_paste(text: &str) -> Result<Option<String>> {
+    let mut clipboard = Clipboard::new()?;
+    let previous = clipboard.get_text().ok();
+    clipboard.set_text(text.to_owned())?;
+    Ok(previous)
+}
+
+fn restore_clipboard(previous: Option<String>) {
+    let Some(previous_text) = previous else {
+        return;
+    };
+
+    if let Ok(mut clipboard) = Clipboard::new() {
+        let _ = clipboard.set_text(previous_text);
+    }
+}
+
+fn restore_clipboard_after_delay(previous: Option<String>) {
+    let Some(previous_text) = previous else {
+        return;
+    };
+
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(250));
+        if let Ok(mut clipboard) = Clipboard::new() {
+            let _ = clipboard.set_text(previous_text);
+        }
+    });
+}
+
 #[cfg(target_os = "windows")]
-pub fn paste_text(text: &str) -> Result<()> {
-    use arboard::Clipboard;
+fn paste_text_windows(text: &str) -> Result<PasteOutcome> {
     use std::mem::size_of;
-    use std::thread;
-    use std::time::Duration;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
         VIRTUAL_KEY, VK_CONTROL,
@@ -88,9 +198,7 @@ pub fn paste_text(text: &str) -> Result<()> {
         }
     }
 
-    let mut clipboard = Clipboard::new()?;
-    let previous = clipboard.get_text().ok();
-    clipboard.set_text(text.to_owned())?;
+    let previous = prepare_paste(text)?;
 
     unsafe {
         let inputs = [
@@ -99,24 +207,141 @@ pub fn paste_text(text: &str) -> Result<()> {
             key_input(0x56, KEYEVENTF_KEYUP),
             key_input(VK_CONTROL.0, KEYEVENTF_KEYUP),
         ];
-        let _ = SendInput(&inputs, size_of::<INPUT>() as i32);
+        let inserted = SendInput(&inputs, size_of::<INPUT>() as i32);
+        if inserted != inputs.len() as u32 {
+            restore_clipboard(previous);
+            bail!("Windows paste event injection failed");
+        }
     }
 
-    if let Some(previous_text) = previous {
-        thread::spawn(move || {
-            thread::sleep(Duration::from_millis(250));
-            if let Ok(mut clipboard) = Clipboard::new() {
-                let _ = clipboard.set_text(previous_text);
-            }
-        });
-    }
-
-    Ok(())
+    restore_clipboard_after_delay(previous);
+    Ok(PasteOutcome::ActiveApp)
 }
 
-#[cfg(not(target_os = "windows"))]
-pub fn paste_text(text: &str) -> Result<()> {
-    let mut clipboard = arboard::Clipboard::new()?;
-    clipboard.set_text(text.to_owned())?;
-    Ok(())
+#[cfg(target_os = "macos")]
+fn paste_text_macos(text: &str) -> Result<PasteOutcome> {
+    use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+
+    const KEYCODE_COMMAND: u16 = 55;
+    const KEYCODE_V: u16 = 9;
+
+    let previous = prepare_paste(text)?;
+    let source = match CGEventSource::new(CGEventSourceStateID::CombinedSessionState) {
+        Some(source) => source,
+        None => {
+            restore_clipboard(previous);
+            bail!("failed to create macOS event source");
+        }
+    };
+
+    let command_down = match CGEvent::new_keyboard_event(source.clone(), KEYCODE_COMMAND, true) {
+        Some(event) => event,
+        None => {
+            restore_clipboard(previous);
+            bail!("failed to prepare Command key event");
+        }
+    };
+    command_down.post(CGEventTapLocation::HID);
+
+    let v_down = match CGEvent::new_keyboard_event(source.clone(), KEYCODE_V, true) {
+        Some(event) => event,
+        None => {
+            restore_clipboard(previous);
+            bail!("failed to prepare V key event");
+        }
+    };
+    v_down.set_flags(CGEventFlags::CGEventFlagMaskCommand);
+    v_down.post(CGEventTapLocation::HID);
+
+    let v_up = match CGEvent::new_keyboard_event(source.clone(), KEYCODE_V, false) {
+        Some(event) => event,
+        None => {
+            restore_clipboard(previous);
+            bail!("failed to prepare V key release");
+        }
+    };
+    v_up.set_flags(CGEventFlags::CGEventFlagMaskCommand);
+    v_up.post(CGEventTapLocation::HID);
+
+    let command_up = match CGEvent::new_keyboard_event(source, KEYCODE_COMMAND, false) {
+        Some(event) => event,
+        None => {
+            restore_clipboard(previous);
+            bail!("failed to prepare Command key release");
+        }
+    };
+    command_up.post(CGEventTapLocation::HID);
+
+    restore_clipboard_after_delay(previous);
+    Ok(PasteOutcome::ActiveApp)
+}
+
+#[cfg(target_os = "linux")]
+fn paste_text_linux(text: &str) -> Result<PasteOutcome> {
+    if !x11_display_available() {
+        copy_to_clipboard(text)?;
+        return Ok(PasteOutcome::ClipboardOnly);
+    }
+
+    let previous = prepare_paste(text)?;
+
+    unsafe {
+        use std::ffi::CString;
+        use std::ptr;
+        use x11::{xlib, xtest};
+
+        let display = xlib::XOpenDisplay(ptr::null());
+        if display.is_null() {
+            copy_to_clipboard(text)?;
+            return Ok(PasteOutcome::ClipboardOnly);
+        }
+
+        let control_keysym = CString::new("Control_L").expect("static keysym");
+        let v_keysym = CString::new("v").expect("static keysym");
+
+        let control_keycode =
+            xlib::XKeysymToKeycode(display, xlib::XStringToKeysym(control_keysym.as_ptr()) as _);
+        let v_keycode =
+            xlib::XKeysymToKeycode(display, xlib::XStringToKeysym(v_keysym.as_ptr()) as _);
+
+        if control_keycode == 0 || v_keycode == 0 {
+            xlib::XCloseDisplay(display);
+            restore_clipboard(previous);
+            bail!("failed to resolve X11 paste keycodes");
+        }
+
+        if xtest::XTestFakeKeyEvent(display, control_keycode as u32, 1, 0) == 0
+            || xtest::XTestFakeKeyEvent(display, v_keycode as u32, 1, 0) == 0
+            || xtest::XTestFakeKeyEvent(display, v_keycode as u32, 0, 0) == 0
+            || xtest::XTestFakeKeyEvent(display, control_keycode as u32, 0, 0) == 0
+        {
+            xlib::XCloseDisplay(display);
+            restore_clipboard(previous);
+            bail!("X11 paste event injection failed");
+        }
+
+        xlib::XFlush(display);
+        xlib::XCloseDisplay(display);
+    }
+
+    restore_clipboard_after_delay(previous);
+    Ok(PasteOutcome::ActiveApp)
+}
+
+#[cfg(target_os = "linux")]
+fn x11_display_available() -> bool {
+    unsafe {
+        use std::ptr;
+        use x11::xlib;
+
+        let display = xlib::XOpenDisplay(ptr::null());
+        if display.is_null() {
+            return false;
+        }
+
+        xlib::XCloseDisplay(display);
+    }
+
+    true
 }

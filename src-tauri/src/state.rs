@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -44,6 +45,23 @@ pub(crate) enum InferenceProvider {
     #[default]
     Cpu,
     Directml,
+    Webgpu,
+}
+
+impl InferenceProvider {
+    pub(crate) fn is_accelerated(self) -> bool {
+        !matches!(self, Self::Cpu)
+    }
+}
+
+impl fmt::Display for InferenceProvider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Cpu => f.write_str("CPU"),
+            Self::Directml => f.write_str("DirectML"),
+            Self::Webgpu => f.write_str("WebGPU"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -421,6 +439,8 @@ pub(crate) struct ModelDownloadProgress {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Snapshot {
     pub(crate) phase: AppPhase,
+    pub(crate) platform: platform::PlatformKind,
+    pub(crate) auto_paste_support: platform::AutoPasteSupport,
     pub(crate) settings: Settings,
     pub(crate) sources: Vec<SourceInfo>,
     pub(crate) history: Vec<HistoryItem>,
@@ -444,7 +464,7 @@ pub(crate) struct SystemProfile {
     pub(crate) total_memory_bytes: u64,
     pub(crate) gpu_name: Option<String>,
     pub(crate) gpu_memory_bytes: u64,
-    pub(crate) directml_available: bool,
+    pub(crate) supported_acceleration_providers: Vec<InferenceProvider>,
 }
 
 #[derive(Debug, Clone, Serialize)]

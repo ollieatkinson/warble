@@ -202,10 +202,10 @@ export function ControlApp({
 
           {activeSection === "interface" ? (
             <InterfaceSection
+              snapshot={currentSnapshot}
               draft={draft}
               onApplySettings={applySettings}
               installedStreamingModels={installedStreamingModels}
-              directmlAvailable={currentSnapshot.systemProfile.directmlAvailable}
               previewDiagnostics={currentSnapshot.previewDiagnostics}
             />
           ) : null}
