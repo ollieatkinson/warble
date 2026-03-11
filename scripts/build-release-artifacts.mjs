@@ -168,7 +168,7 @@ function normalizeArch(nodeArch) {
 }
 
 function resolveCommand(command) {
-  if (process.platform === "win32" && !command.endsWith(".cmd")) {
+  if (process.platform === "win32" && path.extname(command) === "") {
     return `${command}.cmd`;
   }
 
@@ -176,16 +176,20 @@ function resolveCommand(command) {
 }
 
 function runChecked(command, commandArgs, options = {}) {
-  const result = spawnSync(command, commandArgs, {
+  const resolvedCommand = resolveCommand(command);
+  const result = spawnSync(resolvedCommand, commandArgs, {
     cwd: options.cwd,
     env: process.env,
-    shell: false,
+    shell:
+      process.platform === "win32" &&
+      resolvedCommand.toLowerCase().endsWith(".cmd"),
     stdio: "inherit",
+    windowsHide: true,
   });
 
   if (typeof result.status === "number" && result.status !== 0) {
     throw new Error(
-      `Command failed (${result.status}): ${command} ${commandArgs.join(" ")}`,
+      `Command failed (${result.status}): ${resolvedCommand} ${commandArgs.join(" ")}`,
     );
   }
 

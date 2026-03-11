@@ -81,6 +81,9 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
