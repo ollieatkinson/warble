@@ -1,4 +1,7 @@
-use anyhow::{anyhow, Context, Result};
+#[cfg(target_os = "windows")]
+use anyhow::Context;
+use anyhow::{anyhow, Result};
+#[cfg(target_os = "windows")]
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -10,6 +13,7 @@ pub(crate) fn ensure_ort_initialized() -> Result<()> {
     result.clone().map_err(|error| anyhow!(error))
 }
 
+#[cfg(target_os = "windows")]
 pub(crate) fn directml_runtime_available() -> bool {
     let Some(runtime_dir) = ort_runtime_dir() else {
         return false;
@@ -58,6 +62,7 @@ fn ort_dylib_path() -> Option<PathBuf> {
         })
 }
 
+#[cfg(target_os = "windows")]
 fn ort_runtime_dir() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()

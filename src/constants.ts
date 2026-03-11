@@ -122,7 +122,7 @@ export const colorThemeOptions: Array<{
   label: string;
   description: string;
 }> = [
-  { id: "system", label: "System", description: "Follow Windows appearance." },
+  { id: "system", label: "System", description: "Follow your system appearance." },
   { id: "light", label: "Light", description: "Always use light theme." },
   { id: "dark", label: "Dark", description: "Always use dark theme." },
 ];

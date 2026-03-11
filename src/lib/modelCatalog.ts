@@ -1,5 +1,16 @@
-import type { ModelFeatureItem, ModelFilter, ModelRow, Snapshot, SystemProfile } from "../types";
-import { formatBytes, formatSystemProfile } from "./utils";
+import type {
+  AccelerationProvider,
+  ModelFeatureItem,
+  ModelFilter,
+  ModelRow,
+  Snapshot,
+  SystemProfile,
+} from "../types";
+import {
+  formatAccelerationProvider,
+  formatBytes,
+  formatSystemProfile,
+} from "./utils";
 
 const MODEL_CATALOG: Array<
   Omit<ModelRow, "state" | "source" | "managed" | "active" | "selectable" | "path">
@@ -19,22 +30,22 @@ const MODEL_CATALOG: Array<
     runtime: "Ready in app",
     license: "See model card",
     supportsDefaultSelection: true,
-    directmlCapable: true,
+    supportedAccelerationProviders: ["directml", "webgpu"],
     summary:
       "Multilingual long-form offline dictation model for final microphone and file transcription.",
     note:
-      "Transcribed uses parakeet-rs for this model and will prefer DirectML on Windows, then fall back to CPU if needed. In-app chunking now treats TDT v3 as the long-form batch option.",
+      "Transcribed uses parakeet-rs for this model and will prefer DirectML on Windows, WebGPU on macOS/Linux, then fall back to CPU if needed. In-app chunking treats TDT v3 as the long-form batch option.",
     bestFor: "Long-form multilingual dictation",
     capabilities: ["TDT decoder", "Auto language detection", "Token timestamps"],
     featureBadges: [
       { id: "local", label: "Local", icon: "cpu" },
       { id: "tdt", label: "TDT", icon: "spark" },
-      { id: "directml", label: "DirectML", icon: "bolt" },
+      { id: "gpu", label: "GPU", icon: "bolt" },
       { id: "timed", label: "Timed", icon: "clock" },
     ],
     highlights: [
       "Current default final transcription engine in Transcribed",
-      "Uses parakeet-rs with DirectML preference on Windows",
+      "Uses DirectML on Windows and WebGPU on macOS/Linux when available",
       "Best balance of speed, multilingual coverage, and long-form support today",
     ],
     hfUrl: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3",
@@ -65,7 +76,7 @@ const MODEL_CATALOG: Array<
     runtime: "Ready when installed",
     license: "See model card",
     supportsDefaultSelection: true,
-    directmlCapable: true,
+    supportedAccelerationProviders: ["directml", "webgpu"],
     summary:
       "English-first Parakeet variant aimed at fast offline transcription with punctuation and capitalization.",
     note:
@@ -75,7 +86,7 @@ const MODEL_CATALOG: Array<
     featureBadges: [
       { id: "offline", label: "Offline", icon: "cpu" },
       { id: "ctc", label: "CTC", icon: "spark" },
-      { id: "directml", label: "DirectML", icon: "bolt" },
+      { id: "gpu", label: "GPU", icon: "bolt" },
       { id: "timed", label: "Timed", icon: "clock" },
     ],
     highlights: [
@@ -114,18 +125,18 @@ const MODEL_CATALOG: Array<
     runtime: "Streaming add-on",
     license: "See model card",
     supportsDefaultSelection: false,
-    directmlCapable: true,
+    supportedAccelerationProviders: ["directml", "webgpu"],
     summary:
       "Lightweight streaming ASR model with end-of-utterance detection for low-latency voice UX.",
     note:
-      "The best candidate for a low-latency live transcript path, with GPU acceleration available on Windows through DirectML in parakeet-rs.",
+      "The best candidate for a low-latency live transcript path, with GPU acceleration available through DirectML on Windows and WebGPU on macOS/Linux.",
     bestFor: "Low-latency live dictation",
     capabilities: ["EOU detection", "160 ms chunking", "Stateful streaming"],
     unlockedFeatures: ["Live transcript", "Low-latency preview", "Long-form guidance"],
     featureBadges: [
       { id: "stream", label: "Streaming", icon: "bolt" },
       { id: "eou", label: "EOU", icon: "clock" },
-      { id: "directml", label: "DirectML", icon: "bolt" },
+      { id: "gpu", label: "GPU", icon: "bolt" },
     ],
     highlights: [
       "Lowest-footprint speech model in the current supported set",
@@ -162,18 +173,18 @@ const MODEL_CATALOG: Array<
     runtime: "Streaming add-on",
     license: "See model card",
     supportsDefaultSelection: false,
-    directmlCapable: true,
+    supportedAccelerationProviders: ["directml", "webgpu"],
     summary:
       "English streaming model with punctuation-oriented decoding and a cache-aware inference path.",
     note:
-      "A stronger live transcript candidate than the batch models when you want cleaner punctuation, with DirectML GPU acceleration available on Windows through parakeet-rs.",
+      "A stronger live transcript candidate than the batch models when you want cleaner punctuation, with DirectML on Windows and WebGPU on macOS/Linux available through parakeet-rs.",
     bestFor: "Streaming English transcription with punctuation",
     capabilities: ["Cache-aware streaming", "Punctuation-friendly", "Batch + stream capable"],
     unlockedFeatures: ["Live transcript", "Punctuated live transcript", "Long-form guidance"],
     featureBadges: [
       { id: "stream", label: "Streaming", icon: "bolt" },
       { id: "timed", label: "Punctuated", icon: "clock" },
-      { id: "directml", label: "DirectML", icon: "bolt" },
+      { id: "gpu", label: "GPU", icon: "bolt" },
     ],
     highlights: [
       "Higher-quality live preview option than EOU",
@@ -235,6 +246,18 @@ function isManagedModelPath(path: string) {
   return /[\\/]catalog-models(?:[\\/]|$)/i.test(path);
 }
 
+function providerIntersection(
+  modelProviders: AccelerationProvider[] | undefined,
+  systemProviders: AccelerationProvider[],
+) {
+  const providers = modelProviders ?? [];
+  return providers.filter((provider) => systemProviders.includes(provider));
+}
+
+function formatPreferredProviderLabel(providers: AccelerationProvider[]) {
+  return providers[0] ? formatAccelerationProvider(providers[0]) : "CPU";
+}
+
 export function buildModelRows(snapshot: Snapshot): ModelRow[] {
   const activeModelId = snapshot.settings.selectedModelId;
 
@@ -289,8 +312,16 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
       runtime: isReady
         ? supportsDefaultSelection
           ? "Ready in app"
-          : entry.directmlCapable && snapshot.systemProfile.directmlAvailable
-            ? "Installed add-on · DirectML ready"
+          : providerIntersection(
+                entry.supportedAccelerationProviders,
+                snapshot.systemProfile.supportedAccelerationProviders,
+              ).length > 0
+            ? `Installed add-on · ${formatPreferredProviderLabel(
+                providerIntersection(
+                  entry.supportedAccelerationProviders,
+                  snapshot.systemProfile.supportedAccelerationProviders,
+                ),
+              )} available`
             : "Installed add-on"
         : supportsDownload
           ? "Download in app"
@@ -377,20 +408,19 @@ export function describeHardwareFit(row: ModelRow, profile: SystemProfile) {
     row.recommendedGpuMemoryBytes ?? minimumGpuMemory;
   const minimumCores = row.minimumCores ?? 1;
   const recommendedCores = row.recommendedCores ?? minimumCores;
-  const requiresGpu = Boolean(row.directmlCapable);
-  const gpuMissing = requiresGpu && !profile.directmlAvailable;
+  const supportedProviders = providerIntersection(
+    row.supportedAccelerationProviders,
+    profile.supportedAccelerationProviders,
+  );
+  const preferredProvider = supportedProviders[0] ?? null;
+  const accelerationAvailable = supportedProviders.length > 0;
+  const accelerationLabel = preferredProvider
+    ? formatAccelerationProvider(preferredProvider)
+    : "CPU";
   const gpuRecommendedMet =
-    !requiresGpu || recommendedGpuMemory <= 0 || gpuMemory >= recommendedGpuMemory;
+    !accelerationAvailable || recommendedGpuMemory <= 0 || gpuMemory >= recommendedGpuMemory;
   const gpuMinimumMet =
-    !requiresGpu || minimumGpuMemory <= 0 || gpuMemory >= minimumGpuMemory;
-
-  if (gpuMissing) {
-    return {
-      label: "CPU only",
-      tone: "warning",
-      detail: `${row.name} can use DirectML GPU acceleration on Windows, but this machine does not currently look DirectML-ready. Target: ${formatHardwareTarget(row)}.`,
-    } as const;
-  }
+    !accelerationAvailable || minimumGpuMemory <= 0 || gpuMemory >= minimumGpuMemory;
 
   if (
     memory >= recommendedMemory &&
@@ -398,7 +428,7 @@ export function describeHardwareFit(row: ModelRow, profile: SystemProfile) {
     gpuRecommendedMet
   ) {
     return {
-      label: requiresGpu ? "Great fit · DirectML" : "Great fit",
+      label: accelerationAvailable ? `Great fit · ${accelerationLabel}` : "Great fit",
       tone: "success",
       detail: `${formatSystemProfile(profile)} should run ${row.name} comfortably.`,
     } as const;
@@ -406,9 +436,17 @@ export function describeHardwareFit(row: ModelRow, profile: SystemProfile) {
 
   if (memory >= minimumMemory && cores >= minimumCores && gpuMinimumMet) {
     return {
-      label: requiresGpu ? "Should work · DirectML" : "Should work",
+      label: accelerationAvailable ? `Should work · ${accelerationLabel}` : "Should work",
       tone: "accent",
       detail: `${formatSystemProfile(profile)} should handle ${row.name}, but expect heavier CPU/RAM use than the recommended target of ${formatHardwareTarget(row)}.`,
+    } as const;
+  }
+
+  if ((row.supportedAccelerationProviders?.length ?? 0) > 0 && !accelerationAvailable) {
+    return {
+      label: "CPU only",
+      tone: "warning",
+      detail: `${row.name} supports GPU acceleration through DirectML on Windows and WebGPU on macOS/Linux, but this installation is currently using the CPU path. Target: ${formatHardwareTarget(row)}.`,
     } as const;
   }
 

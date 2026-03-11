@@ -1,9 +1,8 @@
 use anyhow::{anyhow, Context, Result};
-use parakeet_rs::{
-    ExecutionConfig, ExecutionProvider as LibraryExecutionProvider, Nemotron, ParakeetEOU,
-};
+use parakeet_rs::{Nemotron, ParakeetEOU};
 use std::path::{Path, PathBuf};
 
+use crate::inference;
 use crate::runtime;
 use crate::state::{LivePreviewModelPreference, Settings, SystemProfile};
 
@@ -59,7 +58,7 @@ impl StreamingPreviewBackend {
 pub(crate) struct StreamingPreviewConfig {
     backend: StreamingPreviewBackend,
     model_path: PathBuf,
-    directml_enabled: bool,
+    preferred_provider: crate::state::InferenceProvider,
 }
 
 impl StreamingPreviewConfig {
@@ -76,18 +75,25 @@ pub(crate) fn resolve_streaming_preview_config(
     settings: &Settings,
     system_profile: &SystemProfile,
 ) -> Option<StreamingPreviewConfig> {
-    let directml_enabled = system_profile.directml_available;
+    let preferred_provider = system_profile
+        .supported_acceleration_providers
+        .first()
+        .copied()
+        .unwrap_or(crate::state::InferenceProvider::Cpu);
     let preferred_order = match settings.live_preview_model {
-        LivePreviewModelPreference::Auto | LivePreviewModelPreference::NemotronStreaming => {
-            [StreamingPreviewBackend::Nemotron, StreamingPreviewBackend::Eou]
-        }
-        LivePreviewModelPreference::ParakeetEou => {
-            [StreamingPreviewBackend::Eou, StreamingPreviewBackend::Nemotron]
-        }
+        LivePreviewModelPreference::Auto | LivePreviewModelPreference::NemotronStreaming => [
+            StreamingPreviewBackend::Nemotron,
+            StreamingPreviewBackend::Eou,
+        ],
+        LivePreviewModelPreference::ParakeetEou => [
+            StreamingPreviewBackend::Eou,
+            StreamingPreviewBackend::Nemotron,
+        ],
     };
 
     for backend in preferred_order {
-        if let Some(config) = ready_streaming_preview_config(settings, directml_enabled, backend) {
+        if let Some(config) = ready_streaming_preview_config(settings, preferred_provider, backend)
+        {
             return Some(config);
         }
     }
@@ -97,7 +103,7 @@ pub(crate) fn resolve_streaming_preview_config(
 
 fn ready_streaming_preview_config(
     settings: &Settings,
-    directml_enabled: bool,
+    preferred_provider: crate::state::InferenceProvider,
     backend: StreamingPreviewBackend,
 ) -> Option<StreamingPreviewConfig> {
     let model_id = match backend {
@@ -112,7 +118,7 @@ fn ready_streaming_preview_config(
     ready.then_some(StreamingPreviewConfig {
         backend,
         model_path,
-        directml_enabled,
+        preferred_provider,
     })
 }
 
@@ -132,11 +138,11 @@ impl StreamingPreviewEngine {
     pub(crate) fn load(config: &StreamingPreviewConfig) -> Result<Self> {
         let runtime = match config.backend {
             StreamingPreviewBackend::Nemotron => StreamingPreviewRuntime::Nemotron(
-                load_nemotron_runtime(&config.model_path, config.directml_enabled)?,
+                load_nemotron_runtime(&config.model_path, config.preferred_provider)?,
             ),
             StreamingPreviewBackend::Eou => StreamingPreviewRuntime::Eou(load_eou_runtime(
                 &config.model_path,
-                config.directml_enabled,
+                config.preferred_provider,
             )?),
         };
 
@@ -200,69 +206,40 @@ impl StreamingPreviewEngine {
     }
 }
 
-fn load_nemotron_runtime(model_path: &Path, directml_enabled: bool) -> Result<Nemotron> {
+fn load_nemotron_runtime(
+    model_path: &Path,
+    preferred_provider: crate::state::InferenceProvider,
+) -> Result<Nemotron> {
     runtime::ensure_ort_initialized()?;
-    load_with_directml_fallback(directml_enabled, |use_directml| {
-        Nemotron::from_pretrained(model_path, Some(execution_config(use_directml)))
+    load_with_provider_fallback(preferred_provider, |provider| {
+        Nemotron::from_pretrained(model_path, Some(inference::execution_config(provider)))
             .map_err(|error| anyhow!("failed to load Nemotron streaming runtime: {error}"))
     })
 }
 
-fn load_eou_runtime(model_path: &Path, directml_enabled: bool) -> Result<ParakeetEOU> {
+fn load_eou_runtime(
+    model_path: &Path,
+    preferred_provider: crate::state::InferenceProvider,
+) -> Result<ParakeetEOU> {
     runtime::ensure_ort_initialized()?;
-    load_with_directml_fallback(directml_enabled, |use_directml| {
-        ParakeetEOU::from_pretrained(model_path, Some(execution_config(use_directml)))
+    load_with_provider_fallback(preferred_provider, |provider| {
+        ParakeetEOU::from_pretrained(model_path, Some(inference::execution_config(provider)))
             .map_err(|error| anyhow!("failed to load Parakeet EOU runtime: {error}"))
     })
 }
 
-fn load_with_directml_fallback<T>(
-    directml_enabled: bool,
-    loader: impl Fn(bool) -> Result<T>,
+fn load_with_provider_fallback<T>(
+    preferred_provider: crate::state::InferenceProvider,
+    loader: impl Fn(crate::state::InferenceProvider) -> Result<T>,
 ) -> Result<T> {
-    if directml_enabled {
-        match loader(true) {
-            Ok(runtime) => return Ok(runtime),
-            Err(directml_error) => {
-                return loader(false)
-                    .with_context(|| format!("{directml_error}; falling back to CPU"));
-            }
+    match loader(preferred_provider) {
+        Ok(runtime) => Ok(runtime),
+        Err(primary_error) if preferred_provider != crate::state::InferenceProvider::Cpu => {
+            loader(crate::state::InferenceProvider::Cpu)
+                .with_context(|| format!("{primary_error}; falling back to CPU"))
         }
+        Err(error) => Err(error),
     }
-
-    loader(false)
-}
-
-fn execution_config(directml_enabled: bool) -> ExecutionConfig {
-    let provider = if directml_enabled {
-        #[cfg(target_os = "windows")]
-        {
-            LibraryExecutionProvider::DirectML
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            LibraryExecutionProvider::Cpu
-        }
-    } else {
-        LibraryExecutionProvider::Cpu
-    };
-
-    let config = ExecutionConfig::new()
-        .with_execution_provider(provider)
-        .with_intra_threads(4)
-        .with_inter_threads(1);
-
-    config.with_custom_configure(move |builder| {
-        let builder = builder
-            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
-        if directml_enabled {
-            Ok(builder
-                .with_parallel_execution(false)?
-                .with_memory_pattern(false)?)
-        } else {
-            Ok(builder)
-        }
-    })
 }
 
 fn eou_model_ready_in_dir(model_dir: &Path) -> bool {
@@ -275,4 +252,35 @@ fn nemotron_model_ready_in_dir(model_dir: &Path) -> bool {
     NEMOTRON_REQUIRED_FILES
         .iter()
         .all(|filename| model_dir.join(filename).exists())
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::anyhow;
+
+    use super::load_with_provider_fallback;
+    use crate::state::InferenceProvider;
+
+    #[test]
+    fn load_with_provider_fallback_uses_cpu_after_webgpu_failure() {
+        let value =
+            load_with_provider_fallback(InferenceProvider::Webgpu, |provider| match provider {
+                InferenceProvider::Webgpu => Err(anyhow!("webgpu failed")),
+                InferenceProvider::Cpu => Ok("cpu"),
+                InferenceProvider::Directml => unreachable!(),
+            })
+            .expect("cpu fallback should succeed");
+
+        assert_eq!(value, "cpu");
+    }
+
+    #[test]
+    fn load_with_provider_fallback_returns_cpu_error_without_retry() {
+        let error = load_with_provider_fallback(InferenceProvider::Cpu, |_| {
+            Err::<(), _>(anyhow!("cpu failed"))
+        })
+        .expect_err("cpu-only load should fail immediately");
+
+        assert!(error.to_string().contains("cpu failed"));
+    }
 }

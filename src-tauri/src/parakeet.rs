@@ -1,10 +1,8 @@
 use anyhow::{anyhow, bail, Context, Result};
-use parakeet_rs::{
-    ExecutionConfig, ExecutionProvider as LibraryExecutionProvider, Parakeet,
-    ParakeetTDT as LibraryParakeetTdt, TimestampMode, Transcriber,
-};
+use parakeet_rs::{Parakeet, ParakeetTDT as LibraryParakeetTdt, TimestampMode, Transcriber};
 use std::path::{Path, PathBuf};
 
+use crate::inference;
 use crate::runtime;
 use crate::state::InferenceProvider;
 
@@ -55,12 +53,13 @@ impl ParakeetTdt {
 
         runtime::ensure_ort_initialized()?;
 
-        let preferred_provider = preferred_inference_provider();
-        let (provider, runtime) =
-            load_with_directml_fallback(preferred_provider, |use_directml| {
-                LibraryParakeetTdt::from_pretrained(model_dir, Some(execution_config(use_directml)))
-                    .map_err(|error| anyhow!("failed to load Parakeet TDT runtime: {error}"))
-            })?;
+        let (provider, runtime) = inference::load_with_provider_fallback(|provider| {
+            LibraryParakeetTdt::from_pretrained(
+                model_dir,
+                Some(inference::execution_config(provider)),
+            )
+            .map_err(|error| anyhow!("failed to load Parakeet TDT runtime: {error}"))
+        })?;
 
         Ok(Self { runtime, provider })
     }
@@ -111,12 +110,10 @@ impl ParakeetCtc {
 
         runtime::ensure_ort_initialized()?;
 
-        let preferred_provider = preferred_inference_provider();
-        let (provider, runtime) =
-            load_with_directml_fallback(preferred_provider, |use_directml| {
-                Parakeet::from_pretrained(model_dir, Some(execution_config(use_directml)))
-                    .map_err(|error| anyhow!("failed to load Parakeet CTC runtime: {error}"))
-            })?;
+        let (provider, runtime) = inference::load_with_provider_fallback(|provider| {
+            Parakeet::from_pretrained(model_dir, Some(inference::execution_config(provider)))
+                .map_err(|error| anyhow!("failed to load Parakeet CTC runtime: {error}"))
+        })?;
 
         Ok(Self { runtime, provider })
     }
@@ -187,70 +184,6 @@ fn has_any_file(dir: &Path, candidates: &[&str]) -> bool {
         .any(|filename| dir.join(filename).exists())
 }
 
-fn load_with_directml_fallback<T>(
-    preferred_provider: InferenceProvider,
-    loader: impl Fn(bool) -> Result<T>,
-) -> Result<(InferenceProvider, T)> {
-    if preferred_provider == InferenceProvider::Directml {
-        match loader(true) {
-            Ok(runtime) => return Ok((InferenceProvider::Directml, runtime)),
-            Err(directml_error) => {
-                let runtime = loader(false)
-                    .with_context(|| format!("{directml_error}; falling back to CPU"))?;
-                return Ok((InferenceProvider::Cpu, runtime));
-            }
-        }
-    }
-
-    Ok((InferenceProvider::Cpu, loader(false)?))
-}
-
-fn execution_config(directml_enabled: bool) -> ExecutionConfig {
-    let provider = if directml_enabled {
-        #[cfg(target_os = "windows")]
-        {
-            LibraryExecutionProvider::DirectML
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            LibraryExecutionProvider::Cpu
-        }
-    } else {
-        LibraryExecutionProvider::Cpu
-    };
-
-    let config = ExecutionConfig::new()
-        .with_execution_provider(provider)
-        .with_intra_threads(4)
-        .with_inter_threads(1);
-
-    config.with_custom_configure(move |builder| {
-        let builder = builder
-            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
-        if directml_enabled {
-            Ok(builder
-                .with_parallel_execution(false)?
-                .with_memory_pattern(false)?)
-        } else {
-            Ok(builder)
-        }
-    })
-}
-
-fn preferred_inference_provider() -> InferenceProvider {
-    #[cfg(target_os = "windows")]
-    if directml_runtime_available() {
-        return InferenceProvider::Directml;
-    }
-
-    InferenceProvider::Cpu
-}
-
-#[cfg(target_os = "windows")]
-fn directml_runtime_available() -> bool {
-    runtime::directml_runtime_available()
-}
-
 fn normalize_output_text(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -279,8 +212,8 @@ pub fn resample_to_16khz(input: &[f32], from_rate: u32) -> Vec<f32> {
 }
 
 fn read_wav_mono(path: &Path) -> Result<Vec<f32>> {
-    let mut reader =
-        hound::WavReader::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    let mut reader = hound::WavReader::open(path)
+        .with_context(|| format!("failed to open {}", path.display()))?;
     let spec = reader.spec();
     let channels = usize::from(spec.channels.max(1));
 

@@ -10,6 +10,7 @@ use super::persistence::save_persisted_state;
 use crate::constants::EVENT_SNAPSHOT;
 use crate::models::{built_in_parakeet_status, current_model_status, installed_model_sizes};
 use crate::overlay::update_indicator_window;
+use crate::platform;
 use crate::state::{SharedState, Snapshot};
 
 pub(crate) fn live_preview_log_path(app: &AppHandle) -> Result<PathBuf> {
@@ -36,6 +37,8 @@ pub(crate) fn build_snapshot(app: &AppHandle, shared: &SharedState) -> Snapshot 
         .map(|path| path.to_string_lossy().into_owned());
     Snapshot {
         phase: core.phase.clone(),
+        platform: platform::current_platform(),
+        auto_paste_support: platform::auto_paste_support(),
         settings: core.settings.clone(),
         sources: core.sources.clone(),
         history: core.history.clone(),

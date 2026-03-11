@@ -8,7 +8,9 @@ use crate::audio::{enumerate_sources, resolve_selected_device};
 use crate::constants::*;
 use crate::live_preview;
 use crate::models::*;
-use crate::overlay::{clear_overlay_session_state, default_overlay_levels, update_indicator_window};
+use crate::overlay::{
+    clear_overlay_session_state, default_overlay_levels, update_indicator_window,
+};
 use crate::state::*;
 use crate::storage::*;
 use crate::transcript::note_preview_diagnostic;
@@ -100,9 +102,7 @@ pub(crate) fn begin_recording(
     Ok(())
 }
 
-pub(crate) fn finalize_recording(
-    session: RecordingSession,
-) -> Result<Option<CompletedRecording>> {
+pub(crate) fn finalize_recording(session: RecordingSession) -> Result<Option<CompletedRecording>> {
     drop(session.stream);
 
     let samples = {
@@ -184,10 +184,7 @@ pub(crate) fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()
     Ok(())
 }
 
-pub(crate) fn cancel_current_operation(
-    app: &AppHandle,
-    shared: &SharedState,
-) -> Result<()> {
+pub(crate) fn cancel_current_operation(app: &AppHandle, shared: &SharedState) -> Result<()> {
     let preview_control = app.state::<PreviewControl>();
     let phase = {
         let core = shared.lock();

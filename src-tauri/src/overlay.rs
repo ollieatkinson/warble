@@ -100,7 +100,9 @@ pub(crate) fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f
 
     let nyquist = sample_rate as f32 * 0.5;
     let min_frequency = MIN_ANALYSIS_FREQ_HZ;
-    let max_frequency = (nyquist * NYQUIST_FRACTION).min(MAX_ANALYSIS_FREQ_HZ).max(min_frequency * 1.5);
+    let max_frequency = (nyquist * NYQUIST_FRACTION)
+        .min(MAX_ANALYSIS_FREQ_HZ)
+        .max(min_frequency * 1.5);
     let ratio = (max_frequency / min_frequency).powf(1.0 / (LIVE_METER_BAR_COUNT as f32 - 1.0));
 
     let powers = (0..LIVE_METER_BAR_COUNT)
@@ -127,7 +129,11 @@ pub(crate) fn measure_overlay_levels(samples: &[f32], sample_rate: u32) -> Vec<f
     for (index, level) in levels.iter_mut().enumerate() {
         let normalized = (powers[index] / max_power).clamp(0.0, 1.0).sqrt();
         let gated = (normalized * activity).clamp(0.0, 1.0);
-        *level = if gated < LEVEL_GATE_THRESHOLD { 0.0 } else { gated };
+        *level = if gated < LEVEL_GATE_THRESHOLD {
+            0.0
+        } else {
+            gated
+        };
     }
 
     levels
@@ -173,7 +179,8 @@ fn live_transcript_line_count(lines: &LiveTranscriptLines) -> i32 {
 
 pub(crate) fn fallback_indicator_window_size(settings: &Settings) -> (i32, i32) {
     let content_height = if settings.show_live_transcription {
-        let copy_height = live_transcript_line_count(&settings.live_transcript_lines) * TRANSCRIPT_LINE_HEIGHT;
+        let copy_height =
+            live_transcript_line_count(&settings.live_transcript_lines) * TRANSCRIPT_LINE_HEIGHT;
         let row_height = if matches!(
             settings.overlay_animation_style,
             OverlayAnimationStyle::Radial

@@ -14,6 +14,15 @@ export function KeybindingsSection({
   onSetCapturing: (value: ShortcutFieldName | null) => void;
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
 }) {
+  const autoPasteDetail =
+    snapshot.autoPasteSupport === "active-app"
+      ? snapshot.platform === "macos"
+        ? "Transcribed will use Cmd+V after final transcription. macOS may ask for Accessibility permission."
+        : snapshot.platform === "linux"
+          ? "Transcribed will paste into the active app when an X11 display is available."
+          : "Transcribed will paste into the active app after the final transcript is ready."
+      : "This session will copy the transcript to the clipboard instead of pasting into the active app.";
+
   return (
     <section className="compact-grid-two">
       <article className="surface">
@@ -71,7 +80,7 @@ export function KeybindingsSection({
           />
           <div>
             <strong>Auto paste</strong>
-            <span>Paste after the final transcript is ready.</span>
+            <span>{autoPasteDetail}</span>
           </div>
         </label>
       </article>

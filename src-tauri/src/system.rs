@@ -1,7 +1,10 @@
+use crate::inference;
 use crate::state::SystemProfile;
 
 #[cfg(target_os = "windows")]
 use serde_json::Value;
+#[cfg(target_os = "macos")]
+use std::process::Command;
 #[cfg(target_os = "windows")]
 use std::process::Command;
 #[cfg(target_os = "windows")]
@@ -15,9 +18,10 @@ pub(crate) fn detect_system_profile() -> SystemProfile {
     let logical_cores = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(4);
+    let supported_acceleration_providers = inference::supported_acceleration_providers();
 
     #[cfg(target_os = "windows")]
-    let (total_memory_bytes, gpu_name, gpu_memory_bytes, directml_available) = {
+    let (total_memory_bytes, gpu_name, gpu_memory_bytes) = {
         let mut status = MEMORYSTATUSEX::default();
         status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
         let total_memory_bytes = unsafe {
@@ -28,30 +32,25 @@ pub(crate) fn detect_system_profile() -> SystemProfile {
             }
         };
         let (gpu_name, gpu_memory_bytes) = detect_primary_gpu();
-        let directml_available = gpu_name.is_some() && directml_runtime_available();
-        (
-            total_memory_bytes,
-            gpu_name,
-            gpu_memory_bytes,
-            directml_available,
-        )
+        (total_memory_bytes, gpu_name, gpu_memory_bytes)
     };
 
-    #[cfg(not(target_os = "windows"))]
-    let (total_memory_bytes, gpu_name, gpu_memory_bytes, directml_available) = (0, None, 0, false);
+    #[cfg(target_os = "linux")]
+    let (total_memory_bytes, gpu_name, gpu_memory_bytes) = (linux_total_memory_bytes(), None, 0);
+
+    #[cfg(target_os = "macos")]
+    let (total_memory_bytes, gpu_name, gpu_memory_bytes) = (macos_total_memory_bytes(), None, 0);
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+    let (total_memory_bytes, gpu_name, gpu_memory_bytes) = (0, None, 0);
 
     SystemProfile {
         logical_cores,
         total_memory_bytes,
         gpu_name,
         gpu_memory_bytes,
-        directml_available,
+        supported_acceleration_providers,
     }
-}
-
-#[cfg(target_os = "windows")]
-fn directml_runtime_available() -> bool {
-    crate::runtime::directml_runtime_available()
 }
 
 #[cfg(target_os = "windows")]
@@ -155,4 +154,36 @@ fn detect_primary_gpu_via_wmi() -> (Option<String>, u64) {
         .unwrap_or(0);
 
     (name, gpu_memory_bytes)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_total_memory_bytes() -> u64 {
+    let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") else {
+        return 0;
+    };
+
+    meminfo
+        .lines()
+        .find_map(|line| {
+            let value = line.strip_prefix("MemTotal:")?.trim();
+            let kib = value.split_whitespace().next()?.parse::<u64>().ok()?;
+            Some(kib.saturating_mul(1024))
+        })
+        .unwrap_or(0)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_total_memory_bytes() -> u64 {
+    let Ok(output) = Command::new("sysctl").args(["-n", "hw.memsize"]).output() else {
+        return 0;
+    };
+
+    if !output.status.success() {
+        return 0;
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<u64>()
+        .unwrap_or(0)
 }

@@ -1,6 +1,7 @@
 mod audio;
 mod commands;
 mod constants;
+mod inference;
 mod live_preview;
 mod media;
 mod model_catalog;
@@ -117,7 +118,8 @@ pub fn run() {
                             if shortcut_text == cancel_shortcut
                                 && matches!(event.state, ShortcutState::Pressed)
                             {
-                                let _ = recording::cancel_current_operation(app, &state_for_shortcuts);
+                                let _ =
+                                    recording::cancel_current_operation(app, &state_for_shortcuts);
                                 return;
                             }
 
@@ -136,7 +138,10 @@ pub fn run() {
                                             core.phase.clone()
                                         };
                                         if matches!(phase, AppPhase::Recording) {
-                                            let _ = recording::stop_recording(app, &state_for_shortcuts);
+                                            let _ = recording::stop_recording(
+                                                app,
+                                                &state_for_shortcuts,
+                                            );
                                         }
                                     }
                                 }

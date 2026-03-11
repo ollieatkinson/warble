@@ -6,7 +6,9 @@ use uuid::Uuid;
 
 use crate::constants::*;
 use crate::models::*;
-use crate::overlay::{clear_overlay_session_state, default_overlay_levels, update_indicator_window};
+use crate::overlay::{
+    clear_overlay_session_state, default_overlay_levels, update_indicator_window,
+};
 use crate::state::*;
 use crate::storage::*;
 use crate::transcript::{cleanup_transcript_text, transcription_cancelled};
@@ -216,13 +218,20 @@ pub(crate) fn complete_transcription(
                         return;
                     }
 
-                    let pasted = {
-                        if settings.auto_paste {
-                            platform::paste_text(&text).is_ok()
-                        } else {
-                            false
-                        }
+                    let paste_result = if settings.auto_paste {
+                        Some(platform::paste_text(&text))
+                    } else {
+                        None
                     };
+                    let paste_outcome = paste_result
+                        .as_ref()
+                        .and_then(|result| result.as_ref().ok())
+                        .copied();
+                    let paste_error = paste_result
+                        .as_ref()
+                        .and_then(|result| result.as_ref().err())
+                        .map(ToString::to_string);
+                    let pasted = matches!(paste_outcome, Some(platform::PasteOutcome::ActiveApp));
                     let item_id = Uuid::new_v4().to_string();
                     let audio_path = save_history_audio(
                         &app,
@@ -261,12 +270,16 @@ pub(crate) fn complete_transcription(
                         remove_history_audio_file(item);
                     }
                     core.phase = AppPhase::Idle;
-                    core.status_message = if pasted {
-                        "Transcribed in Rust and pasted".to_string()
-                    } else {
-                        "Transcribed in Rust".to_string()
+                    core.status_message = match paste_outcome {
+                        Some(platform::PasteOutcome::ActiveApp) => {
+                            "Transcribed in Rust and pasted".to_string()
+                        }
+                        Some(platform::PasteOutcome::ClipboardOnly) => {
+                            "Transcribed in Rust and copied to clipboard".to_string()
+                        }
+                        None => "Transcribed in Rust".to_string(),
                     };
-                    core.error_message = None;
+                    core.error_message = paste_error;
                     core.model_status = current_model_status(&app, &core.settings);
                     core.parakeet_model_status = built_in_parakeet_status(&app);
                     clear_overlay_session_state(&mut core);

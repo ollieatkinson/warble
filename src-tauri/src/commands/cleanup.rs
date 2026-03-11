@@ -2,9 +2,7 @@ use tauri::AppHandle;
 
 use crate::state::*;
 use crate::storage::*;
-use crate::transcript::{
-    default_cleanup_terms, normalize_cleanup_term, normalize_cleanup_terms,
-};
+use crate::transcript::{default_cleanup_terms, normalize_cleanup_term, normalize_cleanup_terms};
 
 #[tauri::command]
 pub(crate) fn add_cleanup_term(

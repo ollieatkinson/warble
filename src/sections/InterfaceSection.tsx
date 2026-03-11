@@ -12,29 +12,30 @@ import {
   OverlayPositionPreview,
 } from "../components/TranscriptionPill";
 import {
+  formatAccelerationProviders,
   formatLiveTranscriptLines,
   formatLiveTranscriptWidth,
   formatOverlayAnimationStyle,
   formatOverlayPosition,
 } from "../lib/utils";
-import type { SettingsDraft } from "../types";
+import type { SettingsDraft, Snapshot } from "../types";
 
 export function InterfaceSection({
+  snapshot,
   draft,
   onApplySettings,
   installedStreamingModels,
-  directmlAvailable,
   previewDiagnostics,
 }: {
+  snapshot: Snapshot;
   draft: SettingsDraft;
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
   installedStreamingModels: Array<{
     id: string;
     name: string;
     unlockedFeatures: string[];
-    directmlCapable: boolean;
+    supportedAccelerationProviders: Array<"directml" | "webgpu">;
   }>;
-  directmlAvailable: boolean;
   previewDiagnostics: {
     backend: string;
     status: string;
@@ -43,12 +44,29 @@ export function InterfaceSection({
     logPath: string | null;
   };
 }) {
+  const supportedProviders = snapshot.systemProfile.supportedAccelerationProviders;
   const unlockedFeatures = Array.from(
     new Set(installedStreamingModels.flatMap((model) => model.unlockedFeatures)),
   );
   const installedModelLabel = installedStreamingModels.map((model) => model.name).join(" · ");
+  const installedStreamingProviders = Array.from(
+    new Set(
+      installedStreamingModels.flatMap((model) => model.supportedAccelerationProviders),
+    ),
+  );
+  const canAccelerateStreaming = installedStreamingProviders.some((provider) =>
+    supportedProviders.includes(provider),
+  );
+  const autoPasteMessage =
+    snapshot.autoPasteSupport === "active-app"
+      ? snapshot.platform === "macos"
+        ? "Auto paste uses Cmd+V on macOS. Accessibility permission may be required."
+        : snapshot.platform === "linux"
+          ? "Auto paste uses X11 key injection on Linux when an X11 display is available."
+          : "Auto paste sends the transcript straight into the active app."
+      : "This session will copy to the clipboard instead of pasting into the active app.";
   return (
-    <section className="compact-grid-two">
+    <>
       <article className="surface preference-surface">
         <div className="surface-bar">
           <div className="surface-title">
@@ -78,6 +96,7 @@ export function InterfaceSection({
         </div>
       </article>
 
+      <section className="compact-grid-two">
       <article className="surface preference-surface">
         <div className="surface-bar">
           <div className="surface-title">
@@ -245,12 +264,16 @@ export function InterfaceSection({
             <div className="feature-unlock-row">
               <strong>GPU acceleration</strong>
               <span>
-                {installedStreamingModels.some((model) => model.directmlCapable)
-                  ? directmlAvailable
-                    ? "DirectML ready on this Windows machine"
-                    : "Model supports DirectML, but this PC is not reporting DirectML-ready"
-                  : "No DirectML-capable streaming model installed"}
+                {installedStreamingProviders.length > 0
+                  ? canAccelerateStreaming
+                    ? `${formatAccelerationProviders(supportedProviders)} available on this platform`
+                    : "Streaming models support GPU acceleration, but this installation is currently on the CPU path"
+                  : "No GPU-capable streaming model installed"}
               </span>
+            </div>
+            <div className="feature-unlock-row">
+              <strong>Auto paste</strong>
+              <span>{autoPasteMessage}</span>
             </div>
           </div>
         </div>
@@ -313,5 +336,6 @@ export function InterfaceSection({
         </div>
       </article>
     </section>
+    </>
   );
 }

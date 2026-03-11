@@ -151,6 +151,6 @@ export function mapInstalledStreamingModels(rows: ModelRow[]) {
     id: row.id,
     name: row.name,
     unlockedFeatures: row.unlockedFeatures ?? [],
-    directmlCapable: Boolean(row.directmlCapable),
+    supportedAccelerationProviders: row.supportedAccelerationProviders ?? [],
   }));
 }
