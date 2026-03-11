@@ -25,31 +25,47 @@ cd .\src-tauri
 cargo run
 ```
 
-## Windows Release Build
+## Release Artifacts
 
-To produce downloadable Windows artifacts, run:
+To produce release artifacts for the current platform, run:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows-release.ps1
+```bash
+pnpm release:artifacts
 ```
 
 That script:
 
 - runs `pnpm tauri build`
-- creates a portable package with `transcribed.exe` plus the required ONNX/DirectML runtime DLLs
-- zips the portable package
-- copies any generated Tauri installer bundles (`.exe`, `.msi`) into `artifacts\windows\`
+- copies the platform bundle output from `src-tauri/target/release/bundle/` into `artifacts/<platform>/bundle/`
+- writes `artifacts/<platform>/manifest.json` with the generated file list
+- on Windows, also creates a portable zip with the app binary plus the required ONNX/DirectML runtime DLLs
 
-Expected output location:
+Expected output locations:
 
 ```text
+artifacts/linux/
+artifacts/macos/
 artifacts/windows/
 ```
 
-Typical contents:
+If you prefer the existing Windows PowerShell entrypoint, it now forwards to the same cross-platform script:
 
-- `Transcribed_<version>_windows_x64_portable.zip`
-- Tauri-generated installer artifacts from `src-tauri\target\release\bundle\`
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows-release.ps1
+```
+
+## Release CI
+
+GitHub Actions now builds release artifacts on:
+
+- every pushed tag matching `v*`
+- manual `workflow_dispatch`
+
+The workflow uploads one artifact bundle per platform runner:
+
+- `release-linux`
+- `release-macos`
+- `release-windows`
 
 ## Make Targets
 
@@ -58,6 +74,7 @@ If you use `make`, there are convenience wrappers:
 ```bash
 make check
 make web-build
+make release-artifacts
 make windows-dev
 make windows-release
 ```
