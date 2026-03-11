@@ -40,7 +40,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+          ref: ${{ github.ref }}
+
+      - name: Check out requested ref
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.ref != '' }}
+        run: git checkout --force "${{ inputs.ref }}"
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
