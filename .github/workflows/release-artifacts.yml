@@ -2,6 +2,11 @@ name: release-artifacts
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit SHA to build
+        required: false
+        type: string
   push:
     tags:
       - "v*"
@@ -33,6 +38,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'

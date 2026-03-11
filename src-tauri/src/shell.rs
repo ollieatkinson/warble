@@ -129,22 +129,24 @@ pub(crate) fn create_indicator_window(app: &AppHandle) -> Result<()> {
     }
 
     let (indicator_width, indicator_height) = fallback_indicator_window_size(&Settings::default());
-    let window = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         "indicator",
         WebviewUrl::App("index.html?indicator=1".into()),
     )
-    .title("Transcribed Indicator")
-    .transparent(true)
-    .decorations(false)
-    .shadow(false)
-    .resizable(false)
-    .skip_taskbar(true)
-    .always_on_top(true)
-    .visible(false)
-    .focused(false)
-    .inner_size(indicator_width as f64, indicator_height as f64)
-    .build()?;
+    .title("Transcribed Indicator");
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.transparent(true);
+    let window = builder
+        .decorations(false)
+        .shadow(false)
+        .resizable(false)
+        .skip_taskbar(true)
+        .always_on_top(true)
+        .visible(false)
+        .focused(false)
+        .inner_size(indicator_width as f64, indicator_height as f64)
+        .build()?;
 
     let _ = window.set_focusable(true);
     let _ = window.set_ignore_cursor_events(false);

@@ -228,46 +228,46 @@ fn paste_text_macos(text: &str) -> Result<PasteOutcome> {
 
     let previous = prepare_paste(text)?;
     let source = match CGEventSource::new(CGEventSourceStateID::CombinedSessionState) {
-        Some(source) => source,
-        None => {
-            restore_clipboard(previous);
+        Ok(source) => source,
+        Err(()) => {
+            restore_clipboard(previous.clone());
             bail!("failed to create macOS event source");
         }
     };
 
     let command_down = match CGEvent::new_keyboard_event(source.clone(), KEYCODE_COMMAND, true) {
-        Some(event) => event,
-        None => {
-            restore_clipboard(previous);
+        Ok(event) => event,
+        Err(()) => {
+            restore_clipboard(previous.clone());
             bail!("failed to prepare Command key event");
         }
     };
     command_down.post(CGEventTapLocation::HID);
 
     let v_down = match CGEvent::new_keyboard_event(source.clone(), KEYCODE_V, true) {
-        Some(event) => event,
-        None => {
-            restore_clipboard(previous);
+        Ok(event) => event,
+        Err(()) => {
+            restore_clipboard(previous.clone());
             bail!("failed to prepare V key event");
         }
     };
-    v_down.set_flags(CGEventFlags::CGEventFlagMaskCommand);
+    v_down.set_flags(CGEventFlags::CGEventFlagCommand);
     v_down.post(CGEventTapLocation::HID);
 
     let v_up = match CGEvent::new_keyboard_event(source.clone(), KEYCODE_V, false) {
-        Some(event) => event,
-        None => {
-            restore_clipboard(previous);
+        Ok(event) => event,
+        Err(()) => {
+            restore_clipboard(previous.clone());
             bail!("failed to prepare V key release");
         }
     };
-    v_up.set_flags(CGEventFlags::CGEventFlagMaskCommand);
+    v_up.set_flags(CGEventFlags::CGEventFlagCommand);
     v_up.post(CGEventTapLocation::HID);
 
     let command_up = match CGEvent::new_keyboard_event(source, KEYCODE_COMMAND, false) {
-        Some(event) => event,
-        None => {
-            restore_clipboard(previous);
+        Ok(event) => event,
+        Err(()) => {
+            restore_clipboard(previous.clone());
             bail!("failed to prepare Command key release");
         }
     };
