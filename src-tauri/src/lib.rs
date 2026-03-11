@@ -202,6 +202,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             refresh_devices,
+            get_debug_logs_command,
             inspect_model_path,
             install_catalog_model,
             download_catalog_model,

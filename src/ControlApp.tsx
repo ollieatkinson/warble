@@ -4,6 +4,7 @@ import { CheckIcon, SectionIcon } from "./components/icons";
 import { useControlApp } from "./hooks/useControlApp";
 import { AboutSection } from "./sections/AboutSection";
 import { CleanupSection } from "./sections/CleanupSection";
+import { DebugSection } from "./sections/DebugSection";
 import { HistorySection } from "./sections/HistorySection";
 import { InputsSection } from "./sections/InputsSection";
 import { InterfaceSection } from "./sections/InterfaceSection";
@@ -209,6 +210,8 @@ export function ControlApp({
               previewDiagnostics={currentSnapshot.previewDiagnostics}
             />
           ) : null}
+
+          {activeSection === "debug" ? <DebugSection snapshot={currentSnapshot} /> : null}
 
           {activeSection === "cleanup" ? (
             <CleanupSection

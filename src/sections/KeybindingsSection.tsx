@@ -17,10 +17,10 @@ export function KeybindingsSection({
   const autoPasteDetail =
     snapshot.autoPasteSupport === "active-app"
       ? snapshot.platform === "macos"
-        ? "Transcribed will use Cmd+V after final transcription. macOS may ask for Accessibility permission."
+        ? "Warble will use Cmd+V after final transcription. macOS may ask for Accessibility permission."
         : snapshot.platform === "linux"
-          ? "Transcribed will paste into the active app when an X11 display is available."
-          : "Transcribed will paste into the active app after the final transcript is ready."
+          ? "Warble will paste into the active app when an X11 display is available."
+          : "Warble will paste into the active app after the final transcript is ready."
       : "This session will copy the transcript to the clipboard instead of pasting into the active app.";
 
   return (

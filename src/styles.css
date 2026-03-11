@@ -1797,6 +1797,37 @@ input::placeholder {
   white-space: pre-line;
 }
 
+.debug-actions {
+  margin-top: 0.8rem;
+}
+
+.debug-support-note {
+  margin: 0.75rem 0 0;
+  color: var(--muted);
+}
+
+.debug-log-viewer {
+  margin: 0.8rem 0 0;
+  min-height: 220px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 0.7rem 0.8rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--field-bg);
+  color: var(--muted-strong);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family:
+    "SF Mono",
+    "Cascadia Mono",
+    "JetBrains Mono",
+    "IBM Plex Mono",
+    monospace;
+}
+
 .history-list {
   display: grid;
   gap: 0.35rem;

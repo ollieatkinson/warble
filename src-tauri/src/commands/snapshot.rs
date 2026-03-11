@@ -19,6 +19,14 @@ pub(crate) fn refresh_devices(app: AppHandle, shared: tauri::State<'_, SharedSta
 }
 
 #[tauri::command]
+pub(crate) fn get_debug_logs_command(app: AppHandle) -> DebugLogs {
+    DebugLogs {
+        capture: read_capture_log(&app),
+        live_preview: read_live_preview_log(&app),
+    }
+}
+
+#[tauri::command]
 pub(crate) fn report_indicator_layout_command(
     app: AppHandle,
     shared: tauri::State<'_, SharedState>,
