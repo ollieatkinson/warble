@@ -188,12 +188,14 @@ jobs:
           test -x "$APPIMAGE_ROOT/squashfs-root/usr/bin/$APP_BINARY"
 
           dpkg-deb --info "$DEB_PATH" >/dev/null
-          dpkg-deb --contents "$DEB_PATH" | grep -Eq "(^|[[:space:]])(\\./)?usr/bin/$APP_BINARY$"
+          DEB_CONTENTS="$(dpkg-deb --contents "$DEB_PATH")"
+          printf '%s\n' "$DEB_CONTENTS" | grep -Eq "(^|[[:space:]])(\\./)?usr/bin/$APP_BINARY$"
           dpkg-deb -x "$DEB_PATH" "$DEB_ROOT"
           test -x "$DEB_ROOT/usr/bin/$APP_BINARY"
 
           rpm -qip "$RPM_PATH" >/dev/null
-          rpm -qlp "$RPM_PATH" | grep -q "^/usr/bin/$APP_BINARY$"
+          RPM_CONTENTS="$(rpm -qlp "$RPM_PATH")"
+          printf '%s\n' "$RPM_CONTENTS" | grep -q "^/usr/bin/$APP_BINARY$"
 
       - name: Verify Windows package install paths
         if: runner.os == 'Windows'
