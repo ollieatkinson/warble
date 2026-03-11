@@ -69,8 +69,8 @@ pub fn paste_text(text: &str) -> Result<()> {
     use std::thread;
     use std::time::Duration;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
-        KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL,
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
+        VIRTUAL_KEY, VK_CONTROL,
     };
 
     fn key_input(vk: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {

@@ -30,7 +30,12 @@ pub(crate) fn decode_media_file(path: &Path) -> Result<DecodedMedia> {
     }
 
     let mut probed = get_probe()
-        .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
         .with_context(|| format!("failed to inspect media file {}", path.display()))?;
     let format = &mut probed.format;
 
