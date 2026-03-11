@@ -100,6 +100,8 @@ jobs:
       - name: Verify macOS app bundle signature
         if: runner.os == 'macOS'
         run: |
+          set -euo pipefail
+
           APP_PATH="$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)"
           if [ -z "$APP_PATH" ]; then
             echo "No macOS app bundle found to verify" >&2
@@ -109,6 +111,49 @@ jobs:
           codesign --verify --deep --strict "$APP_PATH"
           codesign -dv --verbose=4 "$APP_PATH"
           spctl -a -vvv --type exec "$APP_PATH" || true
+
+      - name: Verify macOS DMG install path
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+
+          DMG_PATH="$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
+          if [ -z "$DMG_PATH" ]; then
+            echo "No macOS DMG found to verify" >&2
+            exit 1
+          fi
+
+          MOUNT_ROOT="$(mktemp -d)"
+          STAGING_ROOT="$(mktemp -d)"
+
+          cleanup() {
+            if mount | grep -q "on ${MOUNT_ROOT} "; then
+              hdiutil detach "$MOUNT_ROOT" -quiet || true
+            fi
+            rm -rf "$MOUNT_ROOT" "$STAGING_ROOT"
+          }
+
+          trap cleanup EXIT
+
+          hdiutil attach "$DMG_PATH" -nobrowse -readonly -mountpoint "$MOUNT_ROOT" -quiet
+
+          MOUNTED_APP_PATH="$(find "$MOUNT_ROOT" -maxdepth 1 -name '*.app' -print -quit)"
+          if [ -z "$MOUNTED_APP_PATH" ]; then
+            echo "Mounted DMG does not contain an app bundle" >&2
+            exit 1
+          fi
+
+          INSTALLED_APP_PATH="$STAGING_ROOT/$(basename "$MOUNTED_APP_PATH")"
+          ditto "$MOUNTED_APP_PATH" "$INSTALLED_APP_PATH"
+
+          if [ ! -d "$INSTALLED_APP_PATH/Contents/_CodeSignature" ]; then
+            echo "Installed app bundle is missing _CodeSignature" >&2
+            exit 1
+          fi
+
+          codesign --verify --deep --strict "$INSTALLED_APP_PATH"
+          codesign -dv --verbose=4 "$INSTALLED_APP_PATH"
+          spctl -a -vvv --type exec "$INSTALLED_APP_PATH" || true
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
