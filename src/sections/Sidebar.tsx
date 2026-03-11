@@ -1,7 +1,7 @@
 import { sections } from "../constants";
 import { formatPhaseLabel, toneForPhase } from "../lib/utils";
 import type { AppPhase, SectionId } from "../types";
-import { SparkIcon } from "../components/icons";
+import { WarbleIcon } from "../components/icons";
 import { SidebarButton, SidebarToggleIcon, StatusChip } from "../components/common";
 
 export function Sidebar({
@@ -21,11 +21,11 @@ export function Sidebar({
     <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
       <div className="sidebar-brand">
         <div className="sidebar-brand-mark">
-          <SparkIcon className="brand-icon" />
+          <WarbleIcon className="brand-icon" />
         </div>
         {collapsed ? null : (
           <div className="sidebar-brand-copy">
-            <strong>Transcribed</strong>
+            <strong>Warble</strong>
             <span>Local dictation</span>
           </div>
         )}

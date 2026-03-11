@@ -1,4 +1,4 @@
-pub(crate) const EVENT_SNAPSHOT: &str = "transcribed://snapshot";
+pub(crate) const EVENT_SNAPSHOT: &str = "warble://snapshot";
 pub(crate) const PERSISTED_STATE_FILE: &str = "state.json";
 pub(crate) const RECORDINGS_DIR: &str = "recordings";
 pub(crate) const HOLD_MIN_DURATION_MS: u64 = 250;

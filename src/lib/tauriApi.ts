@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { RecordingMode, Snapshot } from "../types";
+import type { DebugLogs, RecordingMode, Snapshot } from "../types";
 
 export function getSnapshot() {
   return invoke<Snapshot>("get_snapshot");
@@ -8,6 +8,10 @@ export function getSnapshot() {
 
 export function refreshDevices() {
   return invoke<void>("refresh_devices");
+}
+
+export function getDebugLogs() {
+  return invoke<DebugLogs>("get_debug_logs_command");
 }
 
 export function updateSettings(update: Record<string, unknown>) {

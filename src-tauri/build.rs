@@ -72,7 +72,7 @@ fn copy_runtime_files(source_dir: &Path, destination_dir: &Path) {
 }
 
 fn find_windows_ort_runtime_dir() -> Option<PathBuf> {
-    env::var_os("TRANSCRIBED_ORT_RUNTIME_DIR")
+    env::var_os("WARBLE_ORT_RUNTIME_DIR")
         .map(PathBuf::from)
         .filter(|path| runtime_dir_ready(path))
         .or_else(find_workspace_onnxruntime_node_dir)

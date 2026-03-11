@@ -426,6 +426,34 @@ impl Default for PreviewDiagnostics {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct CaptureDiagnostics {
+    pub(crate) status: String,
+    pub(crate) detail: String,
+    pub(crate) recent_events: Vec<String>,
+    pub(crate) log_path: Option<String>,
+    pub(crate) source_name: String,
+    pub(crate) sample_rate: u32,
+    pub(crate) channels: u16,
+    pub(crate) last_buffered_samples: usize,
+}
+
+impl Default for CaptureDiagnostics {
+    fn default() -> Self {
+        Self {
+            status: "Idle".to_string(),
+            detail: String::new(),
+            recent_events: Vec::new(),
+            log_path: None,
+            source_name: String::new(),
+            sample_rate: 0,
+            channels: 0,
+            last_buffered_samples: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ModelDownloadProgress {
     pub(crate) display_name: String,
     pub(crate) file_name: String,
@@ -454,7 +482,15 @@ pub(crate) struct Snapshot {
     pub(crate) status_message: String,
     pub(crate) error_message: Option<String>,
     pub(crate) preview_diagnostics: PreviewDiagnostics,
+    pub(crate) capture_diagnostics: CaptureDiagnostics,
     pub(crate) overlay: OverlaySnapshot,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DebugLogs {
+    pub(crate) capture: String,
+    pub(crate) live_preview: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -486,6 +522,7 @@ pub(crate) struct RecordingSession {
     pub(crate) mode: RecordingMode,
     pub(crate) source_name: String,
     pub(crate) anchor: Option<platform::CaretAnchor>,
+    pub(crate) stream_errors: Arc<Mutex<Vec<String>>>,
 }
 
 #[derive(Debug)]
@@ -494,6 +531,7 @@ pub(crate) struct StartRecordingResponse {
     pub(crate) source_name: String,
     pub(crate) preview_buffer: Arc<Mutex<Vec<f32>>>,
     pub(crate) preview_sample_rate: u32,
+    pub(crate) preview_channels: u16,
 }
 
 pub(crate) enum RecorderRequest {
@@ -520,6 +558,7 @@ pub(crate) struct AppCore {
     pub(crate) shortcut_message: String,
     pub(crate) error_message: Option<String>,
     pub(crate) preview_diagnostics: PreviewDiagnostics,
+    pub(crate) capture_diagnostics: CaptureDiagnostics,
     pub(crate) model_status: ModelStatus,
     pub(crate) parakeet_model_status: ModelStatus,
     pub(crate) model_downloads: BTreeMap<String, ModelDownloadProgress>,
@@ -541,6 +580,7 @@ impl AppCore {
             shortcut_message: "Checking global shortcuts".to_string(),
             error_message: None,
             preview_diagnostics: PreviewDiagnostics::default(),
+            capture_diagnostics: CaptureDiagnostics::default(),
             model_status: ModelStatus::Missing,
             parakeet_model_status: ModelStatus::Missing,
             model_downloads: BTreeMap::new(),
@@ -616,6 +656,9 @@ pub(crate) struct CompletedRecording {
     pub(crate) captured_samples: Vec<f32>,
     pub(crate) captured_sample_rate: u32,
     pub(crate) captured_channels: u16,
+    pub(crate) captured_sample_count: usize,
+    pub(crate) stream_errors: Vec<String>,
+    pub(crate) should_transcribe: bool,
     pub(crate) duration_ms: u64,
     pub(crate) source_name: String,
     pub(crate) mode: RecordingMode,

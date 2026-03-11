@@ -25,6 +25,7 @@ export type SectionId =
   | "models"
   | "keybindings"
   | "interface"
+  | "debug"
   | "cleanup"
   | "inputs"
   | "history"
@@ -144,7 +145,22 @@ export type Snapshot = {
     recentEvents: string[];
     logPath: string | null;
   };
+  captureDiagnostics: {
+    status: string;
+    detail: string;
+    recentEvents: string[];
+    logPath: string | null;
+    sourceName: string;
+    sampleRate: number;
+    channels: number;
+    lastBufferedSamples: number;
+  };
   overlay: OverlaySnapshot;
+};
+
+export type DebugLogs = {
+  capture: string;
+  livePreview: string;
 };
 
 export type SettingsDraft = {

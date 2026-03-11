@@ -104,11 +104,11 @@ where
 pub(crate) fn build_input_stream(
     device: &cpal::Device,
     supported_config: &SupportedStreamConfig,
-) -> Result<(Stream, Arc<Mutex<Vec<f32>>>)> {
+) -> Result<(Stream, Arc<Mutex<Vec<f32>>>, Arc<Mutex<Vec<String>>>)> {
     let config = supported_config.config();
     let channels = config.channels as usize;
     let destination = Arc::new(Mutex::new(Vec::<f32>::new()));
-    let error_callback = |error| eprintln!("audio stream error: {error}");
+    let stream_errors = Arc::new(Mutex::new(Vec::<String>::new()));
 
     let stream = match supported_config.sample_format() {
         SampleFormat::F32 => build_typed_stream::<f32>(
@@ -116,26 +116,26 @@ pub(crate) fn build_input_stream(
             &config,
             channels,
             destination.clone(),
-            error_callback,
+            stream_errors.clone(),
         )?,
         SampleFormat::I16 => build_typed_stream::<i16>(
             &device,
             &config,
             channels,
             destination.clone(),
-            error_callback,
+            stream_errors.clone(),
         )?,
         SampleFormat::U16 => build_typed_stream::<u16>(
             &device,
             &config,
             channels,
             destination.clone(),
-            error_callback,
+            stream_errors.clone(),
         )?,
         other => return Err(anyhow!("Unsupported sample format: {other:?}")),
     };
 
-    Ok((stream, destination))
+    Ok((stream, destination, stream_errors))
 }
 
 fn build_typed_stream<T>(
@@ -143,12 +143,21 @@ fn build_typed_stream<T>(
     config: &StreamConfig,
     channels: usize,
     destination: Arc<Mutex<Vec<f32>>>,
-    error_callback: fn(cpal::StreamError),
+    stream_errors: Arc<Mutex<Vec<String>>>,
 ) -> Result<Stream>
 where
     T: Sample + SizedSample + Send + 'static,
     f32: FromSample<T>,
 {
+    let error_callback = move |error: cpal::StreamError| {
+        eprintln!("audio stream error: {error}");
+        let mut entries = stream_errors.lock().expect("stream error buffer poisoned");
+        entries.push(error.to_string());
+        if entries.len() > 6 {
+            let overflow = entries.len() - 6;
+            entries.drain(..overflow);
+        }
+    };
     let stream = device.build_input_stream(
         config,
         move |input: &[T], _| write_input_data(input, channels, &destination),

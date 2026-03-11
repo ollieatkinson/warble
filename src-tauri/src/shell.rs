@@ -43,7 +43,7 @@ pub(crate) fn create_tray_icon(app: &AppHandle) -> Result<()> {
         return Ok(());
     }
 
-    let show_item = MenuItem::with_id(app, TRAY_SHOW_ID, "Open Transcribed", true, None::<&str>)?;
+    let show_item = MenuItem::with_id(app, TRAY_SHOW_ID, "Open Warble", true, None::<&str>)?;
     let hide_item = MenuItem::with_id(app, TRAY_HIDE_ID, "Hide Window", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, TRAY_QUIT_ID, "Quit", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
@@ -55,7 +55,7 @@ pub(crate) fn create_tray_icon(app: &AppHandle) -> Result<()> {
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
-        .tooltip("Transcribed")
+        .tooltip("Warble")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -134,9 +134,8 @@ pub(crate) fn create_indicator_window(app: &AppHandle) -> Result<()> {
         "indicator",
         WebviewUrl::App("index.html?indicator=1".into()),
     )
-    .title("Transcribed Indicator");
-    #[cfg(not(target_os = "macos"))]
-    let builder = builder.transparent(true);
+    .title("Warble Indicator")
+    .transparent(true);
     let window = builder
         .decorations(false)
         .shadow(false)

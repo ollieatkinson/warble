@@ -535,7 +535,7 @@ pub(crate) fn remove_catalog_model(
 
     let stored_path_buf = PathBuf::from(&stored_path);
     if !is_managed_model_path(app, &stored_path_buf) {
-        return Err("Only models downloaded inside Transcribed can be removed here.".to_string());
+        return Err("Only models downloaded inside Warble can be removed here.".to_string());
     }
 
     let model_root = managed_model_dir_for_id(app, &model_id).map_err(|error| error.to_string())?;

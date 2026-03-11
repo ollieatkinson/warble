@@ -11,7 +11,7 @@ fn main() -> Result<()> {
     };
 
     eprintln!("loading model...");
-    let mut transcriber = transcribed_lib::parakeet::ParakeetTdt::load(&PathBuf::from(model_root))?;
+    let mut transcriber = warble_lib::parakeet::ParakeetTdt::load(&PathBuf::from(model_root))?;
     eprintln!("model loaded");
     eprintln!("transcribing wav...");
     let text = transcriber.transcribe_wav_path(&PathBuf::from(wav_path))?;
