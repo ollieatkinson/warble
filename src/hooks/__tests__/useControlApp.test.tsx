@@ -95,7 +95,7 @@ describe("useControlApp", () => {
     vi.clearAllMocks();
   });
 
-  it("primes macOS microphone access even when sources are already listed", async () => {
+  it("does not prime macOS microphone access on startup", async () => {
     const snapshot = createSnapshot({
       platform: "macos",
       settings: { ...createSnapshot().settings, autoPaste: false },
@@ -109,8 +109,9 @@ describe("useControlApp", () => {
     );
 
     await waitFor(() => {
-      expect(tauriApiMocks.primeMicrophoneAccess).toHaveBeenCalledTimes(1);
+      expect(tauriApiMocks.primeAutoPasteAccess).not.toHaveBeenCalled();
     });
+    expect(tauriApiMocks.primeMicrophoneAccess).not.toHaveBeenCalled();
     expect(tauriApiMocks.primeAutoPasteAccess).not.toHaveBeenCalled();
     expect(tauriApiMocks.refreshDevices).not.toHaveBeenCalled();
   });
@@ -129,8 +130,8 @@ describe("useControlApp", () => {
     );
 
     await waitFor(() => {
-      expect(tauriApiMocks.primeMicrophoneAccess).toHaveBeenCalledTimes(1);
       expect(tauriApiMocks.primeAutoPasteAccess).toHaveBeenCalledTimes(1);
     });
+    expect(tauriApiMocks.primeMicrophoneAccess).not.toHaveBeenCalled();
   });
 });
