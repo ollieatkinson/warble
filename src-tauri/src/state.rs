@@ -14,7 +14,9 @@ use crate::parakeet;
 use crate::platform;
 use crate::storage::path_if_not_empty;
 use crate::system::detect_system_profile;
-use crate::transcript::{default_cleanup_terms, normalize_cleanup_terms};
+use crate::transcript::{
+    default_cleanup_terms, normalize_cleanup_terms, normalize_replacement_rules,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -201,6 +203,7 @@ pub(crate) struct Settings {
     pub(crate) installed_model_paths: BTreeMap<String, String>,
     pub(crate) cleanup_enabled: bool,
     pub(crate) cleanup_terms: Vec<String>,
+    pub(crate) replacement_rules: Vec<ReplacementRule>,
     pub(crate) audio_retention_policy: AudioRetentionPolicy,
     pub(crate) overlay_position: OverlayPosition,
     pub(crate) overlay_animation_style: OverlayAnimationStyle,
@@ -225,6 +228,7 @@ impl Default for Settings {
             installed_model_paths: BTreeMap::new(),
             cleanup_enabled: true,
             cleanup_terms: default_cleanup_terms(),
+            replacement_rules: Vec::new(),
             audio_retention_policy: AudioRetentionPolicy::OneDay,
             overlay_position: OverlayPosition::BottomCenter,
             overlay_animation_style: OverlayAnimationStyle::Spectrum,
@@ -278,6 +282,9 @@ impl Settings {
         if let Some(cleanup_terms) = update.cleanup_terms.as_ref() {
             self.cleanup_terms = normalize_cleanup_terms(cleanup_terms);
         }
+        if let Some(replacement_rules) = update.replacement_rules.as_ref() {
+            self.replacement_rules = normalize_replacement_rules(replacement_rules);
+        }
         if let Some(audio_retention_policy) = update.audio_retention_policy.as_ref() {
             self.audio_retention_policy = audio_retention_policy.clone();
         }
@@ -311,6 +318,14 @@ impl Settings {
 
         hides_live_transcription
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReplacementRule {
+    pub(crate) id: String,
+    pub(crate) variants: Vec<String>,
+    pub(crate) replacement: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -373,6 +388,7 @@ pub(crate) struct SettingsUpdate {
     pub(crate) selected_model_path: Option<Option<String>>,
     pub(crate) cleanup_enabled: Option<bool>,
     pub(crate) cleanup_terms: Option<Vec<String>>,
+    pub(crate) replacement_rules: Option<Vec<ReplacementRule>>,
     pub(crate) audio_retention_policy: Option<AudioRetentionPolicy>,
     pub(crate) overlay_position: Option<OverlayPosition>,
     pub(crate) overlay_animation_style: Option<OverlayAnimationStyle>,
@@ -688,9 +704,16 @@ mod tests {
         assert!(settings.auto_paste);
         assert_eq!(settings.selected_model_id, "parakeet");
         assert!(settings.cleanup_enabled);
+        assert!(settings.replacement_rules.is_empty());
         assert_eq!(settings.overlay_position, OverlayPosition::BottomCenter);
-        assert_eq!(settings.overlay_animation_style, OverlayAnimationStyle::Spectrum);
-        assert_eq!(settings.live_transcript_width, LiveTranscriptWidth::Balanced);
+        assert_eq!(
+            settings.overlay_animation_style,
+            OverlayAnimationStyle::Spectrum
+        );
+        assert_eq!(
+            settings.live_transcript_width,
+            LiveTranscriptWidth::Balanced
+        );
         assert_eq!(settings.live_transcript_lines, LiveTranscriptLines::One);
         assert!(!settings.show_recording_timer);
         assert!(!settings.show_live_transcription);
@@ -710,6 +733,7 @@ mod tests {
         assert_eq!(deserialized.auto_paste, settings.auto_paste);
         assert_eq!(deserialized.selected_model_id, settings.selected_model_id);
         assert_eq!(deserialized.cleanup_enabled, settings.cleanup_enabled);
+        assert_eq!(deserialized.replacement_rules, settings.replacement_rules);
     }
 
     #[test]

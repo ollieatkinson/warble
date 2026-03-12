@@ -22,6 +22,7 @@ import {
   toneForPhase,
   normalizeEditableOverlayPosition,
   formatInvokeError,
+  parseReplacementVariantsInput,
   formatShortcutKey,
   captureShortcut,
   matchesHistory,
@@ -194,6 +195,23 @@ describe("formatEta", () => {
 
   it("formats positive seconds with clock and suffix", () => {
     expect(formatEta(90)).toBe("1:30 left");
+  });
+});
+
+describe("parseReplacementVariantsInput", () => {
+  it("splits comma-separated aliases", () => {
+    expect(parseReplacementVariantsInput("github, git hub, Git Hub")).toEqual([
+      "github",
+      "git hub",
+      "Git Hub",
+    ]);
+  });
+
+  it("splits newline-separated aliases and drops blanks", () => {
+    expect(parseReplacementVariantsInput("open ai\n\nchat g p t\n")).toEqual([
+      "open ai",
+      "chat g p t",
+    ]);
   });
 });
 

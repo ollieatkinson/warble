@@ -1,6 +1,7 @@
 import type {
   HistoryItem,
   ModelRow,
+  ReplacementRule,
   Settings,
   SettingsDraft,
   Snapshot,
@@ -20,6 +21,7 @@ export function createSettings(overrides?: Partial<Settings>): Settings {
     installedModelPaths: {},
     cleanupEnabled: true,
     cleanupTerms: ["um", "uh", "erm"],
+    replacementRules: [],
     audioRetentionPolicy: "seven-days",
     overlayPosition: "bottom-center",
     overlayAnimationStyle: "spectrum",
@@ -64,6 +66,17 @@ export function createSourceInfo(
     sampleRate: 48000,
     channels: 2,
     isDefault: true,
+    ...overrides,
+  };
+}
+
+export function createReplacementRule(
+  overrides?: Partial<ReplacementRule>,
+): ReplacementRule {
+  return {
+    id: "rule-001",
+    variants: ["github", "git hub"],
+    replacement: "GitHub",
     ...overrides,
   };
 }

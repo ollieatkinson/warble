@@ -74,6 +74,14 @@ export function restoreDefaultCleanupTerms() {
   return invoke<void>("restore_default_cleanup_terms");
 }
 
+export function addReplacementRule(variants: string[], replacement: string) {
+  return invoke<void>("add_replacement_rule", { variants, replacement });
+}
+
+export function removeReplacementRule(id: string) {
+  return invoke<void>("remove_replacement_rule", { id });
+}
+
 export function reportIndicatorLayout(width: number, height: number) {
   return invoke<void>("report_indicator_layout_command", { width, height });
 }
