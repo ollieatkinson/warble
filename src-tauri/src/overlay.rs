@@ -342,4 +342,75 @@ mod tests {
 
         assert!(levels.iter().any(|level| *level > 0.05));
     }
+
+    fn generate_sine(freq: f32, duration_secs: f32, sample_rate: u32) -> Vec<f32> {
+        let num_samples = (duration_secs * sample_rate as f32) as usize;
+        (0..num_samples)
+            .map(|i| (2.0 * std::f32::consts::PI * freq * i as f32 / sample_rate as f32).sin())
+            .collect()
+    }
+
+    #[test]
+    fn measure_overlay_levels_returns_correct_bar_count() {
+        use crate::constants::LIVE_METER_BAR_COUNT;
+        let sine = generate_sine(440.0, 0.2, 16_000);
+        let levels = measure_overlay_levels(&sine, 16_000);
+        assert_eq!(levels.len(), LIVE_METER_BAR_COUNT);
+    }
+
+    #[test]
+    fn measure_overlay_levels_empty_samples_all_zeros() {
+        let levels = measure_overlay_levels(&[], 16_000);
+        assert!(levels.iter().all(|l| *l == 0.0));
+    }
+
+    #[test]
+    fn measure_overlay_levels_values_in_unit_range() {
+        let loud_sine = generate_sine(1000.0, 0.2, 16_000)
+            .iter()
+            .map(|s| s * 0.5)
+            .collect::<Vec<_>>();
+        let levels = measure_overlay_levels(&loud_sine, 16_000);
+        for level in &levels {
+            assert!(*level >= 0.0 && *level <= 1.0, "level out of range: {level}");
+        }
+    }
+
+    #[test]
+    fn low_freq_concentrated_in_lower_bars() {
+        let low = generate_sine(120.0, 0.3, 16_000)
+            .iter()
+            .map(|s| s * 0.15)
+            .collect::<Vec<_>>();
+        let levels = measure_overlay_levels(&low, 16_000);
+        let lower_half: f32 = levels[..levels.len() / 2].iter().sum();
+        let upper_half: f32 = levels[levels.len() / 2..].iter().sum();
+        assert!(
+            lower_half >= upper_half,
+            "low freq should have more energy in lower bars: lower={lower_half} upper={upper_half}"
+        );
+    }
+
+    #[test]
+    fn high_freq_concentrated_in_upper_bars() {
+        let high = generate_sine(4000.0, 0.3, 16_000)
+            .iter()
+            .map(|s| s * 0.15)
+            .collect::<Vec<_>>();
+        let levels = measure_overlay_levels(&high, 16_000);
+        let lower_half: f32 = levels[..levels.len() / 2].iter().sum();
+        let upper_half: f32 = levels[levels.len() / 2..].iter().sum();
+        assert!(
+            upper_half >= lower_half,
+            "high freq should have more energy in upper bars: lower={lower_half} upper={upper_half}"
+        );
+    }
+
+    #[test]
+    fn default_overlay_levels_has_correct_length() {
+        use crate::constants::LIVE_METER_BAR_COUNT;
+        let levels = super::default_overlay_levels();
+        assert_eq!(levels.len(), LIVE_METER_BAR_COUNT);
+        assert!(levels.iter().all(|l| *l == 0.0));
+    }
 }

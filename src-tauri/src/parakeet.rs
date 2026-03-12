@@ -253,3 +253,128 @@ fn read_wav_mono(path: &Path) -> Result<Vec<f32>> {
 
     Ok(resample_to_16khz(&mono, spec.sample_rate))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resample_identity_at_16khz() {
+        let input: Vec<f32> = (0..100).map(|i| i as f32 / 100.0).collect();
+        let output = resample_to_16khz(&input, 16_000);
+        assert_eq!(output.len(), input.len());
+        for (a, b) in input.iter().zip(output.iter()) {
+            assert!((a - b).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn resample_empty_input() {
+        let output = resample_to_16khz(&[], 48_000);
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn resample_48khz_produces_shorter_output() {
+        let input: Vec<f32> = vec![0.5; 4800];
+        let output = resample_to_16khz(&input, 48_000);
+        let expected_len = (4800.0_f64 * 16_000.0 / 48_000.0).round() as usize;
+        assert_eq!(output.len(), expected_len);
+    }
+
+    #[test]
+    fn resample_preserves_dc_offset() {
+        let constant_value = 0.42f32;
+        let input = vec![constant_value; 9600];
+        let output = resample_to_16khz(&input, 48_000);
+        for sample in &output {
+            assert!(
+                (sample - constant_value).abs() < 1e-5,
+                "DC offset not preserved: got {sample}"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_output_text_collapses_whitespace() {
+        assert_eq!(normalize_output_text("  hello   world  "), "hello world");
+        assert_eq!(normalize_output_text(""), "");
+        assert_eq!(normalize_output_text("single"), "single");
+    }
+
+    #[test]
+    fn model_ready_in_dir_requires_all_files() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!model_ready_in_dir(dir.path()));
+
+        std::fs::write(dir.path().join("vocab.txt"), "").unwrap();
+        assert!(!model_ready_in_dir(dir.path()));
+
+        std::fs::write(dir.path().join("encoder-model.onnx"), "").unwrap();
+        assert!(!model_ready_in_dir(dir.path()));
+
+        std::fs::write(dir.path().join("decoder_joint-model.onnx"), "").unwrap();
+        assert!(model_ready_in_dir(dir.path()));
+    }
+
+    #[test]
+    fn ctc_model_ready_in_dir_requires_tokenizer_and_model() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!ctc_model_ready_in_dir(dir.path()));
+
+        std::fs::write(dir.path().join("tokenizer.json"), "").unwrap();
+        assert!(!ctc_model_ready_in_dir(dir.path()));
+
+        std::fs::write(dir.path().join("model.onnx"), "").unwrap();
+        assert!(ctc_model_ready_in_dir(dir.path()));
+    }
+
+    #[test]
+    fn model_ready_at_checks_subdirectory() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(!model_ready_at(root.path()));
+
+        let model_dir = root.path().join(MODEL_ID);
+        std::fs::create_dir_all(&model_dir).unwrap();
+        std::fs::write(model_dir.join("vocab.txt"), "").unwrap();
+        std::fs::write(model_dir.join("encoder.onnx"), "").unwrap();
+        std::fs::write(model_dir.join("decoder_joint.onnx"), "").unwrap();
+        assert!(model_ready_at(root.path()));
+    }
+
+    #[test]
+    fn detect_model_dir_finds_tdt() {
+        let root = tempfile::tempdir().unwrap();
+        let model_dir = root.path().join(MODEL_ID);
+        std::fs::create_dir_all(&model_dir).unwrap();
+        std::fs::write(model_dir.join("vocab.txt"), "").unwrap();
+        std::fs::write(model_dir.join("encoder-model.onnx"), "").unwrap();
+        std::fs::write(model_dir.join("decoder_joint-model.onnx"), "").unwrap();
+
+        let result = detect_model_dir(root.path());
+        assert!(result.is_some());
+        let (family, path) = result.unwrap();
+        assert_eq!(family, TranscriptionFamily::Tdt);
+        assert_eq!(path, model_dir);
+    }
+
+    #[test]
+    fn detect_model_dir_finds_ctc() {
+        let root = tempfile::tempdir().unwrap();
+        let ctc_dir = root.path().join(CTC_MODEL_ID);
+        std::fs::create_dir_all(&ctc_dir).unwrap();
+        std::fs::write(ctc_dir.join("tokenizer.json"), "").unwrap();
+        std::fs::write(ctc_dir.join("model.onnx"), "").unwrap();
+
+        let result = detect_model_dir(root.path());
+        assert!(result.is_some());
+        let (family, _) = result.unwrap();
+        assert_eq!(family, TranscriptionFamily::Ctc);
+    }
+
+    #[test]
+    fn detect_model_dir_returns_none_for_empty() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(detect_model_dir(root.path()).is_none());
+    }
+}

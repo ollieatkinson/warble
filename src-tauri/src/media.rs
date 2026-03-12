@@ -166,3 +166,39 @@ pub(crate) fn canonical_media_path(path: &str) -> Result<PathBuf> {
 
     Ok(canonical)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_path_label_extracts_filename() {
+        let path = Path::new("/some/dir/recording.wav");
+        assert_eq!(file_path_label(path), "recording.wav");
+    }
+
+    #[test]
+    fn file_path_label_falls_back_to_full_path() {
+        let path = Path::new("/");
+        let label = file_path_label(path);
+        assert!(!label.is_empty());
+    }
+
+    #[test]
+    fn canonical_media_path_rejects_empty() {
+        let result = canonical_media_path("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn canonical_media_path_rejects_whitespace() {
+        let result = canonical_media_path("   ");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn canonical_media_path_rejects_nonexistent() {
+        let result = canonical_media_path("/nonexistent/path/to/file.wav");
+        assert!(result.is_err());
+    }
+}

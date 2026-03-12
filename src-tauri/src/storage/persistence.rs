@@ -47,3 +47,21 @@ pub(crate) fn load_persisted_state(app: &AppHandle) -> PersistedState {
         history: Vec::new(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_shortcut_lowercases_and_removes_spaces() {
+        assert_eq!(normalize_shortcut("Ctrl + Shift + A"), "ctrl+shift+a");
+        assert_eq!(normalize_shortcut("F8"), "f8");
+        assert_eq!(normalize_shortcut(""), "");
+    }
+
+    #[test]
+    fn normalize_shortcut_handles_mixed_case() {
+        assert_eq!(normalize_shortcut("Alt + F4"), "alt+f4");
+        assert_eq!(normalize_shortcut("CTRL+C"), "ctrl+c");
+    }
+}

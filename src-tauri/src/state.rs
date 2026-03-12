@@ -671,3 +671,132 @@ pub(crate) struct PreviewStabilizer {
     pub(crate) stable_words: Vec<String>,
     pub(crate) divergence_count: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_default_values() {
+        let settings = Settings::default();
+        assert_eq!(settings.hold_shortcut, "F8");
+        assert_eq!(settings.toggle_shortcut, "F9");
+        assert!(settings.auto_paste);
+        assert_eq!(settings.selected_model_id, "parakeet");
+        assert!(settings.cleanup_enabled);
+        assert_eq!(settings.overlay_position, OverlayPosition::BottomCenter);
+        assert_eq!(settings.overlay_animation_style, OverlayAnimationStyle::Spectrum);
+        assert_eq!(settings.live_transcript_width, LiveTranscriptWidth::Balanced);
+        assert_eq!(settings.live_transcript_lines, LiveTranscriptLines::One);
+        assert!(!settings.show_recording_timer);
+        assert!(!settings.show_live_transcription);
+        assert_eq!(settings.color_theme, ColorTheme::System);
+        assert!(settings.selected_source_id.is_none());
+        assert!(settings.selected_model_path.is_none());
+        assert!(settings.installed_model_paths.is_empty());
+    }
+
+    #[test]
+    fn settings_serialization_round_trip() {
+        let settings = Settings::default();
+        let json = serde_json::to_string(&settings).expect("serialize");
+        let deserialized: Settings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.hold_shortcut, settings.hold_shortcut);
+        assert_eq!(deserialized.toggle_shortcut, settings.toggle_shortcut);
+        assert_eq!(deserialized.auto_paste, settings.auto_paste);
+        assert_eq!(deserialized.selected_model_id, settings.selected_model_id);
+        assert_eq!(deserialized.cleanup_enabled, settings.cleanup_enabled);
+    }
+
+    #[test]
+    fn app_phase_variants_serialize() {
+        let phases = vec![
+            AppPhase::Idle,
+            AppPhase::Recording,
+            AppPhase::Transcribing,
+            AppPhase::Error,
+        ];
+        for phase in phases {
+            let json = serde_json::to_string(&phase).expect("serialize phase");
+            assert!(!json.is_empty());
+        }
+    }
+
+    #[test]
+    fn recording_mode_serde_round_trip() {
+        let hold = RecordingMode::Hold;
+        let toggle = RecordingMode::Toggle;
+        let hold_json = serde_json::to_string(&hold).unwrap();
+        let toggle_json = serde_json::to_string(&toggle).unwrap();
+        assert_eq!(hold_json, "\"hold\"");
+        assert_eq!(toggle_json, "\"toggle\"");
+        let hold_back: RecordingMode = serde_json::from_str(&hold_json).unwrap();
+        let toggle_back: RecordingMode = serde_json::from_str(&toggle_json).unwrap();
+        assert_eq!(hold_back, RecordingMode::Hold);
+        assert_eq!(toggle_back, RecordingMode::Toggle);
+    }
+
+    #[test]
+    fn inference_provider_serde_round_trip() {
+        let providers = [
+            (InferenceProvider::Cpu, "\"cpu\""),
+            (InferenceProvider::Directml, "\"directml\""),
+            (InferenceProvider::Webgpu, "\"webgpu\""),
+        ];
+        for (provider, expected_json) in providers {
+            let json = serde_json::to_string(&provider).unwrap();
+            assert_eq!(json, expected_json);
+            let back: InferenceProvider = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, provider);
+        }
+    }
+
+    #[test]
+    fn inference_provider_is_accelerated() {
+        assert!(!InferenceProvider::Cpu.is_accelerated());
+        assert!(InferenceProvider::Directml.is_accelerated());
+        assert!(InferenceProvider::Webgpu.is_accelerated());
+    }
+
+    #[test]
+    fn inference_provider_display() {
+        assert_eq!(format!("{}", InferenceProvider::Cpu), "CPU");
+        assert_eq!(format!("{}", InferenceProvider::Directml), "DirectML");
+        assert_eq!(format!("{}", InferenceProvider::Webgpu), "WebGPU");
+    }
+
+    #[test]
+    fn history_item_serialization_round_trip() {
+        let item = HistoryItem {
+            id: "test-id".to_string(),
+            text: "Hello world".to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            source_name: "Microphone".to_string(),
+            mode: RecordingMode::Hold,
+            duration_ms: 1500,
+            pasted: true,
+            audio_path: Some("/tmp/test.wav".to_string()),
+            capture: HistoryCaptureDetails::default(),
+        };
+        let json = serde_json::to_string(&item).expect("serialize");
+        let back: HistoryItem = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.id, item.id);
+        assert_eq!(back.text, item.text);
+        assert_eq!(back.duration_ms, item.duration_ms);
+        assert_eq!(back.pasted, item.pasted);
+        assert_eq!(back.audio_path, item.audio_path);
+        assert_eq!(back.mode, item.mode);
+    }
+
+    #[test]
+    fn preview_control_generation_increment_and_read() {
+        let control = PreviewControl::default();
+        assert_eq!(control.current_generation(), 0);
+        let gen1 = control.next_generation();
+        assert_eq!(gen1, 1);
+        assert_eq!(control.current_generation(), 1);
+        let gen2 = control.next_generation();
+        assert_eq!(gen2, 2);
+        assert_eq!(control.current_generation(), 2);
+    }
+}
