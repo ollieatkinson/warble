@@ -52,6 +52,7 @@ const artifactsDir = path.resolve(
 );
 
 if (!args.skipTauriBuild) {
+  ensureMacosSigningConfigured(platform);
   runChecked(resolveCommand("pnpm"), ["tauri", "build"], { cwd: repoRoot });
 }
 
@@ -165,6 +166,24 @@ function normalizeArch(nodeArch) {
     default:
       return nodeArch;
   }
+}
+
+function ensureMacosSigningConfigured(targetPlatform) {
+  if (targetPlatform !== "macos") {
+    return;
+  }
+
+  const signingIdentity = (process.env.APPLE_SIGNING_IDENTITY || "").trim();
+  if (signingIdentity && signingIdentity !== "-") {
+    return;
+  }
+
+  throw new Error(
+    "macOS release artifacts must be signed with a real Apple code signing identity. " +
+      "Ad hoc signing (`APPLE_SIGNING_IDENTITY=-`) does not produce reliable TCC permission prompts " +
+      "for microphone access. Set APPLE_SIGNING_IDENTITY to an Apple Development or " +
+      "Developer ID Application identity before running `pnpm release:artifacts`.",
+  );
 }
 
 function resolveCommand(command) {
