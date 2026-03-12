@@ -130,6 +130,21 @@ To build release artifacts for the current platform:
 pnpm release:artifacts
 ```
 
+On macOS, release artifacts must be signed with a real Apple code signing identity.
+Ad hoc signing (`APPLE_SIGNING_IDENTITY=-`) is enough to run an app bundle locally, but
+it does not produce reliable TCC privacy prompts for microphone access. Use an
+`Apple Development` identity for local testing or a `Developer ID Application`
+identity for distributable builds.
+
+You can inspect the available identities on your Mac with:
+
+```bash
+security find-identity -v -p codesigning
+```
+
+The GitHub macOS release job expects `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
+and `APPLE_SIGNING_IDENTITY` repository secrets to be configured.
+
 This runs the Tauri build and writes artifacts into:
 
 ```text
