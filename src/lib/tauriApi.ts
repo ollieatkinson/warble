@@ -10,6 +10,14 @@ export function refreshDevices() {
   return invoke<void>("refresh_devices");
 }
 
+export function primeMicrophoneAccess() {
+  return invoke<void>("prime_microphone_access");
+}
+
+export function primeAutoPasteAccess() {
+  return invoke<void>("prime_auto_paste_access");
+}
+
 export function getDebugLogs() {
   return invoke<DebugLogs>("get_debug_logs_command");
 }
