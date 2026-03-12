@@ -75,7 +75,7 @@ mod imp {
             return Ok(());
         }
 
-        let granted = run_on_main_thread_and_wait(app, CGRequestPostEventAccess)?;
+        let granted = run_on_main_thread_and_wait(app, || CGRequestPostEventAccess())?;
         if granted {
             Ok(())
         } else {
