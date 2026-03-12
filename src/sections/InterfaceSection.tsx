@@ -3,7 +3,6 @@ import {
   liveTranscriptLineOptions,
   liveTranscriptWidthOptions,
   overlayAnimationOptions,
-  overlayPositionOptions,
 } from "../constants";
 import { ChoiceDropdown } from "../components/common";
 import {
@@ -17,20 +16,28 @@ import {
   formatOverlayAnimationStyle,
   formatOverlayPosition,
 } from "../lib/utils";
-import type { PlatformKind, SettingsDraft } from "../types";
+import {
+  deriveOverlayPositionOptions,
+  supportsDynamicIsland,
+} from "../lib/controlAppModel";
+import type { SettingsDraft, Snapshot } from "../types";
 
 export function InterfaceSection({
+  snapshot,
   draft,
   onApplySettings,
-  platform,
 }: {
+  snapshot: Snapshot;
   draft: SettingsDraft;
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
-  platform?: PlatformKind;
 }) {
-  const filteredPositionOptions = platform === "macos"
-    ? overlayPositionOptions
-    : overlayPositionOptions.filter((option) => !option.macOnly);
+  const dynamicIslandAvailable = supportsDynamicIsland(snapshot);
+  const overlayOptions = deriveOverlayPositionOptions(snapshot);
+  const hudPositionDescription = dynamicIslandAvailable
+    ? "Choose a screen edge or the menu-bar-integrated Dynamic Island anchor."
+    : snapshot.platform === "macos"
+      ? "Choose a screen edge. Dynamic Island placement appears on supported MacBook displays."
+      : "Choose a screen edge for the HUD.";
   return (
     <>
       <article className="surface preference-surface">
@@ -74,13 +81,13 @@ export function InterfaceSection({
             <div className="setting-row">
               <div className="setting-copy">
                 <strong>HUD position</strong>
-                <span>Choose a screen edge or a notch-style top anchor.</span>
+                <span>{hudPositionDescription}</span>
               </div>
               <div className="setting-control">
                 <ChoiceDropdown
                   label="Position"
                   value={draft.overlayPosition}
-                  options={filteredPositionOptions}
+                  options={overlayOptions}
                   renderPreview={(value) => (
                     <OverlayPositionPreview position={value as typeof draft.overlayPosition} />
                   )}

@@ -1,5 +1,6 @@
 import {
   buildDraftFromSnapshot,
+  deriveOverlayPositionOptions,
   deriveSourceState,
   deriveModelState,
   deriveHistoryState,
@@ -93,12 +94,26 @@ describe("buildDraftFromSnapshot", () => {
 
   it("preserves dynamic island overlay position", () => {
     const snapshot = createSnapshot({
+      platform: "macos",
+      dynamicIslandAvailable: true,
       settings: createSettings({ overlayPosition: "dynamic-island" }),
     });
 
     const draft = buildDraftFromSnapshot(snapshot);
 
     expect(draft.overlayPosition).toBe("dynamic-island");
+  });
+
+  it("falls back from dynamic island when the hardware is unavailable", () => {
+    const snapshot = createSnapshot({
+      platform: "macos",
+      dynamicIslandAvailable: false,
+      settings: createSettings({ overlayPosition: "dynamic-island" }),
+    });
+
+    const draft = buildDraftFromSnapshot(snapshot);
+
+    expect(draft.overlayPosition).toBe("top-center");
   });
 });
 
@@ -159,6 +174,30 @@ describe("deriveSourceState", () => {
 
     expect(sourceOptions[0].label).toBe("Test Mic");
     expect(sourceOptions[0].description).toBe("44100 Hz \u00b7 1 ch \u00b7 default");
+  });
+});
+
+describe("deriveOverlayPositionOptions", () => {
+  it("includes dynamic island when supported", () => {
+    const snapshot = createSnapshot({
+      platform: "macos",
+      dynamicIslandAvailable: true,
+    });
+
+    const options = deriveOverlayPositionOptions(snapshot);
+
+    expect(options.some((option) => option.id === "dynamic-island")).toBe(true);
+  });
+
+  it("removes dynamic island when unsupported", () => {
+    const snapshot = createSnapshot({
+      platform: "windows",
+      dynamicIslandAvailable: false,
+    });
+
+    const options = deriveOverlayPositionOptions(snapshot);
+
+    expect(options.some((option) => option.id === "dynamic-island")).toBe(false);
   });
 });
 

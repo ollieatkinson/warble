@@ -127,6 +127,7 @@ export function createSnapshot(overrides?: Partial<Snapshot>): Snapshot {
     phase: "idle",
     platform: "windows",
     autoPasteSupport: "active-app",
+    dynamicIslandAvailable: false,
     settings: createSettings(overrides?.settings),
     lastTranscriptAvailable: false,
     sources: [createSourceInfo()],

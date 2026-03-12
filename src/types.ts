@@ -152,6 +152,7 @@ export type Snapshot = {
   phase: AppPhase;
   platform: PlatformKind;
   autoPasteSupport: AutoPasteSupport;
+  dynamicIslandAvailable: boolean;
   settings: Settings;
   lastTranscriptAvailable: boolean;
   sources: SourceInfo[];

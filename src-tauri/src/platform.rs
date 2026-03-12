@@ -1,6 +1,8 @@
 use anyhow::{bail, Result};
 use arboard::Clipboard;
 use serde::Serialize;
+#[cfg(target_os = "macos")]
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use tauri::AppHandle;
@@ -63,6 +65,36 @@ pub fn auto_paste_support() -> AutoPasteSupport {
 
     #[allow(unreachable_code)]
     AutoPasteSupport::ClipboardOnly
+}
+
+#[cfg(target_os = "macos")]
+pub fn supports_dynamic_island(app: &AppHandle) -> bool {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSScreen;
+
+    run_on_main_thread_and_wait(app, move || {
+        let Some(mtm) = MainThreadMarker::new() else {
+            return false;
+        };
+        let Some(screen) = NSScreen::mainScreen(mtm) else {
+            return false;
+        };
+
+        let safe_area = screen.safeAreaInsets();
+        if safe_area.top > 0.0 {
+            return true;
+        }
+
+        let left_area = screen.auxiliaryTopLeftArea();
+        let right_area = screen.auxiliaryTopRightArea();
+        left_area.size.width > 0.0 || right_area.size.width > 0.0
+    })
+    .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn supports_dynamic_island(_app: &AppHandle) -> bool {
+    false
 }
 
 #[cfg(target_os = "windows")]
@@ -262,6 +294,24 @@ pub fn detect_caret_anchor() -> Option<CaretAnchor> {
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub fn detect_caret_anchor() -> Option<CaretAnchor> {
     None
+}
+
+#[cfg(target_os = "macos")]
+fn run_on_main_thread_and_wait<T, F>(app: &AppHandle, task: F) -> Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    if unsafe { libc::pthread_main_np() == 1 } {
+        return Ok(task());
+    }
+
+    let (sender, receiver) = mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = sender.send(task());
+    })?;
+
+    receiver.recv().map_err(Into::into)
 }
 
 pub fn paste_text(_app: &AppHandle, text: &str) -> Result<PasteOutcome> {

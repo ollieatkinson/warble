@@ -18,7 +18,11 @@ pub(crate) fn update_settings_command(
 
     {
         let mut core = shared.lock();
-        if core.settings.apply_update(&update) {
+        let dynamic_island_available = core.dynamic_island_available;
+        if core
+            .settings
+            .apply_update(&update, dynamic_island_available)
+        {
             core.overlay.detail.clear();
         }
         if matches!(core.phase, AppPhase::Recording | AppPhase::Transcribing) {
