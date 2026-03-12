@@ -96,17 +96,17 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
         .with_intra_threads(4)
         .with_inter_threads(1);
 
-    config.with_custom_configure(move |builder| {
-        let builder = builder
-            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
-        if needs_directml_tuning {
+    if needs_directml_tuning {
+        config.with_custom_configure(move |builder| {
+            let builder = builder
+                .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
             Ok(builder
                 .with_parallel_execution(false)?
                 .with_memory_pattern(false)?)
-        } else {
-            Ok(builder)
-        }
-    })
+        })
+    } else {
+        config
+    }
 }
 
 #[cfg(test)]
