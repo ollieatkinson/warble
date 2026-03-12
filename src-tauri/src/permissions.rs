@@ -129,13 +129,18 @@ mod imp {
         let granted = receiver
             .recv()
             .context("macOS microphone permission request did not complete")??;
-        log_microphone_access(app, "request-finished", format!("granted={granted}"));
-
-        Ok(if granted {
+        let state = if granted {
             MicrophoneAccess::Authorized
         } else {
-            MicrophoneAccess::Denied
-        })
+            current_microphone_access()?
+        };
+        log_microphone_access(
+            app,
+            "request-finished",
+            format!("granted={granted} state={state:?}"),
+        );
+
+        Ok(state)
     }
 
     fn audio_media_type() -> Result<&'static objc2_av_foundation::AVMediaType> {
