@@ -132,10 +132,11 @@ jobs:
             -A \
             -T /usr/bin/codesign \
             -T /usr/bin/security
-          echo "Trusting self-signed root in temporary CI keychain"
-          security add-trusted-cert \
+          echo "Trusting self-signed root in the macOS system keychain"
+          sudo security add-trusted-cert \
+            -d \
             -r trustRoot \
-            -k "$KEYCHAIN_PATH" \
+            -k /Library/Keychains/System.keychain \
             "$CERTIFICATE_PEM_PATH"
           security set-key-partition-list \
             -S apple-tool:,apple:,codesign: \
