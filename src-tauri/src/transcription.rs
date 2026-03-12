@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use chrono::Utc;
 use std::path::PathBuf;
+use std::time::Instant;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
@@ -22,6 +23,27 @@ pub(crate) struct TranscriptionOutput {
     pub(crate) model_name: String,
 }
 
+fn append_transcription_log(app: &AppHandle, stage: &str, detail: impl Into<String>) {
+    let detail = detail.into();
+    let message = if detail.is_empty() {
+        format!("{} [transcription] {stage}", Utc::now().to_rfc3339())
+    } else {
+        format!(
+            "{} [transcription] {stage}: {detail}",
+            Utc::now().to_rfc3339()
+        )
+    };
+    append_capture_log(app, &message);
+}
+
+fn duration_ms(sample_count: usize, sample_rate: u32) -> u64 {
+    if sample_rate == 0 {
+        return 0;
+    }
+
+    ((sample_count as f64 / sample_rate as f64) * 1000.0) as u64
+}
+
 pub(crate) fn transcribe_audio(
     app: &AppHandle,
     transcriber: &TranscriberHandle,
@@ -30,7 +52,16 @@ pub(crate) fn transcribe_audio(
 ) -> Result<TranscriptionOutput> {
     let selected_key = selected_model_cache_key(settings);
     let mut guard = transcriber.lock();
+    let model_name = selected_model_display_name(settings);
     if guard.selected_key.as_ref() != Some(&selected_key) {
+        append_transcription_log(
+            app,
+            "Loading transcription model",
+            format!(
+                "model={} kind={:?} cache_key={selected_key}",
+                model_name, settings.selected_model_kind
+            ),
+        );
         let engine = match settings.selected_model_kind {
             TranscriptionModelKind::Parakeet => {
                 let model = if let Some(path) = resolved_selected_model_path(settings) {
@@ -61,20 +92,67 @@ pub(crate) fn transcribe_audio(
 
         guard.engine = Some(engine);
         guard.selected_key = Some(selected_key);
+        append_transcription_log(
+            app,
+            "Transcription model ready",
+            format!(
+                "model={} kind={:?}",
+                model_name, settings.selected_model_kind
+            ),
+        );
     }
 
-    let model_name = selected_model_display_name(settings);
+    append_transcription_log(
+        app,
+        "Transcription inference started",
+        format!(
+            "model={} samples={} duration_ms={} kind={:?}",
+            model_name,
+            audio.len(),
+            duration_ms(audio.len(), parakeet::SAMPLE_RATE),
+            settings.selected_model_kind
+        ),
+    );
+    let started_at = Instant::now();
     match guard.engine.as_mut().expect("transcriber initialized") {
-        TranscriberEngine::Parakeet(model) => Ok(TranscriptionOutput {
-            text: model.transcribe_audio(audio)?,
-            inference_provider: model.provider(),
-            model_name,
-        }),
-        TranscriberEngine::ParakeetCtc(model) => Ok(TranscriptionOutput {
-            text: model.transcribe_audio(audio)?,
-            inference_provider: model.provider(),
-            model_name,
-        }),
+        TranscriberEngine::Parakeet(model) => {
+            let output = TranscriptionOutput {
+                text: model.transcribe_audio(audio)?,
+                inference_provider: model.provider(),
+                model_name,
+            };
+            append_transcription_log(
+                app,
+                "Transcription inference finished",
+                format!(
+                    "model={} chars={} provider={} elapsed_ms={}",
+                    output.model_name,
+                    output.text.chars().count(),
+                    output.inference_provider,
+                    started_at.elapsed().as_millis()
+                ),
+            );
+            Ok(output)
+        }
+        TranscriberEngine::ParakeetCtc(model) => {
+            let output = TranscriptionOutput {
+                text: model.transcribe_audio(audio)?,
+                inference_provider: model.provider(),
+                model_name,
+            };
+            append_transcription_log(
+                app,
+                "Transcription inference finished",
+                format!(
+                    "model={} chars={} provider={} elapsed_ms={}",
+                    output.model_name,
+                    output.text.chars().count(),
+                    output.inference_provider,
+                    started_at.elapsed().as_millis()
+                ),
+            );
+            Ok(output)
+        }
     }
 }
 
@@ -88,6 +166,7 @@ pub(crate) fn transcribe_audio_segments(
     progress_label: &str,
 ) -> Result<Option<TranscriptionOutput>> {
     if transcription_cancelled(shared, preview_control) {
+        append_transcription_log(app, "Transcription cancelled", "before inference started");
         return Ok(None);
     }
 
@@ -102,8 +181,23 @@ pub(crate) fn transcribe_audio_segments(
     };
 
     if chunk_samples == 0 || audio.len() <= chunk_samples {
+        append_transcription_log(
+            app,
+            "Transcribing single chunk",
+            format!(
+                "label={} samples={} duration_ms={}",
+                progress_label,
+                audio.len(),
+                duration_ms(audio.len(), parakeet::SAMPLE_RATE)
+            ),
+        );
         let output = transcribe_audio(app, transcriber, settings, audio)?;
         if transcription_cancelled(shared, preview_control) {
+            append_transcription_log(
+                app,
+                "Transcription cancelled",
+                "after single chunk inference",
+            );
             return Ok(None);
         }
         return Ok(Some(output));
@@ -113,9 +207,26 @@ pub(crate) fn transcribe_audio_segments(
     let mut combined = String::new();
     let mut provider = InferenceProvider::Cpu;
     let mut model_name = selected_model_display_name(settings);
+    append_transcription_log(
+        app,
+        "Transcribing chunked audio",
+        format!(
+            "label={} chunks={} chunk_samples={} total_samples={} duration_ms={}",
+            progress_label,
+            chunks.len(),
+            chunk_samples,
+            audio.len(),
+            duration_ms(audio.len(), parakeet::SAMPLE_RATE)
+        ),
+    );
 
     for (index, chunk) in chunks.iter().enumerate() {
         if transcription_cancelled(shared, preview_control) {
+            append_transcription_log(
+                app,
+                "Transcription cancelled",
+                format!("before chunk {} of {}", index + 1, chunks.len()),
+            );
             return Ok(None);
         }
 
@@ -131,12 +242,39 @@ pub(crate) fn transcribe_audio_segments(
             emit_snapshot(app, shared);
         }
 
+        append_transcription_log(
+            app,
+            "Chunk transcription started",
+            format!(
+                "{}/{} samples={} duration_ms={}",
+                index + 1,
+                chunks.len(),
+                chunk.len(),
+                duration_ms(chunk.len(), parakeet::SAMPLE_RATE)
+            ),
+        );
         let output = transcribe_audio(app, transcriber, settings, chunk)?;
         if transcription_cancelled(shared, preview_control) {
+            append_transcription_log(
+                app,
+                "Transcription cancelled",
+                format!("after chunk {} of {}", index + 1, chunks.len()),
+            );
             return Ok(None);
         }
         provider = output.inference_provider;
         model_name = output.model_name;
+        append_transcription_log(
+            app,
+            "Chunk transcription finished",
+            format!(
+                "{}/{} chars={} provider={}",
+                index + 1,
+                chunks.len(),
+                output.text.chars().count(),
+                output.inference_provider
+            ),
+        );
 
         let trimmed = output.text.trim();
         if trimmed.is_empty() {
@@ -376,6 +514,19 @@ pub(crate) fn transcribe_media_file(
 
     let file_path = media::canonical_media_path(&path)?;
     let file_label = media::file_path_label(&file_path);
+    let file_size_bytes = file_path.metadata().ok().map(|metadata| metadata.len());
+    append_transcription_log(
+        &app,
+        "File transcription requested",
+        format!(
+            "file={} path={} size_bytes={}",
+            file_label,
+            file_path.display(),
+            file_size_bytes
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_string())
+        ),
+    );
 
     {
         let mut core = shared.lock();
@@ -393,12 +544,33 @@ pub(crate) fn transcribe_media_file(
     }
     update_indicator_window(&app, &shared);
     emit_snapshot(&app, &shared);
+    note_capture_diagnostic(
+        &app,
+        &shared,
+        "File transcription started",
+        file_label.clone(),
+    );
 
     std::thread::spawn(move || {
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            append_transcription_log(
+                &app,
+                "File transcription worker started",
+                format!(
+                    "file={} generation={}",
+                    file_label, transcription_generation
+                ),
+            );
+            append_transcription_log(
+                &app,
+                "Media decode started",
+                file_path.display().to_string(),
+            );
             let decoded = match media::decode_media_file(&file_path) {
                 Ok(decoded) => decoded,
                 Err(error) => {
+                    append_transcription_log(&app, "Media decode failed", error.to_string());
+                    note_capture_diagnostic(&app, &shared, "File decode failed", error.to_string());
                     let mut core = shared.lock();
                     core.phase = AppPhase::Error;
                     core.status_message = "File transcription failed".to_string();
@@ -412,15 +584,70 @@ pub(crate) fn transcribe_media_file(
             };
 
             if preview_control.current_generation() != transcription_generation {
+                append_transcription_log(
+                    &app,
+                    "File transcription aborted",
+                    "decode completed after cancellation",
+                );
                 return;
             }
 
             let input_sample_rate = decoded.sample_rate;
             let input_channels = decoded.channels;
+            append_transcription_log(
+                &app,
+                "Media decode finished",
+                format!(
+                    "file={} sample_rate={} channels={} samples={} duration_ms={}",
+                    decoded.display_name,
+                    decoded.sample_rate,
+                    decoded.channels,
+                    decoded.samples.len(),
+                    duration_ms(decoded.samples.len(), decoded.sample_rate)
+                ),
+            );
+            note_capture_diagnostic(
+                &app,
+                &shared,
+                "File decoded",
+                format!(
+                    "{} Hz · {} ch · {} samples",
+                    decoded.sample_rate,
+                    decoded.channels,
+                    decoded.samples.len()
+                ),
+            );
             let samples_16khz = if decoded.sample_rate == parakeet::SAMPLE_RATE {
+                append_transcription_log(
+                    &app,
+                    "Resample skipped",
+                    format!("already {} Hz", parakeet::SAMPLE_RATE),
+                );
                 decoded.samples.clone()
             } else {
-                parakeet::resample_to_16khz(&decoded.samples, decoded.sample_rate)
+                append_transcription_log(
+                    &app,
+                    "Resample started",
+                    format!(
+                        "from {} Hz to {} Hz with {} samples",
+                        decoded.sample_rate,
+                        parakeet::SAMPLE_RATE,
+                        decoded.samples.len()
+                    ),
+                );
+                let started_at = Instant::now();
+                let resampled = parakeet::resample_to_16khz(&decoded.samples, decoded.sample_rate);
+                append_transcription_log(
+                    &app,
+                    "Resample finished",
+                    format!(
+                        "samples={} duration_ms={} elapsed_ms={}",
+                        resampled.len(),
+                        duration_ms(resampled.len(), parakeet::SAMPLE_RATE),
+                        started_at.elapsed().as_millis()
+                    ),
+                );
+                resampled
             };
 
             {
@@ -437,6 +664,18 @@ pub(crate) fn transcribe_media_file(
                 let core = shared.lock();
                 core.settings.clone()
             };
+            append_transcription_log(
+                &app,
+                "File transcription inference queued",
+                format!(
+                    "file={} model={} kind={:?} samples={} duration_ms={}",
+                    decoded.display_name,
+                    settings.selected_model_id,
+                    settings.selected_model_kind,
+                    samples_16khz.len(),
+                    duration_ms(samples_16khz.len(), parakeet::SAMPLE_RATE)
+                ),
+            );
 
             let result = transcribe_audio_segments(
                 &app,
@@ -451,16 +690,52 @@ pub(crate) fn transcribe_media_file(
             match result {
                 Ok(Some(output)) => {
                     if preview_control.current_generation() != transcription_generation {
+                        append_transcription_log(
+                            &app,
+                            "File transcription aborted",
+                            "inference completed after cancellation",
+                        );
                         return;
                     }
 
+                    append_transcription_log(
+                        &app,
+                        "File transcription inference finished",
+                        format!(
+                            "chars={} provider={} model={}",
+                            output.text.chars().count(),
+                            output.inference_provider,
+                            output.model_name
+                        ),
+                    );
                     let text = cleanup_transcript_text(
                         output.text.trim(),
                         settings.cleanup_enabled,
                         &settings.cleanup_terms,
                     );
+                    append_transcription_log(
+                        &app,
+                        "Transcript cleanup finished",
+                        format!(
+                            "raw_chars={} cleaned_chars={} cleanup_enabled={}",
+                            output.text.chars().count(),
+                            text.chars().count(),
+                            settings.cleanup_enabled
+                        ),
+                    );
 
                     if text.is_empty() {
+                        append_transcription_log(
+                            &app,
+                            "File transcription completed with empty transcript",
+                            decoded.display_name.clone(),
+                        );
+                        note_capture_diagnostic(
+                            &app,
+                            &shared,
+                            "No speech detected in file",
+                            decoded.display_name.clone(),
+                        );
                         let mut core = shared.lock();
                         core.phase = AppPhase::Idle;
                         core.status_message = "Nothing intelligible was detected".to_string();
@@ -477,6 +752,11 @@ pub(crate) fn transcribe_media_file(
                     let duration_ms =
                         (samples_16khz.len() as f64 / parakeet::SAMPLE_RATE as f64 * 1000.0) as u64;
                     let item_id = Uuid::new_v4().to_string();
+                    let history_id = item_id.clone();
+                    let model_name = output.model_name.clone();
+                    let inference_provider = output.inference_provider;
+                    let cleaned_char_count = text.chars().count();
+                    let source_name = decoded.display_name.clone();
                     let mut core = shared.lock();
                     core.history.insert(
                         0,
@@ -484,7 +764,7 @@ pub(crate) fn transcribe_media_file(
                             id: item_id,
                             text,
                             created_at: Utc::now().to_rfc3339(),
-                            source_name: decoded.display_name,
+                            source_name: source_name.clone(),
                             mode: RecordingMode::Toggle,
                             duration_ms,
                             pasted: false,
@@ -492,8 +772,8 @@ pub(crate) fn transcribe_media_file(
                             capture: HistoryCaptureDetails {
                                 source_kind: CaptureSourceKind::File,
                                 model_id: settings.selected_model_id.clone(),
-                                model_name: output.model_name,
-                                inference_provider: output.inference_provider,
+                                model_name,
+                                inference_provider,
                                 input_sample_rate,
                                 input_channels,
                                 transcription_sample_rate: parakeet::SAMPLE_RATE,
@@ -513,12 +793,42 @@ pub(crate) fn transcribe_media_file(
                     clear_overlay_session_state(&mut core);
                     drop(core);
 
+                    note_capture_diagnostic(
+                        &app,
+                        &shared,
+                        "File transcription complete",
+                        format!(
+                            "{} chars from {} with {}",
+                            cleaned_char_count, source_name, inference_provider
+                        ),
+                    );
+                    append_transcription_log(
+                        &app,
+                        "File transcription completed",
+                        format!(
+                            "file={} chars={} duration_ms={} history_id={history_id}",
+                            source_name, cleaned_char_count, duration_ms
+                        ),
+                    );
                     let _ = save_persisted_state(&app, &shared);
                     update_indicator_window(&app, &shared);
                     emit_snapshot(&app, &shared);
                 }
-                Ok(None) => {}
+                Ok(None) => {
+                    append_transcription_log(
+                        &app,
+                        "File transcription cancelled",
+                        decoded.display_name,
+                    );
+                }
                 Err(error) => {
+                    append_transcription_log(&app, "File transcription failed", error.to_string());
+                    note_capture_diagnostic(
+                        &app,
+                        &shared,
+                        "File transcription failed",
+                        error.to_string(),
+                    );
                     let mut core = shared.lock();
                     core.phase = AppPhase::Error;
                     core.status_message = "File transcription failed".to_string();
@@ -534,12 +844,24 @@ pub(crate) fn transcribe_media_file(
         }));
 
         if let Err(error) = outcome {
+            let panic_message = panic_payload_message(error);
+            append_transcription_log(
+                &app,
+                "File transcription worker crashed",
+                panic_message.clone(),
+            );
+            note_capture_diagnostic(
+                &app,
+                &shared,
+                "File transcription worker crashed",
+                panic_message.clone(),
+            );
             let mut core = shared.lock();
             core.phase = AppPhase::Error;
             core.status_message = "File transcription worker failed".to_string();
             core.error_message = Some(format!(
                 "The file transcription worker crashed unexpectedly: {}",
-                panic_payload_message(error)
+                panic_message
             ));
             core.model_status = current_model_status(&app, &core.settings);
             core.parakeet_model_status = built_in_parakeet_status(&app);
