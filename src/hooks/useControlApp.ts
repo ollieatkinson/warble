@@ -26,6 +26,7 @@ import { useButtonFeedback } from "./useButtonFeedback";
 import { useCleanupActions } from "./useCleanupActions";
 import { useHistoryActions } from "./useHistoryActions";
 import { useModelActions } from "./useModelActions";
+import { useReplacementActions } from "./useReplacementActions";
 import { useRecordingActions } from "./useRecordingActions";
 import { useSettingsSync } from "./useSettingsSync";
 import { useTheme } from "./useTheme";
@@ -157,6 +158,17 @@ export function useControlApp({
     ...actionContext,
   });
 
+  const {
+    replacementVariantsInput,
+    setReplacementVariantsInput,
+    replacementValueInput,
+    setReplacementValueInput,
+    addReplacementRule,
+    removeReplacementRule,
+  } = useReplacementActions({
+    ...actionContext,
+  });
+
   async function refreshDevices() {
     clearMessage();
     setButtonFeedbackState("refresh-inputs", "working");
@@ -216,6 +228,10 @@ export function useControlApp({
     setHistoryQuery,
     cleanupInput,
     setCleanupInput,
+    replacementVariantsInput,
+    setReplacementVariantsInput,
+    replacementValueInput,
+    setReplacementValueInput,
   };
   const actionState = {
     dismissSnapshotError,
@@ -239,6 +255,8 @@ export function useControlApp({
     addCleanupTerm,
     removeCleanupTerm,
     restoreCleanupDefaults,
+    addReplacementRule,
+    removeReplacementRule,
     openSettingsDialog: (pane: SettingsPaneId = "general") => {
       setCapturing(null);
       setActiveSettingsPane(pane);
@@ -276,6 +294,7 @@ export function useControlApp({
     previewTitle: previewState.previewTitle,
     previewDetail: previewState.previewDetail,
     cleanupTerms: snapshot.settings.cleanupTerms,
+    replacementRules: snapshot.settings.replacementRules,
   };
 
   return {

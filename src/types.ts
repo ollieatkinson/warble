@@ -56,6 +56,12 @@ export type ModelFeatureItem = {
   icon: ModelFeatureIcon;
 };
 
+export type ReplacementRule = {
+  id: string;
+  variants: string[];
+  replacement: string;
+};
+
 export type Settings = {
   holdShortcut: string;
   toggleShortcut: string;
@@ -67,6 +73,7 @@ export type Settings = {
   installedModelPaths: Record<string, string>;
   cleanupEnabled: boolean;
   cleanupTerms: string[];
+  replacementRules: ReplacementRule[];
   audioRetentionPolicy: AudioRetentionPolicy;
   overlayPosition: OverlayPosition;
   overlayAnimationStyle: OverlayAnimationStyle;

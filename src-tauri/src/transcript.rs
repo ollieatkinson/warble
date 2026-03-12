@@ -1,11 +1,12 @@
 use chrono::Utc;
 use regex::{Regex, RegexBuilder};
 use tauri::AppHandle;
+use uuid::Uuid;
 
 use crate::constants::{
     DEFAULT_CLEANUP_TERMS, LIVE_PREVIEW_MAX_WORDS, LIVE_PREVIEW_RESET_AFTER_DIVERGENCE,
 };
-use crate::state::{AppPhase, PreviewControl, PreviewStabilizer, SharedState};
+use crate::state::{AppPhase, PreviewControl, PreviewStabilizer, ReplacementRule, SharedState};
 use crate::storage::{append_capture_log, append_live_preview_log, emit_snapshot};
 
 pub(crate) fn default_cleanup_terms() -> Vec<String> {
@@ -48,6 +49,95 @@ pub(crate) fn normalize_cleanup_terms(terms: &[String]) -> Vec<String> {
     normalized
 }
 
+pub(crate) fn normalize_replacement_variant(variant: &str) -> Option<String> {
+    let normalized = variant
+        .split_whitespace()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_lowercase();
+
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+pub(crate) fn normalize_replacement_variants(variants: &[String]) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for variant in variants {
+        let Some(variant) = normalize_replacement_variant(variant) else {
+            continue;
+        };
+
+        if normalized.iter().any(|existing| existing == &variant) {
+            continue;
+        }
+
+        normalized.push(variant);
+    }
+
+    normalized.sort();
+
+    normalized
+}
+
+fn normalize_replacement_text(replacement: &str) -> Option<String> {
+    let normalized = replacement
+        .split_whitespace()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string();
+
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn normalize_replacement_rule(rule: &ReplacementRule) -> Option<ReplacementRule> {
+    let variants = normalize_replacement_variants(&rule.variants);
+    let replacement = normalize_replacement_text(&rule.replacement)?;
+
+    if variants.is_empty() {
+        return None;
+    }
+
+    Some(ReplacementRule {
+        id: if rule.id.trim().is_empty() {
+            Uuid::new_v4().to_string()
+        } else {
+            rule.id.trim().to_string()
+        },
+        variants,
+        replacement,
+    })
+}
+
+pub(crate) fn normalize_replacement_rules(rules: &[ReplacementRule]) -> Vec<ReplacementRule> {
+    let mut normalized: Vec<ReplacementRule> = Vec::new();
+    for rule in rules {
+        let Some(rule) = normalize_replacement_rule(rule) else {
+            continue;
+        };
+
+        if normalized.iter().any(|existing| {
+            existing.variants == rule.variants && existing.replacement == rule.replacement
+        }) {
+            continue;
+        }
+
+        normalized.push(rule);
+    }
+
+    normalized
+}
+
 fn condense_whitespace(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -82,21 +172,35 @@ fn cleanup_patterns_from_terms(terms: &[String]) -> Vec<Regex> {
         .collect()
 }
 
-pub(crate) fn cleanup_transcript_text(
-    text: &str,
-    cleanup_enabled: bool,
-    cleanup_terms: &[String],
-) -> String {
-    let mut cleaned = condense_whitespace(text);
-    if cleaned.is_empty() || !cleanup_enabled {
-        return cleaned;
-    }
+fn replacement_patterns_from_rules(rules: &[ReplacementRule]) -> Vec<(Regex, String)> {
+    let mut ordered = normalize_replacement_rules(rules)
+        .into_iter()
+        .flat_map(|rule| {
+            rule.variants
+                .into_iter()
+                .map(move |variant| (variant, rule.replacement.clone()))
+        })
+        .collect::<Vec<_>>();
+    ordered.sort_by(|left, right| right.0.len().cmp(&left.0.len()));
 
-    for pattern in cleanup_patterns_from_terms(cleanup_terms) {
-        cleaned = pattern.replace_all(&cleaned, " ").into_owned();
-    }
+    ordered
+        .into_iter()
+        .filter_map(|(variant, replacement)| {
+            let escaped = regex::escape(&variant).replace("\\ ", r"\s+");
+            let pattern = format!(
+                r#"(?i)(^|[\s\(\[\{{"'“”‘’,.;:!?]+)({escaped})([\s\)\]\}}"'“”‘’,.;:!?]+|$)"#
+            );
+            RegexBuilder::new(&pattern)
+                .case_insensitive(true)
+                .build()
+                .ok()
+                .map(|regex| (regex, replacement))
+        })
+        .collect()
+}
 
-    let cleaned = condense_whitespace(&cleaned);
+fn finalize_transcript_text(text: &str) -> String {
+    let cleaned = condense_whitespace(text);
     let Ok(punctuation_spacing) = Regex::new(r#"\s+([,.;:!?])"#) else {
         return cleaned.trim().to_string();
     };
@@ -112,6 +216,56 @@ pub(crate) fn cleanup_transcript_text(
         })
         .trim()
         .to_string()
+}
+
+pub(crate) fn cleanup_transcript_text(
+    text: &str,
+    cleanup_enabled: bool,
+    cleanup_terms: &[String],
+) -> String {
+    let mut cleaned = condense_whitespace(text);
+    if cleaned.is_empty() || !cleanup_enabled {
+        return cleaned;
+    }
+
+    for pattern in cleanup_patterns_from_terms(cleanup_terms) {
+        cleaned = pattern.replace_all(&cleaned, " ").into_owned();
+    }
+
+    finalize_transcript_text(&cleaned)
+}
+
+pub(crate) fn apply_replacement_rules(text: &str, replacement_rules: &[ReplacementRule]) -> String {
+    let mut replaced = condense_whitespace(text);
+    if replaced.is_empty() || replacement_rules.is_empty() {
+        return finalize_transcript_text(&replaced);
+    }
+
+    for (pattern, replacement) in replacement_patterns_from_rules(replacement_rules) {
+        replaced = pattern
+            .replace_all(&replaced, |captures: &regex::Captures<'_>| {
+                let prefix = captures.get(1).map(|value| value.as_str()).unwrap_or("");
+                let suffix = captures.get(3).map(|value| value.as_str()).unwrap_or("");
+                format!("{prefix}{replacement}{suffix}")
+            })
+            .into_owned();
+    }
+
+    finalize_transcript_text(&replaced)
+}
+
+pub(crate) fn post_process_transcript_text(
+    text: &str,
+    cleanup_enabled: bool,
+    cleanup_terms: &[String],
+    replacement_rules: &[ReplacementRule],
+) -> String {
+    let cleaned = cleanup_transcript_text(text, cleanup_enabled, cleanup_terms);
+    if cleaned.is_empty() || replacement_rules.is_empty() {
+        return cleaned;
+    }
+
+    apply_replacement_rules(&cleaned, replacement_rules)
 }
 
 pub(crate) fn live_preview_text(
@@ -356,9 +510,11 @@ impl PreviewStabilizer {
 #[cfg(test)]
 mod tests {
     use super::{
-        cleanup_transcript_text, common_prefix_len, default_cleanup_terms, live_preview_text,
-        normalize_cleanup_term, normalize_cleanup_terms,
+        apply_replacement_rules, cleanup_transcript_text, common_prefix_len, default_cleanup_terms,
+        live_preview_text, normalize_cleanup_term, normalize_cleanup_terms,
+        normalize_replacement_rules, post_process_transcript_text,
     };
+    use crate::state::ReplacementRule;
 
     #[test]
     fn cleanup_transcript_removes_common_fillers() {
@@ -395,6 +551,40 @@ mod tests {
             vec![String::from("um"), String::from("you know")]
         );
         assert_eq!(normalize_cleanup_term("   "), None);
+    }
+
+    #[test]
+    fn normalize_replacement_rules_deduplicates_and_trims() {
+        let normalized = normalize_replacement_rules(&[
+            ReplacementRule {
+                id: String::new(),
+                variants: vec![
+                    String::from(" Git Hub "),
+                    String::from("github"),
+                    String::from("GIT HUB"),
+                ],
+                replacement: String::from(" GitHub "),
+            },
+            ReplacementRule {
+                id: "rule-2".to_string(),
+                variants: vec![String::from("java   script")],
+                replacement: String::from("JavaScript"),
+            },
+            ReplacementRule {
+                id: "rule-3".to_string(),
+                variants: vec![String::from("github"), String::from("git hub")],
+                replacement: String::from("GitHub"),
+            },
+        ]);
+
+        assert_eq!(normalized.len(), 2);
+        assert_eq!(
+            normalized[0].variants,
+            vec![String::from("git hub"), String::from("github")]
+        );
+        assert_eq!(normalized[0].replacement, "GitHub");
+        assert!(!normalized[0].id.is_empty());
+        assert_eq!(normalized[1].variants, vec![String::from("java script")]);
     }
 
     #[test]
@@ -481,11 +671,8 @@ mod tests {
 
     #[test]
     fn cleanup_handles_punctuation_around_fillers() {
-        let cleaned = cleanup_transcript_text(
-            "Well, um, I think so.",
-            true,
-            &default_cleanup_terms(),
-        );
+        let cleaned =
+            cleanup_transcript_text("Well, um, I think so.", true, &default_cleanup_terms());
         assert!(cleaned.contains("Well"));
         assert!(cleaned.contains("I think so"));
     }
@@ -500,5 +687,56 @@ mod tests {
     fn live_preview_text_single_line() {
         let preview = live_preview_text("hello world", true, &default_cleanup_terms());
         assert_eq!(preview, "hello world");
+    }
+
+    #[test]
+    fn replacement_rules_apply_case_insensitive_multi_word_matches() {
+        let replaced = apply_replacement_rules(
+            "github shipped a java script SDK.",
+            &[
+                ReplacementRule {
+                    id: "rule-1".to_string(),
+                    variants: vec![String::from("git hub"), String::from("github")],
+                    replacement: String::from("GitHub"),
+                },
+                ReplacementRule {
+                    id: "rule-2".to_string(),
+                    variants: vec![String::from("java script")],
+                    replacement: String::from("JavaScript"),
+                },
+            ],
+        );
+
+        assert_eq!(replaced, "GitHub shipped a JavaScript SDK.");
+    }
+
+    #[test]
+    fn replacement_rules_preserve_word_boundaries() {
+        let replaced = apply_replacement_rules(
+            "githuber and github are different",
+            &[ReplacementRule {
+                id: "rule-1".to_string(),
+                variants: vec![String::from("github")],
+                replacement: String::from("GitHub"),
+            }],
+        );
+
+        assert_eq!(replaced, "githuber and GitHub are different");
+    }
+
+    #[test]
+    fn post_process_applies_cleanup_before_replacements() {
+        let processed = post_process_transcript_text(
+            "uh open ai is local first",
+            true,
+            &default_cleanup_terms(),
+            &[ReplacementRule {
+                id: "rule-1".to_string(),
+                variants: vec![String::from("open ai")],
+                replacement: String::from("OpenAI"),
+            }],
+        );
+
+        assert_eq!(processed, "OpenAI is local first");
     }
 }

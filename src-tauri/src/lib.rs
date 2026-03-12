@@ -57,7 +57,9 @@ pub fn run() {
         .manage(preview_control);
 
     #[cfg(target_os = "macos")]
-    let builder = builder.menu(build_app_menu).on_menu_event(handle_menu_event);
+    let builder = builder
+        .menu(build_app_menu)
+        .on_menu_event(handle_menu_event);
 
     #[cfg(not(target_os = "macos"))]
     let builder = builder;
@@ -224,6 +226,8 @@ pub fn run() {
             add_cleanup_term,
             remove_cleanup_term,
             restore_default_cleanup_terms,
+            add_replacement_rule,
+            remove_replacement_rule,
             clear_error_message_command,
             remove_history_item,
             clear_history,

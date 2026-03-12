@@ -145,6 +145,10 @@ export function ControlApp({
     setHistoryQuery,
     cleanupInput,
     setCleanupInput,
+    replacementVariantsInput,
+    setReplacementVariantsInput,
+    replacementValueInput,
+    setReplacementValueInput,
     draft,
     dismissSnapshotError,
     applySettings,
@@ -166,6 +170,8 @@ export function ControlApp({
     addCleanupTerm,
     removeCleanupTerm,
     restoreCleanupDefaults,
+    addReplacementRule,
+    removeReplacementRule,
     openSettingsDialog,
     openTroubleshootingDialog,
     closeDialog,
@@ -184,6 +190,7 @@ export function ControlApp({
     previewTitle,
     previewDetail,
     cleanupTerms,
+    replacementRules,
   } = control;
 
   return (
@@ -313,12 +320,19 @@ export function ControlApp({
               draft={draft}
               cleanupInput={cleanupInput}
               cleanupTerms={cleanupTerms}
+              replacementVariantsInput={replacementVariantsInput}
+              replacementValueInput={replacementValueInput}
+              replacementRules={replacementRules}
               buttonFeedback={buttonFeedback}
               onSetCleanupInput={setCleanupInput}
+              onSetReplacementVariantsInput={setReplacementVariantsInput}
+              onSetReplacementValueInput={setReplacementValueInput}
               onApplySettings={applySettings}
               onAddCleanupTerm={addCleanupTerm}
               onRemoveCleanupTerm={removeCleanupTerm}
               onRestoreCleanupDefaults={restoreCleanupDefaults}
+              onAddReplacementRule={addReplacementRule}
+              onRemoveReplacementRule={removeReplacementRule}
             />
           ) : null}
 

@@ -336,6 +336,13 @@ export function formatInvokeError(error: unknown) {
       : "Something went wrong.";
 }
 
+export function parseReplacementVariantsInput(value: string) {
+  return value
+    .split(/[\n,]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 export function formatShortcutKey(key: string) {
   if (key === " ") {
     return "Space";

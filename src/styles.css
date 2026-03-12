@@ -708,6 +708,10 @@ input::placeholder {
   flex: 1 1 auto;
 }
 
+.replacement-add-row input {
+  flex: 1 1 auto;
+}
+
 .cleanup-suggestions {
   display: flex;
   flex-wrap: wrap;
@@ -746,6 +750,40 @@ input::placeholder {
 
 .cleanup-chip-remove {
   flex: 0 0 auto;
+}
+
+.replacement-rule-list {
+  display: grid;
+  gap: 0;
+}
+
+.replacement-rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  padding: 0.82rem 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.replacement-rule:last-child {
+  border-bottom: none;
+}
+
+.replacement-rule-copy {
+  display: grid;
+  gap: 0.24rem;
+  min-width: 0;
+}
+
+.replacement-rule-copy strong {
+  color: var(--text);
+  word-break: break-word;
+}
+
+.replacement-rule-copy span {
+  color: var(--muted);
+  word-break: break-word;
 }
 
 .cleanup-empty-state {

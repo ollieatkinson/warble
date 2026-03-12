@@ -15,7 +15,7 @@ use crate::overlay::{
 use crate::state::*;
 use crate::storage::*;
 use crate::transcript::{
-    cleanup_transcript_text, note_capture_diagnostic, transcription_cancelled,
+    note_capture_diagnostic, post_process_transcript_text, transcription_cancelled,
 };
 use crate::{media, parakeet, platform};
 
@@ -646,10 +646,11 @@ pub(crate) fn complete_transcription(
             match result {
                 Ok(Some(output)) => {
                     let text = output.text;
-                    let text = cleanup_transcript_text(
+                    let text = post_process_transcript_text(
                         text.trim(),
                         settings.cleanup_enabled,
                         &settings.cleanup_terms,
+                        &settings.replacement_rules,
                     );
                     if text.is_empty() {
                         note_capture_diagnostic(
@@ -1015,19 +1016,21 @@ pub(crate) fn transcribe_media_file(
                             output.model_name
                         ),
                     );
-                    let text = cleanup_transcript_text(
+                    let text = post_process_transcript_text(
                         output.text.trim(),
                         settings.cleanup_enabled,
                         &settings.cleanup_terms,
+                        &settings.replacement_rules,
                     );
                     append_transcription_log(
                         &app,
-                        "Transcript cleanup finished",
+                        "Transcript post-processing finished",
                         format!(
-                            "raw_chars={} cleaned_chars={} cleanup_enabled={}",
+                            "raw_chars={} final_chars={} cleanup_enabled={} replacement_rules={}",
                             output.text.chars().count(),
                             text.chars().count(),
-                            settings.cleanup_enabled
+                            settings.cleanup_enabled,
+                            settings.replacement_rules.len()
                         ),
                     );
 
