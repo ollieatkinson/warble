@@ -701,6 +701,7 @@ pub(crate) fn complete_transcription(
                     let inference_provider = output.inference_provider;
 
                     let mut core = shared.lock();
+                    core.last_transcript_text = Some(text.clone());
                     core.history.insert(
                         0,
                         HistoryItem {
@@ -1068,6 +1069,7 @@ pub(crate) fn transcribe_media_file(
                     let cleaned_char_count = text.chars().count();
                     let source_name = decoded.display_name.clone();
                     let mut core = shared.lock();
+                    core.last_transcript_text = Some(text.clone());
                     core.history.insert(
                         0,
                         HistoryItem {

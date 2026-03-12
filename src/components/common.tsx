@@ -215,7 +215,7 @@ export function ShortcutField({
         }}
         onBlur={onCancel}
       >
-        {armed ? "Press shortcut..." : value}
+        {armed ? "Press shortcut..." : value || "Set shortcut"}
       </button>
     </label>
   );

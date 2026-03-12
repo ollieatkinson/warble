@@ -438,6 +438,7 @@ export function buildSettingsUpdate(draft: SettingsDraft) {
   return {
     holdShortcut: draft.holdShortcut,
     toggleShortcut: draft.toggleShortcut,
+    pasteLastShortcut: draft.pasteLastShortcut,
     selectedSourceId: draft.selectedSourceId || undefined,
     autoPaste: draft.autoPaste,
     cleanupEnabled: draft.cleanupEnabled,

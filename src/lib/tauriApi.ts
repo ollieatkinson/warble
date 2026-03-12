@@ -54,6 +54,10 @@ export function clearHistory() {
   return invoke<void>("clear_history");
 }
 
+export function pasteLastTranscript() {
+  return invoke<void>("paste_last_transcript_command");
+}
+
 export function downloadCatalogModel(modelId: string) {
   return invoke<void>("download_catalog_model", { modelId });
 }

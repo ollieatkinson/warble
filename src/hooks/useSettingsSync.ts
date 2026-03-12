@@ -9,6 +9,7 @@ import type { SettingsDraft, Snapshot } from "../types";
 const DEFAULT_DRAFT: SettingsDraft = {
   holdShortcut: "",
   toggleShortcut: "",
+  pasteLastShortcut: "",
   selectedSourceId: "",
   autoPaste: true,
   cleanupEnabled: true,

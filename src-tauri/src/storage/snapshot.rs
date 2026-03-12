@@ -102,6 +102,7 @@ pub(crate) fn build_snapshot(app: &AppHandle, shared: &SharedState) -> Snapshot 
         platform: platform::current_platform(),
         auto_paste_support: platform::auto_paste_support(),
         settings: core.settings.clone(),
+        last_transcript_available: core.last_transcript_text.is_some(),
         sources: core.sources.clone(),
         history: core.history.clone(),
         model_status: core.model_status.clone(),

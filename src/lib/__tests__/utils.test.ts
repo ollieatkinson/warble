@@ -496,6 +496,7 @@ describe("buildSettingsUpdate", () => {
     const draft = createSettingsDraft();
     const update = buildSettingsUpdate(draft);
     expect(update.holdShortcut).toBe(draft.holdShortcut);
+    expect(update.pasteLastShortcut).toBe(draft.pasteLastShortcut);
     expect(update.autoPaste).toBe(draft.autoPaste);
     expect(update.colorTheme).toBe(draft.colorTheme);
   });

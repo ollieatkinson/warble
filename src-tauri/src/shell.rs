@@ -3,6 +3,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewUrl, WebviewWindowBuilder};
 
+use crate::commands::paste_last_transcript;
 use crate::constants::*;
 use crate::overlay::fallback_indicator_window_size;
 use crate::recording;
@@ -88,6 +89,24 @@ fn stop_or_cancel_from_tray(app: &AppHandle) {
     }
 }
 
+fn paste_last_from_tray(app: &AppHandle) {
+    let shared = app.state::<SharedState>();
+    let _ = paste_last_transcript(app, &shared);
+}
+
+fn format_shortcut_summary(shortcuts: &[String]) -> String {
+    match shortcuts {
+        [] => "No shortcuts active".to_string(),
+        [only] => only.clone(),
+        [first, second] => format!("{first} and {second}"),
+        _ => format!(
+            "{}, and {}",
+            shortcuts[..shortcuts.len() - 1].join(", "),
+            shortcuts[shortcuts.len() - 1]
+        ),
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub(crate) fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let about_item =
@@ -107,6 +126,13 @@ pub(crate) fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>>
         "Transcribe Audio File…",
         true,
         Some("CmdOrCtrl+O"),
+    )?;
+    let paste_last_item = MenuItem::with_id(
+        app,
+        MENU_FILE_PASTE_LAST_ID,
+        "Paste Last Transcript",
+        true,
+        None::<&str>,
     )?;
     let capture_item = MenuItem::with_id(
         app,
@@ -170,6 +196,7 @@ pub(crate) fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>>
         .build()?;
     let file_menu = SubmenuBuilder::new(app, "File")
         .item(&transcribe_item)
+        .item(&paste_last_item)
         .build()?;
     let go_menu = SubmenuBuilder::new(app, "Go")
         .item(&capture_item)
@@ -199,6 +226,7 @@ pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         MENU_FILE_TRANSCRIBE_ID => {
             show_main_window_and_emit(app, SHELL_ACTION_TRANSCRIBE_FILE)
         }
+        MENU_FILE_PASTE_LAST_ID => paste_last_from_tray(app),
         MENU_VIEW_CAPTURE_ID => show_main_window_and_emit(app, SHELL_ACTION_NAVIGATE_CAPTURE),
         MENU_VIEW_MODELS_ID => show_main_window_and_emit(app, SHELL_ACTION_NAVIGATE_MODELS),
         MENU_VIEW_VOCABULARY_ID => {
@@ -224,6 +252,13 @@ pub(crate) fn create_tray_icon(app: &AppHandle) -> Result<()> {
         MenuItem::with_id(app, TRAY_SHOW_ID, "Open Warble", true, None::<&str>)?;
     let settings_item =
         MenuItem::with_id(app, TRAY_SETTINGS_ID, "Settings…", true, None::<&str>)?;
+    let paste_last_item = MenuItem::with_id(
+        app,
+        TRAY_PASTE_LAST_ID,
+        "Paste Last Transcript",
+        true,
+        None::<&str>,
+    )?;
     let hold_item = MenuItem::with_id(
         app,
         TRAY_RECORD_HOLD_ID,
@@ -251,6 +286,7 @@ pub(crate) fn create_tray_icon(app: &AppHandle) -> Result<()> {
         &[
             &show_item,
             &settings_item,
+            &paste_last_item,
             &PredefinedMenuItem::separator(app)?,
             &hold_item,
             &toggle_item,
@@ -272,6 +308,7 @@ pub(crate) fn create_tray_icon(app: &AppHandle) -> Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             TRAY_SHOW_ID => show_main_window(app),
             TRAY_SETTINGS_ID => show_main_window_and_emit(app, SHELL_ACTION_OPEN_SETTINGS),
+            TRAY_PASTE_LAST_ID => paste_last_from_tray(app),
             TRAY_RECORD_HOLD_ID => start_recording_from_tray(app, RecordingMode::Hold),
             TRAY_RECORD_TOGGLE_ID => start_recording_from_tray(app, RecordingMode::Toggle),
             TRAY_STOP_OR_CANCEL_ID => stop_or_cancel_from_tray(app),
@@ -302,13 +339,25 @@ pub(crate) fn register_shortcuts(app: &AppHandle, shared: &SharedState) -> Resul
         };
         let hold_shortcut = normalize_shortcut(&settings.hold_shortcut);
         let toggle_shortcut = normalize_shortcut(&settings.toggle_shortcut);
+        let paste_last_shortcut = normalize_shortcut(&settings.paste_last_shortcut);
         let cancel_shortcut = normalize_shortcut(CANCEL_SHORTCUT);
 
         if hold_shortcut == toggle_shortcut {
             return Err(anyhow!("Hold and toggle shortcuts must be different"));
         }
-        if hold_shortcut == cancel_shortcut || toggle_shortcut == cancel_shortcut {
+        if hold_shortcut == cancel_shortcut
+            || toggle_shortcut == cancel_shortcut
+            || (!paste_last_shortcut.is_empty() && paste_last_shortcut == cancel_shortcut)
+        {
             return Err(anyhow!("Escape is reserved for cancel"));
+        }
+        if !paste_last_shortcut.is_empty()
+            && (hold_shortcut == paste_last_shortcut
+                || toggle_shortcut == paste_last_shortcut)
+        {
+            return Err(anyhow!(
+                "Paste last transcript shortcut must be different from record shortcuts"
+            ));
         }
 
         app.global_shortcut().unregister_all()?;
@@ -316,21 +365,25 @@ pub(crate) fn register_shortcuts(app: &AppHandle, shared: &SharedState) -> Resul
             .register(settings.hold_shortcut.as_str())?;
         app.global_shortcut()
             .register(settings.toggle_shortcut.as_str())?;
+        if !paste_last_shortcut.is_empty() {
+            app.global_shortcut()
+                .register(settings.paste_last_shortcut.as_str())?;
+        }
         let escape_registered = app.global_shortcut().register(CANCEL_SHORTCUT).is_ok();
 
         let mut core = shared.lock();
         core.shortcuts_active = true;
-        core.shortcut_message = if escape_registered {
-            format!(
-                "Listening for {}, {}, and Esc",
-                settings.hold_shortcut, settings.toggle_shortcut
-            )
-        } else {
-            format!(
-                "Listening for {} and {}",
-                settings.hold_shortcut, settings.toggle_shortcut
-            )
-        };
+        let mut shortcuts = vec![
+            settings.hold_shortcut.clone(),
+            settings.toggle_shortcut.clone(),
+        ];
+        if !paste_last_shortcut.is_empty() {
+            shortcuts.push(settings.paste_last_shortcut.clone());
+        }
+        if escape_registered {
+            shortcuts.push(CANCEL_SHORTCUT.to_string());
+        }
+        core.shortcut_message = format!("Listening for {}", format_shortcut_summary(&shortcuts));
         core.error_message = None;
     }
 
