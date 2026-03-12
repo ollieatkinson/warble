@@ -69,7 +69,7 @@ export function InterfaceSection({
             <div className="setting-row">
               <div className="setting-copy">
                 <strong>HUD position</strong>
-                <span>Where the pill sits while dictating.</span>
+                <span>Choose a screen edge or a notch-style top anchor.</span>
               </div>
               <div className="setting-control">
                 <ChoiceDropdown

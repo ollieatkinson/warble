@@ -120,6 +120,7 @@ export function InputsSection({
             title={previewHeadline}
             detail={previewCopy}
             levels={snapshot.overlay.levels}
+            overlayPosition={draft.overlayPosition}
             animationStyle={draft.overlayAnimationStyle}
             showRecordingTimer={draft.showRecordingTimer}
             showLiveTranscription={draft.showLiveTranscription}

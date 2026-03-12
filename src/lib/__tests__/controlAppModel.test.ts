@@ -88,6 +88,16 @@ describe("buildDraftFromSnapshot", () => {
 
     expect(draft.overlayPosition).toBe("bottom-center");
   });
+
+  it("preserves dynamic island overlay position", () => {
+    const snapshot = createSnapshot({
+      settings: createSettings({ overlayPosition: "dynamic-island" }),
+    });
+
+    const draft = buildDraftFromSnapshot(snapshot);
+
+    expect(draft.overlayPosition).toBe("dynamic-island");
+  });
 });
 
 describe("deriveSourceState", () => {

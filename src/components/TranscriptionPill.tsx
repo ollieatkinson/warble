@@ -12,6 +12,7 @@ import type {
   LiveTranscriptLines,
   LiveTranscriptWidth,
   OverlayAnimationStyle,
+  OverlayPosition,
   Snapshot,
 } from "../types";
 
@@ -43,6 +44,12 @@ function normalizeIndicatorCopy(value: string): string {
 
 function normalizeLiveIndicatorCopy(value: string): string {
   return normalizeIndicatorCopy(value).replace(/\s+/g, " ").trim();
+}
+
+function isDynamicIslandPosition(
+  position: EditableOverlayPosition | OverlayPosition,
+) {
+  return position === "dynamic-island";
 }
 
 function buildDemoLevels(time: number) {
@@ -365,6 +372,7 @@ export function TranscriptionPill({
   title,
   detail,
   levels,
+  overlayPosition = "bottom-center",
   animationStyle,
   showRecordingTimer,
   showLiveTranscription,
@@ -379,6 +387,7 @@ export function TranscriptionPill({
   title: string;
   detail: string;
   levels: number[];
+  overlayPosition?: OverlayPosition;
   animationStyle: OverlayAnimationStyle;
   showRecordingTimer: boolean;
   showLiveTranscription: boolean;
@@ -419,6 +428,7 @@ export function TranscriptionPill({
         `indicator-shell-${phase}`,
         "indicator-shell-inline",
         showLiveTranscription ? "indicator-shell-detail" : "indicator-shell-compact",
+        isDynamicIslandPosition(overlayPosition) ? "indicator-shell-dynamic-island" : "",
         showLiveTranscription
           ? `indicator-shell-detail-width-${liveTranscriptWidth}`
           : "",
@@ -585,6 +595,7 @@ export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
     snapshot?.overlay.elapsedMs,
     snapshot?.overlay.limitMs,
     snapshot?.settings.overlayAnimationStyle,
+    snapshot?.settings.overlayPosition,
     snapshot?.settings.showLiveTranscription,
     snapshot?.settings.liveTranscriptWidth,
     snapshot?.settings.liveTranscriptLines,
@@ -603,6 +614,7 @@ export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
           title={snapshot.overlay.title}
           detail={snapshot.overlay.detail}
           levels={snapshot.overlay.levels}
+          overlayPosition={snapshot.settings.overlayPosition}
           animationStyle={snapshot.settings.overlayAnimationStyle}
           showRecordingTimer={snapshot.settings.showRecordingTimer}
           showLiveTranscription={snapshot.settings.showLiveTranscription}
@@ -633,9 +645,9 @@ export function OverlayPositionPreview({
         .filter(Boolean)
         .join(" ")}
     >
-      <div className={`position-preview-screen position-preview-screen-${position}`}>
-        <span className="position-preview-pill" />
-      </div>
+        <div className={`position-preview-screen position-preview-screen-${position}`}>
+          <span className="position-preview-pill" />
+        </div>
     </div>
   );
 }
@@ -702,6 +714,7 @@ export function InterfacePreviewCard({
             title="Listening"
             detail={"Capturing live transcript\nwith the latest lines visible"}
             levels={DEMO_LEVELS}
+            overlayPosition={overlayPosition}
             animationStyle={animationStyle}
             showRecordingTimer={showRecordingTimer}
             showLiveTranscription={showLiveTranscription}

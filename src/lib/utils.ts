@@ -53,6 +53,14 @@ export function formatPhaseLabel(phase: AppPhase) {
 
 export function formatOverlayPosition(position: OverlayPosition) {
   switch (position) {
+    case "dynamic-island":
+      return "Dynamic Island";
+    case "top-left":
+      return "Top left";
+    case "top-right":
+      return "Top right";
+    case "top-center":
+      return "Top center";
     case "bottom-left":
       return "Bottom left";
     case "bottom-right":
@@ -306,11 +314,15 @@ export function normalizeEditableOverlayPosition(
   position: OverlayPosition,
 ): EditableOverlayPosition {
   switch (position) {
+    case "dynamic-island":
+    case "top-center":
+    case "top-left":
+    case "top-right":
     case "bottom-left":
     case "bottom-right":
+    case "bottom-center":
       return position;
     case "caret":
-    case "bottom-center":
     default:
       return "bottom-center";
   }
