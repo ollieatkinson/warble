@@ -55,11 +55,11 @@ pub(crate) fn post_event_access_error_message() -> &'static str {
 
 #[cfg(target_os = "macos")]
 mod imp {
-    use anyhow::{bail, Context, Result};
+    use anyhow::{anyhow, bail, Context, Result};
     use block2::RcBlock;
     use chrono::Utc;
     use objc2::runtime::Bool;
-    use objc2_avf_audio::{AVAudioApplication, AVAudioApplicationRecordPermission};
+    use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
     use objc2_core_graphics::{CGPreflightPostEventAccess, CGRequestPostEventAccess};
     use std::sync::mpsc;
     use tauri::AppHandle;
@@ -97,20 +97,21 @@ mod imp {
     }
 
     fn current_microphone_access() -> Result<MicrophoneAccess> {
-        let application = unsafe { AVAudioApplication::sharedInstance() };
-        let status = unsafe { application.recordPermission() };
+        let media_type = audio_media_type()?;
+        let status = unsafe { AVCaptureDevice::authorizationStatusForMediaType(media_type) };
 
         Ok(match status {
-            AVAudioApplicationRecordPermission::Undetermined => MicrophoneAccess::NotDetermined,
-            AVAudioApplicationRecordPermission::Denied => MicrophoneAccess::Denied,
-            AVAudioApplicationRecordPermission::Granted => MicrophoneAccess::Authorized,
+            AVAuthorizationStatus::NotDetermined => MicrophoneAccess::NotDetermined,
+            AVAuthorizationStatus::Restricted => MicrophoneAccess::Restricted,
+            AVAuthorizationStatus::Denied => MicrophoneAccess::Denied,
+            AVAuthorizationStatus::Authorized => MicrophoneAccess::Authorized,
             _ => MicrophoneAccess::Denied,
         })
     }
 
     fn request_microphone_access(app: &AppHandle) -> Result<MicrophoneAccess> {
         let (sender, receiver) = mpsc::channel::<Result<bool>>();
-        log_microphone_access(app, "request-started", "using AVAudioApplication");
+        log_microphone_access(app, "request-started", "using AVCaptureDevice");
 
         run_on_main_thread_and_wait(app, move || {
             let completion_sender = sender.clone();
@@ -118,8 +119,10 @@ mod imp {
                 let _ = completion_sender.send(Ok(granted.as_bool()));
             });
 
+            let media_type =
+                unsafe { AVMediaTypeAudio }.expect("AVMediaTypeAudio should be available on macOS");
             unsafe {
-                AVAudioApplication::requestRecordPermissionWithCompletionHandler(&handler);
+                AVCaptureDevice::requestAccessForMediaType_completionHandler(media_type, &handler);
             }
         })?;
 
@@ -133,6 +136,11 @@ mod imp {
         } else {
             MicrophoneAccess::Denied
         })
+    }
+
+    fn audio_media_type() -> Result<&'static objc2_av_foundation::AVMediaType> {
+        unsafe { AVMediaTypeAudio }
+            .ok_or_else(|| anyhow!("AVMediaTypeAudio is unavailable on this macOS runtime"))
     }
 
     fn log_microphone_access(app: &AppHandle, stage: &str, detail: impl Into<String>) {

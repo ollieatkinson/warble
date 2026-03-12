@@ -23,6 +23,13 @@ pub(crate) struct TranscriptionOutput {
     pub(crate) model_name: String,
 }
 
+fn engine_provider(engine: &TranscriberEngine) -> InferenceProvider {
+    match engine {
+        TranscriberEngine::Parakeet(model) => model.provider(),
+        TranscriberEngine::ParakeetCtc(model) => model.provider(),
+    }
+}
+
 fn append_transcription_log(app: &AppHandle, stage: &str, detail: impl Into<String>) {
     let detail = detail.into();
     let message = if detail.is_empty() {
@@ -92,12 +99,13 @@ pub(crate) fn transcribe_audio(
 
         guard.engine = Some(engine);
         guard.selected_key = Some(selected_key);
+        let provider = engine_provider(guard.engine.as_ref().expect("transcriber initialized"));
         append_transcription_log(
             app,
             "Transcription model ready",
             format!(
-                "model={} kind={:?}",
-                model_name, settings.selected_model_kind
+                "model={} kind={:?} provider={}",
+                model_name, settings.selected_model_kind, provider
             ),
         );
     }
