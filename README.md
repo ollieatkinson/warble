@@ -145,6 +145,20 @@ security find-identity -v -p codesigning
 The GitHub macOS release job expects `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
 and `APPLE_SIGNING_IDENTITY` repository secrets to be configured.
 
+If you generate a local self-signed `.p12` with OpenSSL 3 for CI testing, export it
+with legacy-compatible PKCS#12 settings so macOS Keychain can import it:
+
+```bash
+openssl pkcs12 -export \
+  -legacy \
+  -descert \
+  -macalg sha1 \
+  -inkey key.pem \
+  -in cert.pem \
+  -out certificate.p12 \
+  -name "Warble Local Signing"
+```
+
 This runs the Tauri build and writes artifacts into:
 
 ```text
