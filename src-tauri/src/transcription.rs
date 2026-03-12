@@ -230,7 +230,7 @@ pub(crate) fn complete_transcription(
                     }
 
                     let paste_result = if settings.auto_paste {
-                        Some(platform::paste_text(&text))
+                        Some(platform::paste_text(&app, &text))
                     } else {
                         None
                     };

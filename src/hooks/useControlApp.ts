@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { SIDEBAR_COLLAPSED_KEY } from "../constants";
 import {
@@ -43,6 +43,7 @@ export function useControlApp({
   setSnapshot: (snapshot: Snapshot | null) => void;
 }) {
   const [activeSection, setActiveSection] = useState<SectionId>("capture");
+  const primedMacCaptureAccess = useRef(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     loadSidebarCollapsedPreference,
   );
@@ -166,6 +167,20 @@ export function useControlApp({
       showError(error);
     }
   }
+
+  useEffect(() => {
+    if (
+      !snapshot ||
+      snapshot.platform !== "macos" ||
+      snapshot.sources.length > 0 ||
+      primedMacCaptureAccess.current
+    ) {
+      return;
+    }
+
+    primedMacCaptureAccess.current = true;
+    void refreshDevicesCommand().catch(() => {});
+  }, [snapshot]);
 
   if (!snapshot) {
     return {

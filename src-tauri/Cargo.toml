@@ -53,7 +53,9 @@ windows = { version = "0.61", features = [
 [target."cfg(target_os = \"macos\")".dependencies]
 block2 = "0.6.2"
 core-graphics = "0.24"
+libc = "0.2"
 objc2 = "0.6.4"
+objc2-core-graphics = { version = "0.3.2", features = ["CGEvent"] }
 objc2-av-foundation = { version = "0.3.2", features = ["AVCaptureDevice", "AVMediaFormat", "block2"] }
 
 [target."cfg(target_os = \"linux\")".dependencies]
