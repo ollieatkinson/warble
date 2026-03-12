@@ -606,9 +606,26 @@ export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
     return <div className="indicator-root indicator-root-hidden" />;
   }
 
+  const dynamicIsland = isDynamicIslandPosition(snapshot.settings.overlayPosition);
+
   return (
-    <main className="indicator-root">
-      <div ref={measureRef} className="indicator-measure">
+    <main
+      className={[
+        "indicator-root",
+        dynamicIsland ? "indicator-root-dynamic-island" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <div
+        ref={measureRef}
+        className={[
+          "indicator-measure",
+          dynamicIsland ? "indicator-measure-dynamic-island" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <TranscriptionPill
           phase={snapshot.phase}
           title={snapshot.overlay.title}
@@ -699,6 +716,8 @@ export function InterfacePreviewCard({
   liveTranscriptWidth: LiveTranscriptWidth;
   liveTranscriptLines: LiveTranscriptLines;
 }) {
+  const dynamicIsland = isDynamicIslandPosition(overlayPosition);
+
   return (
     <div className="interface-demo-frame">
       <div
@@ -708,7 +727,14 @@ export function InterfacePreviewCard({
           `interface-demo-screen-width-${liveTranscriptWidth}`,
         ].join(" ")}
       >
-        <div className="interface-demo-pill">
+        <div
+          className={[
+            "interface-demo-pill",
+            dynamicIsland ? "interface-demo-pill-dynamic-island" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
           <TranscriptionPill
             phase="recording"
             title="Listening"

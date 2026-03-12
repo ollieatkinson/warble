@@ -42,7 +42,7 @@ const SHELL_PADDING_HEIGHT: i32 = 28;
 const COMPACT_INDICATOR_HEIGHT: i32 = 58;
 const PILL_PADDING_WITH_TRANSCRIPT: i32 = 34;
 const PILL_PADDING_WITHOUT_TRANSCRIPT: i32 = 30;
-const DYNAMIC_ISLAND_MARGIN_TOP: i32 = 6;
+const DYNAMIC_ISLAND_MARGIN_TOP: i32 = 0;
 
 pub(crate) fn default_overlay_levels() -> Vec<f32> {
     vec![0.0; LIVE_METER_BAR_COUNT]

@@ -93,7 +93,7 @@ export const overlayPositionOptions: Array<{
   {
     id: "dynamic-island",
     label: "Dynamic Island",
-    description: "Top-center black HUD that blends into a MacBook notch.",
+    description: "Menu-bar-integrated HUD that blends into a MacBook camera housing.",
   },
   {
     id: "top-center",

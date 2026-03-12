@@ -411,6 +411,10 @@ describe("normalizeEditableOverlayPosition", () => {
   it("normalizes caret to bottom-center", () => {
     expect(normalizeEditableOverlayPosition("caret")).toBe("bottom-center");
   });
+
+  it("falls back from dynamic island when unavailable", () => {
+    expect(normalizeEditableOverlayPosition("dynamic-island", false)).toBe("top-center");
+  });
 });
 
 describe("formatInvokeError", () => {

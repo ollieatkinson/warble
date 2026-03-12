@@ -1,3 +1,4 @@
+import { overlayPositionOptions } from "../constants";
 import { formatModelSizeLabel, buildModelRows } from "./modelCatalog";
 import { matchesHistory, normalizeEditableOverlayPosition } from "./utils";
 import type {
@@ -8,7 +9,21 @@ import type {
   Snapshot,
 } from "../types";
 
+export function supportsDynamicIsland(snapshot: Snapshot) {
+  return snapshot.platform === "macos" && snapshot.dynamicIslandAvailable;
+}
+
+export function deriveOverlayPositionOptions(snapshot: Snapshot) {
+  const dynamicIslandAvailable = supportsDynamicIsland(snapshot);
+
+  return overlayPositionOptions.filter(
+    (option) => option.id !== "dynamic-island" || dynamicIslandAvailable,
+  );
+}
+
 export function buildDraftFromSnapshot(snapshot: Snapshot): SettingsDraft {
+  const dynamicIslandAvailable = supportsDynamicIsland(snapshot);
+
   return {
     holdShortcut: snapshot.settings.holdShortcut,
     toggleShortcut: snapshot.settings.toggleShortcut,
@@ -17,7 +32,10 @@ export function buildDraftFromSnapshot(snapshot: Snapshot): SettingsDraft {
     autoPaste: snapshot.settings.autoPaste,
     cleanupEnabled: snapshot.settings.cleanupEnabled,
     audioRetentionPolicy: snapshot.settings.audioRetentionPolicy,
-    overlayPosition: normalizeEditableOverlayPosition(snapshot.settings.overlayPosition),
+    overlayPosition: normalizeEditableOverlayPosition(
+      snapshot.settings.overlayPosition,
+      dynamicIslandAvailable,
+    ),
     overlayAnimationStyle: snapshot.settings.overlayAnimationStyle,
     livePreviewModel: snapshot.settings.livePreviewModel,
     liveTranscriptWidth: snapshot.settings.liveTranscriptWidth,

@@ -101,6 +101,7 @@ pub(crate) fn build_snapshot(app: &AppHandle, shared: &SharedState) -> Snapshot 
         phase: core.phase.clone(),
         platform: platform::current_platform(),
         auto_paste_support: platform::auto_paste_support(),
+        dynamic_island_available: core.dynamic_island_available,
         settings: core.settings.clone(),
         last_transcript_available: core.last_transcript_text.is_some(),
         sources: core.sources.clone(),
