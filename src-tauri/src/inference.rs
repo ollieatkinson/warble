@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use parakeet_rs::{ExecutionConfig, ExecutionProvider as LibraryExecutionProvider};
 use std::sync::{mpsc, Arc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[cfg(target_os = "windows")]
 use crate::runtime;
@@ -10,6 +10,23 @@ use crate::state::InferenceProvider;
 
 #[cfg(target_os = "macos")]
 const MACOS_WEBGPU_LOAD_TIMEOUT: Duration = Duration::from_secs(20);
+
+#[derive(Debug, Clone)]
+pub(crate) enum ProviderLoadEvent {
+    AttemptStarted {
+        provider: InferenceProvider,
+        timeout: Option<Duration>,
+    },
+    AttemptFinished {
+        provider: InferenceProvider,
+        elapsed: Duration,
+    },
+    AttemptFailed {
+        provider: InferenceProvider,
+        elapsed: Duration,
+        error: String,
+    },
+}
 
 pub(crate) fn supported_acceleration_providers() -> Vec<InferenceProvider> {
     #[cfg(target_os = "windows")]
@@ -46,6 +63,17 @@ where
     load_with_provider_order(&order, loader)
 }
 
+pub(crate) fn load_with_provider_fallback_and_observer<T>(
+    loader: impl Fn(InferenceProvider) -> Result<T> + Send + Sync + 'static,
+    observer: impl Fn(ProviderLoadEvent) + Send + Sync + 'static,
+) -> Result<(InferenceProvider, T)>
+where
+    T: Send + 'static,
+{
+    let order = preferred_inference_providers();
+    load_with_provider_order_and_observer(&order, loader, observer)
+}
+
 fn load_with_provider_order<T>(
     order: &[InferenceProvider],
     loader: impl Fn(InferenceProvider) -> Result<T> + Send + Sync + 'static,
@@ -53,19 +81,43 @@ fn load_with_provider_order<T>(
 where
     T: Send + 'static,
 {
+    load_with_provider_order_and_observer(order, loader, |_| {})
+}
+
+fn load_with_provider_order_and_observer<T>(
+    order: &[InferenceProvider],
+    loader: impl Fn(InferenceProvider) -> Result<T> + Send + Sync + 'static,
+    observer: impl Fn(ProviderLoadEvent) + Send + Sync + 'static,
+) -> Result<(InferenceProvider, T)>
+where
+    T: Send + 'static,
+{
     let mut acceleration_errors = Vec::new();
     let loader = Arc::new(loader);
+    let observer = Arc::new(observer);
 
     for &provider in order {
+        let timeout = provider_load_timeout(provider);
+        observer(ProviderLoadEvent::AttemptStarted { provider, timeout });
+        let started_at = Instant::now();
         let result =
-            load_provider_with_optional_timeout(provider, provider_load_timeout(provider), {
+            load_provider_with_optional_timeout(provider, timeout, {
                 let loader = Arc::clone(&loader);
                 move || loader(provider)
             });
+        let elapsed = started_at.elapsed();
 
         match result {
-            Ok(runtime) => return Ok((provider, runtime)),
+            Ok(runtime) => {
+                observer(ProviderLoadEvent::AttemptFinished { provider, elapsed });
+                return Ok((provider, runtime));
+            }
             Err(error) => {
+                observer(ProviderLoadEvent::AttemptFailed {
+                    provider,
+                    elapsed,
+                    error: error.to_string(),
+                });
                 if provider.is_accelerated() {
                     acceleration_errors.push(format!("{provider}: {error}"));
                     continue;
@@ -188,7 +240,10 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
 #[cfg(test)]
 mod tests {
     use super::load_with_provider_order;
+    use super::load_with_provider_order_and_observer;
+    use super::ProviderLoadEvent;
     use crate::state::InferenceProvider;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     #[test]
@@ -272,5 +327,54 @@ mod tests {
 
         let error = result.expect_err("expected timeout");
         assert!(error.to_string().contains("timed out"));
+    }
+
+    #[test]
+    fn load_with_provider_order_reports_attempt_events() {
+        let order = [InferenceProvider::Webgpu, InferenceProvider::Cpu];
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_for_observer = Arc::clone(&events);
+
+        let (provider, value) = load_with_provider_order_and_observer(
+            &order,
+            |provider| match provider {
+                InferenceProvider::Webgpu => Err(anyhow::anyhow!("webgpu failed")),
+                InferenceProvider::Cpu => Ok("cpu-ok"),
+                InferenceProvider::Directml => unreachable!(),
+            },
+            move |event| {
+                events_for_observer
+                    .lock()
+                    .expect("events lock poisoned")
+                    .push(event);
+            },
+        )
+        .expect("fallback should succeed");
+
+        assert_eq!(provider, InferenceProvider::Cpu);
+        assert_eq!(value, "cpu-ok");
+
+        let events = events.lock().expect("events lock poisoned");
+        assert!(matches!(
+            events.as_slice(),
+            [
+                ProviderLoadEvent::AttemptStarted {
+                    provider: InferenceProvider::Webgpu,
+                    ..
+                },
+                ProviderLoadEvent::AttemptFailed {
+                    provider: InferenceProvider::Webgpu,
+                    ..
+                },
+                ProviderLoadEvent::AttemptStarted {
+                    provider: InferenceProvider::Cpu,
+                    ..
+                },
+                ProviderLoadEvent::AttemptFinished {
+                    provider: InferenceProvider::Cpu,
+                    ..
+                }
+            ]
+        ));
     }
 }

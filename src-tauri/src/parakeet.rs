@@ -65,6 +65,39 @@ impl ParakeetTdt {
         Ok(Self { runtime, provider })
     }
 
+    pub(crate) fn load_with_observer(
+        model_root: &Path,
+        observer: impl Fn(inference::ProviderLoadEvent) + Send + Sync + 'static,
+    ) -> Result<Self> {
+        let model_dir = model_root.join(MODEL_ID);
+        Self::load_from_dir_with_observer(&model_dir, observer)
+    }
+
+    pub(crate) fn load_from_dir_with_observer(
+        model_dir: &Path,
+        observer: impl Fn(inference::ProviderLoadEvent) + Send + Sync + 'static,
+    ) -> Result<Self> {
+        if !model_ready_in_dir(model_dir) {
+            bail!("Parakeet TDT model is missing at {}", model_dir.display());
+        }
+
+        runtime::ensure_ort_initialized()?;
+        let model_dir = model_dir.to_path_buf();
+
+        let (provider, runtime) = inference::load_with_provider_fallback_and_observer(
+            move |provider| {
+                LibraryParakeetTdt::from_pretrained(
+                    &model_dir,
+                    Some(inference::execution_config(provider)),
+                )
+                .map_err(|error| anyhow!("failed to load Parakeet TDT runtime: {error}"))
+            },
+            observer,
+        )?;
+
+        Ok(Self { runtime, provider })
+    }
+
     pub fn transcribe_audio(&mut self, audio: &[f32]) -> Result<String> {
         if audio.is_empty() {
             return Ok(String::new());
@@ -116,6 +149,36 @@ impl ParakeetCtc {
             Parakeet::from_pretrained(&model_dir, Some(inference::execution_config(provider)))
                 .map_err(|error| anyhow!("failed to load Parakeet CTC runtime: {error}"))
         })?;
+
+        Ok(Self { runtime, provider })
+    }
+
+    pub(crate) fn load_with_observer(
+        model_root: &Path,
+        observer: impl Fn(inference::ProviderLoadEvent) + Send + Sync + 'static,
+    ) -> Result<Self> {
+        let model_dir = model_root.join(CTC_MODEL_ID);
+        Self::load_from_dir_with_observer(&model_dir, observer)
+    }
+
+    pub(crate) fn load_from_dir_with_observer(
+        model_dir: &Path,
+        observer: impl Fn(inference::ProviderLoadEvent) + Send + Sync + 'static,
+    ) -> Result<Self> {
+        if !ctc_model_ready_in_dir(model_dir) {
+            bail!("Parakeet CTC model is missing at {}", model_dir.display());
+        }
+
+        runtime::ensure_ort_initialized()?;
+        let model_dir = model_dir.to_path_buf();
+
+        let (provider, runtime) = inference::load_with_provider_fallback_and_observer(
+            move |provider| {
+                Parakeet::from_pretrained(&model_dir, Some(inference::execution_config(provider)))
+                    .map_err(|error| anyhow!("failed to load Parakeet CTC runtime: {error}"))
+            },
+            observer,
+        )?;
 
         Ok(Self { runtime, provider })
     }

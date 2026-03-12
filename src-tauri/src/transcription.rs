@@ -1,7 +1,9 @@
 use anyhow::{anyhow, bail, Result};
 use chrono::Utc;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
@@ -21,6 +23,54 @@ pub(crate) struct TranscriptionOutput {
     pub(crate) text: String,
     pub(crate) inference_provider: InferenceProvider,
     pub(crate) model_name: String,
+}
+
+const MODEL_LOAD_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
+
+struct TranscriptionHeartbeat {
+    stop_tx: Option<mpsc::Sender<()>>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl TranscriptionHeartbeat {
+    fn spawn(
+        app: AppHandle,
+        stage: &'static str,
+        detail: String,
+        interval: Duration,
+    ) -> Self {
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            let started_at = Instant::now();
+            loop {
+                match stop_rx.recv_timeout(interval) {
+                    Ok(_) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    Err(mpsc::RecvTimeoutError::Timeout) => append_transcription_log(
+                        &app,
+                        stage,
+                        format!("{detail} elapsed_ms={}", started_at.elapsed().as_millis()),
+                    ),
+                }
+            }
+        });
+
+        Self {
+            stop_tx: Some(stop_tx),
+            handle: Some(handle),
+        }
+    }
+}
+
+impl Drop for TranscriptionHeartbeat {
+    fn drop(&mut self) {
+        if let Some(stop_tx) = self.stop_tx.take() {
+            let _ = stop_tx.send(());
+        }
+
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
 }
 
 fn engine_provider(engine: &TranscriberEngine) -> InferenceProvider {
@@ -51,6 +101,62 @@ fn duration_ms(sample_count: usize, sample_rate: u32) -> u64 {
     ((sample_count as f64 / sample_rate as f64) * 1000.0) as u64
 }
 
+fn append_provider_load_event(
+    app: &AppHandle,
+    model_name: &str,
+    model_kind: &str,
+    event: crate::inference::ProviderLoadEvent,
+) {
+    match event {
+        crate::inference::ProviderLoadEvent::AttemptStarted { provider, timeout } => {
+            append_transcription_log(
+                app,
+                "Transcription model provider started",
+                format!(
+                    "model={} kind={} provider={} timeout_ms={}",
+                    model_name,
+                    model_kind,
+                    provider,
+                    timeout
+                        .map(|value| value.as_millis().to_string())
+                        .unwrap_or_else(|| "none".to_string())
+                ),
+            );
+        }
+        crate::inference::ProviderLoadEvent::AttemptFinished { provider, elapsed } => {
+            append_transcription_log(
+                app,
+                "Transcription model provider finished",
+                format!(
+                    "model={} kind={} provider={} elapsed_ms={}",
+                    model_name,
+                    model_kind,
+                    provider,
+                    elapsed.as_millis()
+                ),
+            );
+        }
+        crate::inference::ProviderLoadEvent::AttemptFailed {
+            provider,
+            elapsed,
+            error,
+        } => {
+            append_transcription_log(
+                app,
+                "Transcription model provider failed",
+                format!(
+                    "model={} kind={} provider={} elapsed_ms={} error={}",
+                    model_name,
+                    model_kind,
+                    provider,
+                    elapsed.as_millis(),
+                    error
+                ),
+            );
+        }
+    }
+}
+
 pub(crate) fn transcribe_audio(
     app: &AppHandle,
     transcriber: &TranscriberHandle,
@@ -58,29 +164,118 @@ pub(crate) fn transcribe_audio(
     audio: &[f32],
 ) -> Result<TranscriptionOutput> {
     let selected_key = selected_model_cache_key(settings);
-    let mut guard = transcriber.lock();
     let model_name = selected_model_display_name(settings);
+    let model_kind = format!("{:?}", settings.selected_model_kind);
+    append_transcription_log(
+        app,
+        "Waiting for transcriber lock",
+        format!("model={} kind={} cache_key={}", model_name, model_kind, selected_key),
+    );
+    let lock_wait_heartbeat = TranscriptionHeartbeat::spawn(
+        app.clone(),
+        "Waiting for transcriber lock still running",
+        format!("model={} kind={} cache_key={}", model_name, model_kind, selected_key),
+        MODEL_LOAD_HEARTBEAT_INTERVAL,
+    );
+    let lock_started_at = Instant::now();
+    let mut guard = transcriber.lock();
+    drop(lock_wait_heartbeat);
+    append_transcription_log(
+        app,
+        "Transcriber lock acquired",
+        format!(
+            "model={} kind={} wait_ms={} cache_hit={}",
+            model_name,
+            model_kind,
+            lock_started_at.elapsed().as_millis(),
+            guard.selected_key.as_ref() == Some(&selected_key)
+        ),
+    );
     if guard.selected_key.as_ref() != Some(&selected_key) {
         append_transcription_log(
             app,
             "Loading transcription model",
             format!(
-                "model={} kind={:?} cache_key={selected_key}",
-                model_name, settings.selected_model_kind
+                "model={} kind={} cache_key={selected_key}",
+                model_name, model_kind
             ),
+        );
+        let _model_load_heartbeat = TranscriptionHeartbeat::spawn(
+            app.clone(),
+            "Transcription model load still running",
+            format!(
+                "model={} kind={} cache_key={selected_key}",
+                model_name, model_kind
+            ),
+            MODEL_LOAD_HEARTBEAT_INTERVAL,
         );
         let engine = match settings.selected_model_kind {
             TranscriptionModelKind::Parakeet => {
                 let model = if let Some(path) = resolved_selected_model_path(settings) {
                     let path = PathBuf::from(path);
                     if parakeet::model_ready_in_dir(&path) {
-                        parakeet::ParakeetTdt::load_from_dir(&path)?
+                        append_transcription_log(
+                            app,
+                            "Transcription model directory selected",
+                            format!(
+                                "model={} kind={} source=custom mode=dir path={}",
+                                model_name,
+                                model_kind,
+                                path.display()
+                            ),
+                        );
+                        parakeet::ParakeetTdt::load_from_dir_with_observer(&path, {
+                            let app = app.clone();
+                            let model_name = model_name.clone();
+                            let model_kind = model_kind.clone();
+                            move |event| {
+                                append_provider_load_event(&app, &model_name, &model_kind, event)
+                            }
+                        })?
                     } else {
-                        parakeet::ParakeetTdt::load(&path)?
+                        let model_dir = path.join(parakeet::MODEL_ID);
+                        append_transcription_log(
+                            app,
+                            "Transcription model directory selected",
+                            format!(
+                                "model={} kind={} source=custom mode=root root={} model_dir={}",
+                                model_name,
+                                model_kind,
+                                path.display(),
+                                model_dir.display()
+                            ),
+                        );
+                        parakeet::ParakeetTdt::load_with_observer(&path, {
+                            let app = app.clone();
+                            let model_name = model_name.clone();
+                            let model_kind = model_kind.clone();
+                            move |event| {
+                                append_provider_load_event(&app, &model_name, &model_kind, event)
+                            }
+                        })?
                     }
                 } else {
                     let model_root = model_root_dir(app)?;
-                    parakeet::ParakeetTdt::load(&model_root)?
+                    let model_dir = model_root.join(parakeet::MODEL_ID);
+                    append_transcription_log(
+                        app,
+                        "Transcription model directory selected",
+                        format!(
+                            "model={} kind={} source=builtin root={} model_dir={}",
+                            model_name,
+                            model_kind,
+                            model_root.display(),
+                            model_dir.display()
+                        ),
+                    );
+                    parakeet::ParakeetTdt::load_with_observer(&model_root, {
+                        let app = app.clone();
+                        let model_name = model_name.clone();
+                        let model_kind = model_kind.clone();
+                        move |event| {
+                            append_provider_load_event(&app, &model_name, &model_kind, event)
+                        }
+                    })?
                 };
                 TranscriberEngine::Parakeet(model)
             }
@@ -89,9 +284,45 @@ pub(crate) fn transcribe_audio(
                     .map(PathBuf::from)
                     .ok_or_else(|| anyhow!("Parakeet CTC model path is not configured"))?;
                 let model = if parakeet::ctc_model_ready_in_dir(&model_path) {
-                    parakeet::ParakeetCtc::load_from_dir(&model_path)?
+                    append_transcription_log(
+                        app,
+                        "Transcription model directory selected",
+                        format!(
+                            "model={} kind={} source=custom mode=dir path={}",
+                            model_name,
+                            model_kind,
+                            model_path.display()
+                        ),
+                    );
+                    parakeet::ParakeetCtc::load_from_dir_with_observer(&model_path, {
+                        let app = app.clone();
+                        let model_name = model_name.clone();
+                        let model_kind = model_kind.clone();
+                        move |event| {
+                            append_provider_load_event(&app, &model_name, &model_kind, event)
+                        }
+                    })?
                 } else {
-                    parakeet::ParakeetCtc::load(&model_path)?
+                    let model_dir = model_path.join(parakeet::CTC_MODEL_ID);
+                    append_transcription_log(
+                        app,
+                        "Transcription model directory selected",
+                        format!(
+                            "model={} kind={} source=custom mode=root root={} model_dir={}",
+                            model_name,
+                            model_kind,
+                            model_path.display(),
+                            model_dir.display()
+                        ),
+                    );
+                    parakeet::ParakeetCtc::load_with_observer(&model_path, {
+                        let app = app.clone();
+                        let model_name = model_name.clone();
+                        let model_kind = model_kind.clone();
+                        move |event| {
+                            append_provider_load_event(&app, &model_name, &model_kind, event)
+                        }
+                    })?
                 };
                 TranscriberEngine::ParakeetCtc(model)
             }
@@ -104,8 +335,8 @@ pub(crate) fn transcribe_audio(
             app,
             "Transcription model ready",
             format!(
-                "model={} kind={:?} provider={}",
-                model_name, settings.selected_model_kind, provider
+                "model={} kind={} provider={}",
+                model_name, model_kind, provider
             ),
         );
     }
@@ -114,11 +345,11 @@ pub(crate) fn transcribe_audio(
         app,
         "Transcription inference started",
         format!(
-            "model={} samples={} duration_ms={} kind={:?}",
+            "model={} samples={} duration_ms={} kind={}",
             model_name,
             audio.len(),
             duration_ms(audio.len(), parakeet::SAMPLE_RATE),
-            settings.selected_model_kind
+            model_kind
         ),
     );
     let started_at = Instant::now();
