@@ -338,6 +338,8 @@ export function SectionIcon({
       return <CaptureIcon className={className} />;
     case "models":
       return <ModelsIcon className={className} />;
+    case "vocabulary":
+      return <CleanupIcon className={className} />;
     case "history":
       return <HistoryIcon className={className} />;
     default:

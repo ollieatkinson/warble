@@ -1,6 +1,5 @@
 import { ActionButton, ChoiceDropdown, StatTile, StatusChip } from "../components/common";
 import { TranscriptionPill } from "../components/TranscriptionPill";
-import { CleanupSection } from "./CleanupSection";
 import {
   CheckIcon,
   DownloadIcon,
@@ -43,21 +42,15 @@ export function CaptureSection({
   previewDetail,
   recentFileTranscript,
   historyCount,
-  cleanupInput,
-  cleanupTerms,
-  buttonFeedback,
+  cleanupTermsCount,
   fileActionState,
   refreshActionState,
   onApplySettings,
-  onSetCleanupInput,
   onRefreshDevices,
   onStartRecording,
   onStopRecording,
   onCancel,
   onTranscribeFile,
-  onAddCleanupTerm,
-  onRemoveCleanupTerm,
-  onRestoreCleanupDefaults,
 }: {
   snapshot: Snapshot;
   draft: SettingsDraft;
@@ -68,21 +61,15 @@ export function CaptureSection({
   previewDetail: string;
   recentFileTranscript: HistoryItem | null;
   historyCount: number;
-  cleanupInput: string;
-  cleanupTerms: string[];
-  buttonFeedback: Record<string, ButtonFeedbackState>;
+  cleanupTermsCount: number;
   fileActionState?: ButtonFeedbackState;
   refreshActionState?: ButtonFeedbackState;
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
-  onSetCleanupInput: (value: string) => void;
   onRefreshDevices: () => void | Promise<void>;
   onStartRecording: (mode: "hold" | "toggle") => void;
   onStopRecording: () => void;
   onCancel: () => void;
   onTranscribeFile: () => void | Promise<void>;
-  onAddCleanupTerm: (term?: string) => void | Promise<void>;
-  onRemoveCleanupTerm: (term: string) => void | Promise<void>;
-  onRestoreCleanupDefaults: () => void | Promise<void>;
 }) {
   const previewPhase = snapshot.phase === "idle" ? "recording" : snapshot.phase;
   const previewElapsedMs = snapshot.phase === "idle" ? 17_000 : snapshot.overlay.elapsedMs;
@@ -205,7 +192,7 @@ export function CaptureSection({
               <strong>Cleanup</strong>
               <span>
                 {draft.cleanupEnabled
-                  ? `${cleanupTerms.length} filler term${cleanupTerms.length === 1 ? "" : "s"} removed`
+                  ? `${cleanupTermsCount} filler term${cleanupTermsCount === 1 ? "" : "s"} removed`
                   : "Raw transcript kept as-is"}
               </span>
             </div>
@@ -229,6 +216,7 @@ export function CaptureSection({
               title={previewHeadline}
               detail={previewCopy}
               levels={snapshot.overlay.levels}
+              overlayPosition={draft.overlayPosition}
               animationStyle={draft.overlayAnimationStyle as OverlayAnimationStyle}
               showRecordingTimer={draft.showRecordingTimer}
               showLiveTranscription={draft.showLiveTranscription}
@@ -248,18 +236,6 @@ export function CaptureSection({
           </div>
         </article>
       </section>
-
-      <CleanupSection
-        draft={draft}
-        cleanupInput={cleanupInput}
-        cleanupTerms={cleanupTerms}
-        buttonFeedback={buttonFeedback}
-        onSetCleanupInput={onSetCleanupInput}
-        onApplySettings={onApplySettings}
-        onAddCleanupTerm={onAddCleanupTerm}
-        onRemoveCleanupTerm={onRemoveCleanupTerm}
-        onRestoreCleanupDefaults={onRestoreCleanupDefaults}
-      />
 
       {recentFileTranscript ? (
         <section className="surface overview-transcript-surface">

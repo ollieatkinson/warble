@@ -122,12 +122,19 @@ pub(crate) fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>>
         true,
         Some("CmdOrCtrl+2"),
     )?;
+    let vocabulary_item = MenuItem::with_id(
+        app,
+        MENU_VIEW_VOCABULARY_ID,
+        "Vocabulary",
+        true,
+        Some("CmdOrCtrl+3"),
+    )?;
     let history_item = MenuItem::with_id(
         app,
         MENU_VIEW_HISTORY_ID,
         "History",
         true,
-        Some("CmdOrCtrl+3"),
+        Some("CmdOrCtrl+4"),
     )?;
 
     let troubleshooting_item = MenuItem::with_id(
@@ -167,6 +174,7 @@ pub(crate) fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>>
     let go_menu = SubmenuBuilder::new(app, "Go")
         .item(&capture_item)
         .item(&models_item)
+        .item(&vocabulary_item)
         .item(&history_item)
         .build()?;
     let help_menu = SubmenuBuilder::new(app, "Help")
@@ -193,6 +201,9 @@ pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         }
         MENU_VIEW_CAPTURE_ID => show_main_window_and_emit(app, SHELL_ACTION_NAVIGATE_CAPTURE),
         MENU_VIEW_MODELS_ID => show_main_window_and_emit(app, SHELL_ACTION_NAVIGATE_MODELS),
+        MENU_VIEW_VOCABULARY_ID => {
+            show_main_window_and_emit(app, SHELL_ACTION_NAVIGATE_VOCABULARY)
+        }
         MENU_VIEW_HISTORY_ID => show_main_window_and_emit(app, SHELL_ACTION_NAVIGATE_HISTORY),
         MENU_HELP_TROUBLESHOOTING_ID => {
             show_main_window_and_emit(app, SHELL_ACTION_OPEN_TROUBLESHOOTING)

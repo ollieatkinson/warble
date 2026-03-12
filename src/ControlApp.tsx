@@ -13,6 +13,7 @@ import { ModelsSection } from "./sections/ModelsSection";
 import { SettingsSheet } from "./sections/SettingsSheet";
 import { Sidebar } from "./sections/Sidebar";
 import { ShellDialog } from "./components/ShellDialog";
+import { VocabularySection } from "./sections/VocabularySection";
 import type { ShellActionId, Snapshot } from "./types";
 
 export function ControlApp({
@@ -67,6 +68,10 @@ export function ControlApp({
         case "navigate-models":
           shellCloseDialog();
           shellSetActiveSection("models");
+          break;
+        case "navigate-vocabulary":
+          shellCloseDialog();
+          shellSetActiveSection("vocabulary");
           break;
         case "navigate-history":
           shellCloseDialog();
@@ -262,13 +267,10 @@ export function ControlApp({
               previewDetail={previewDetail}
               recentFileTranscript={recentFileTranscript}
               historyCount={currentSnapshot.history.length}
-              cleanupInput={cleanupInput}
-              cleanupTerms={cleanupTerms}
-              buttonFeedback={buttonFeedback}
+              cleanupTermsCount={cleanupTerms.length}
               fileActionState={buttonFeedback["transcribe-file"]}
               refreshActionState={buttonFeedback["refresh-inputs"]}
               onApplySettings={applySettings}
-              onSetCleanupInput={setCleanupInput}
               onRefreshDevices={refreshDevices}
               onStartRecording={startRecording}
               onStopRecording={() => {
@@ -280,9 +282,6 @@ export function ControlApp({
               onTranscribeFile={() => {
                 void transcribeFile();
               }}
-              onAddCleanupTerm={addCleanupTerm}
-              onRemoveCleanupTerm={removeCleanupTerm}
-              onRestoreCleanupDefaults={restoreCleanupDefaults}
             />
           ) : null}
 
@@ -306,6 +305,20 @@ export function ControlApp({
               onDownloadCatalogModel={(row) => downloadCatalogModel(row.id)}
               onRemoveCatalogModel={(row) => removeCatalogModel(row.id)}
               onOpenModelReference={(row) => openModelReference(row.hfUrl)}
+            />
+          ) : null}
+
+          {activeSection === "vocabulary" ? (
+            <VocabularySection
+              draft={draft}
+              cleanupInput={cleanupInput}
+              cleanupTerms={cleanupTerms}
+              buttonFeedback={buttonFeedback}
+              onSetCleanupInput={setCleanupInput}
+              onApplySettings={applySettings}
+              onAddCleanupTerm={addCleanupTerm}
+              onRemoveCleanupTerm={removeCleanupTerm}
+              onRestoreCleanupDefaults={restoreCleanupDefaults}
             />
           ) : null}
 

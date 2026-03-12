@@ -41,6 +41,7 @@ export const sections: Array<{
 }> = [
   { id: "capture", label: "Capture" },
   { id: "models", label: "Models" },
+  { id: "vocabulary", label: "Vocabulary" },
   { id: "history", label: "History" },
 ];
 
@@ -78,10 +79,43 @@ export const modelFilters: Array<{
 export const overlayPositionOptions: Array<{
   id: EditableOverlayPosition;
   label: string;
+  description: string;
 }> = [
-  { id: "bottom-center", label: "Center" },
-  { id: "bottom-left", label: "Left" },
-  { id: "bottom-right", label: "Right" },
+  {
+    id: "dynamic-island",
+    label: "Dynamic Island",
+    description: "Top-center black HUD that blends into a MacBook notch.",
+  },
+  {
+    id: "top-center",
+    label: "Top center",
+    description: "Pin the HUD to the top middle of the screen.",
+  },
+  {
+    id: "top-left",
+    label: "Top left",
+    description: "Keep the HUD tucked into the top-left corner.",
+  },
+  {
+    id: "top-right",
+    label: "Top right",
+    description: "Keep the HUD tucked into the top-right corner.",
+  },
+  {
+    id: "bottom-center",
+    label: "Bottom center",
+    description: "Default centered placement near the bottom edge.",
+  },
+  {
+    id: "bottom-left",
+    label: "Bottom left",
+    description: "Keep the HUD tucked into the bottom-left corner.",
+  },
+  {
+    id: "bottom-right",
+    label: "Bottom right",
+    description: "Keep the HUD tucked into the bottom-right corner.",
+  },
 ];
 
 export const overlayAnimationOptions: Array<{
