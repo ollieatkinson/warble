@@ -82,6 +82,10 @@ describe("formatPhaseLabel", () => {
 
 describe("formatOverlayPosition", () => {
   it.each([
+    ["dynamic-island", "Dynamic Island"],
+    ["top-left", "Top left"],
+    ["top-right", "Top right"],
+    ["top-center", "Top center"],
     ["bottom-left", "Bottom left"],
     ["bottom-right", "Bottom right"],
     ["caret", "Near caret"],
@@ -355,18 +359,20 @@ describe("toneForPhase", () => {
 });
 
 describe("normalizeEditableOverlayPosition", () => {
-  it("keeps bottom-left and bottom-right", () => {
-    expect(normalizeEditableOverlayPosition("bottom-left")).toBe("bottom-left");
-    expect(normalizeEditableOverlayPosition("bottom-right")).toBe(
-      "bottom-right",
-    );
+  it.each([
+    "dynamic-island",
+    "top-center",
+    "top-left",
+    "top-right",
+    "bottom-center",
+    "bottom-left",
+    "bottom-right",
+  ] as const)("keeps %s editable", (position) => {
+    expect(normalizeEditableOverlayPosition(position)).toBe(position);
   });
 
-  it("normalizes caret and bottom-center to bottom-center", () => {
+  it("normalizes caret to bottom-center", () => {
     expect(normalizeEditableOverlayPosition("caret")).toBe("bottom-center");
-    expect(normalizeEditableOverlayPosition("bottom-center")).toBe(
-      "bottom-center",
-    );
   });
 });
 

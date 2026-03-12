@@ -14,6 +14,8 @@ import type {
   FlashMessage,
   SectionId,
   SettingsDraft,
+  SettingsPaneId,
+  ShellDialogId,
   ShortcutFieldName,
   Snapshot,
 } from "../types";
@@ -40,10 +42,13 @@ export function useControlApp({
   snapshot: Snapshot | null;
   setSnapshot: (snapshot: Snapshot | null) => void;
 }) {
-  const [activeSection, setActiveSection] = useState<SectionId>("overview");
+  const [activeSection, setActiveSection] = useState<SectionId>("capture");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     loadSidebarCollapsedPreference,
   );
+  const [activeDialog, setActiveDialog] = useState<ShellDialogId | null>(null);
+  const [activeSettingsPane, setActiveSettingsPane] =
+    useState<SettingsPaneId>("general");
   const [message, setMessage] = useState<FlashMessage>(null);
   const [capturing, setCapturing] = useState<ShortcutFieldName | null>(null);
   const {
@@ -178,6 +183,10 @@ export function useControlApp({
     setActiveSection,
     sidebarCollapsed,
     setSidebarCollapsed,
+    activeDialog,
+    setActiveDialog,
+    activeSettingsPane,
+    setActiveSettingsPane,
     message,
     setMessage,
     capturing,
@@ -212,6 +221,23 @@ export function useControlApp({
     addCleanupTerm,
     removeCleanupTerm,
     restoreCleanupDefaults,
+    openSettingsDialog: (pane: SettingsPaneId = "general") => {
+      setCapturing(null);
+      setActiveSettingsPane(pane);
+      setActiveDialog("settings");
+    },
+    openTroubleshootingDialog: () => {
+      setCapturing(null);
+      setActiveDialog("troubleshooting");
+    },
+    openAboutDialog: () => {
+      setCapturing(null);
+      setActiveDialog("about");
+    },
+    closeDialog: () => {
+      setCapturing(null);
+      setActiveDialog(null);
+    },
   };
   const derivedState = {
     activeSource: sourceState.activeSource,

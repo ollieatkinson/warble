@@ -24,6 +24,7 @@ import {
 } from "../lib/modelCatalog";
 import {
   formatAccelerationProvider,
+  formatAccelerationProviders,
   formatBytes,
   formatEta,
   formatSystemProfile,
@@ -370,6 +371,32 @@ export function ModelsSection({
   onOpenModelReference: (row: ModelRow) => void | Promise<void>;
 }) {
   const supportedProviders = snapshot.systemProfile.supportedAccelerationProviders;
+  const installedStreamingModels = streamingModels.filter((row) => row.state === "ready");
+  const unlockedFeatures = Array.from(
+    new Set(installedStreamingModels.flatMap((row) => row.unlockedFeatures ?? [])),
+  );
+  const installedStreamingProviders = Array.from(
+    new Set(
+      installedStreamingModels.flatMap(
+        (row) => row.supportedAccelerationProviders ?? [],
+      ),
+    ),
+  );
+  const canAccelerateStreaming = installedStreamingProviders.some((provider) =>
+    supportedProviders.includes(provider),
+  );
+  const installedStreamingLabel = installedStreamingModels
+    .map((row) => row.name)
+    .join(" · ");
+  const effectiveLivePreviewLabel =
+    livePreviewModel === "auto"
+      ? effectiveLivePreviewModelId === "nemotron-streaming"
+        ? "Auto · Nemotron"
+        : effectiveLivePreviewModelId === "parakeet-eou"
+          ? "Auto · Realtime EOU"
+          : "Auto"
+      : livePreviewOptions.find((option) => option.id === livePreviewModel)?.label ??
+        "Manual";
 
   return (
     <section className="model-page">
@@ -442,6 +469,37 @@ export function ModelsSection({
             <p className="model-decision-note">
               Auto prefers Nemotron when it is installed, otherwise Realtime EOU.
             </p>
+
+            <div className="feature-unlock-list">
+              <div className="feature-unlock-row">
+                <strong>Effective model</strong>
+                <span>{effectiveLivePreviewLabel}</span>
+              </div>
+              <div className="feature-unlock-row">
+                <strong>Live transcript</strong>
+                <span>
+                  {unlockedFeatures.includes("Live transcript")
+                    ? `Unlocked with ${installedStreamingLabel}`
+                    : "Install Realtime EOU or Nemotron to unlock live transcript drafting"}
+                </span>
+              </div>
+              <div className="feature-unlock-row">
+                <strong>GPU acceleration</strong>
+                <span>
+                  {installedStreamingProviders.length > 0
+                    ? canAccelerateStreaming
+                      ? `${formatAccelerationProviders(supportedProviders)} available on this platform`
+                      : "Streaming models are installed, but this system is currently on the CPU path"
+                    : "No GPU-capable streaming model installed"}
+                </span>
+              </div>
+              <div className="feature-unlock-row">
+                <strong>Final dictation</strong>
+                <span>
+                  Final pasted text still comes from the selected batch model.
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </article>

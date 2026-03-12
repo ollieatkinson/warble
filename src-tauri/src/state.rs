@@ -88,6 +88,10 @@ impl Default for TranscriptionModelKind {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum OverlayPosition {
+    DynamicIsland,
+    TopCenter,
+    TopLeft,
+    TopRight,
     BottomCenter,
     BottomLeft,
     BottomRight,

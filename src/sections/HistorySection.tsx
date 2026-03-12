@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
 
-import {
-  audioRetentionOptions,
-  CLEAR_HISTORY_CONFIRMATION_WINDOW_MS,
-} from "../constants";
+import { CLEAR_HISTORY_CONFIRMATION_WINDOW_MS } from "../constants";
 import { ActionButton } from "../components/common";
 import {
   AboutIcon,
@@ -14,33 +11,28 @@ import {
   TrashIcon,
 } from "../components/icons";
 import {
-  formatAudioRetentionPolicy,
   formatCaptureInput,
   formatDuration,
   formatInferenceProvider,
 } from "../lib/utils";
-import type { ButtonFeedbackState, HistoryItem, SettingsDraft, Snapshot } from "../types";
+import type { ButtonFeedbackState, HistoryItem, Snapshot } from "../types";
 
 export function HistorySection({
   snapshot,
-  draft,
   historyQuery,
   filteredHistory,
   buttonFeedback,
   onSetHistoryQuery,
-  onApplySettings,
   onOpenHistoryAudio,
   onCopyHistory,
   onRemoveHistoryItem,
   onClearHistory,
 }: {
   snapshot: Snapshot;
-  draft: SettingsDraft;
   historyQuery: string;
   filteredHistory: HistoryItem[];
   buttonFeedback: Record<string, ButtonFeedbackState>;
   onSetHistoryQuery: (value: string) => void;
-  onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
   onOpenHistoryAudio: (item: HistoryItem) => void | Promise<void>;
   onCopyHistory: (id: string, text: string) => void | Promise<void>;
   onRemoveHistoryItem: (id: string) => void | Promise<void>;
@@ -71,84 +63,47 @@ export function HistorySection({
 
   return (
     <>
-      <section className="compact-grid-two">
-        <article className="surface preference-surface">
-          <div className="surface-bar">
-            <div className="surface-title">
-              <span className="surface-title-label">Search</span>
-            </div>
-            {snapshot.history.length > 0 ? (
-              <ActionButton
-                className={`secondary small history-clear-button ${confirmClearAll ? "history-clear-button-confirm" : ""}`}
-                state={buttonFeedback["history-clear-all"]}
-                idleLabel={confirmClearAll ? "Confirm delete all" : "Delete all"}
-                workingLabel="Deleting"
-                doneLabel="Deleted"
-                idleIcon={<TrashIcon className="small-icon" />}
-                doneIcon={<CheckIcon className="small-icon" />}
-                onClick={() => {
-                  if (!confirmClearAll) {
-                    setConfirmClearAll(true);
-                    return;
-                  }
-
-                  setConfirmClearAll(false);
-                  void onClearHistory();
-                }}
-              />
-            ) : null}
+      <section className="surface preference-surface">
+        <div className="surface-bar">
+          <div className="surface-title">
+            <span className="surface-title-label">Search</span>
           </div>
+          {snapshot.history.length > 0 ? (
+            <ActionButton
+              className={`secondary small history-clear-button ${confirmClearAll ? "history-clear-button-confirm" : ""}`}
+              state={buttonFeedback["history-clear-all"]}
+              idleLabel={confirmClearAll ? "Confirm delete all" : "Delete all"}
+              workingLabel="Deleting"
+              doneLabel="Deleted"
+              idleIcon={<TrashIcon className="small-icon" />}
+              doneIcon={<CheckIcon className="small-icon" />}
+              onClick={() => {
+                if (!confirmClearAll) {
+                  setConfirmClearAll(true);
+                  return;
+                }
 
-          <label className="search-field">
-            <SearchIcon className="search-icon" />
-            <input
-              type="search"
-              value={historyQuery}
-              onChange={(event) => onSetHistoryQuery(event.currentTarget.value)}
-              placeholder="Search transcripts"
+                setConfirmClearAll(false);
+                void onClearHistory();
+              }}
             />
-          </label>
+          ) : null}
+        </div>
 
-          <div className="mini-meta-row">
-            <span>{snapshot.history.length} saved</span>
-            <span>{filteredHistory.length} visible</span>
-          </div>
-        </article>
+        <label className="search-field">
+          <SearchIcon className="search-icon" />
+          <input
+            type="search"
+            value={historyQuery}
+            onChange={(event) => onSetHistoryQuery(event.currentTarget.value)}
+            placeholder="Search transcripts"
+          />
+        </label>
 
-        <article className="surface preference-surface">
-          <div className="surface-bar">
-            <div className="surface-title">
-              <span className="surface-title-label">Audio clips</span>
-            </div>
-          </div>
-
-          <div className="setting-list">
-            <div className="field">
-              <span>Keep original captured audio</span>
-              <div className="segmented">
-                {audioRetentionOptions.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={`segment ${draft.audioRetentionPolicy === option.id ? "segment-active" : ""}`}
-                    onClick={() =>
-                      void onApplySettings({
-                        audioRetentionPolicy: option.id,
-                      })
-                    }
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="mini-meta-row">
-            <span>{formatAudioRetentionPolicy(draft.audioRetentionPolicy)}</span>
-            <span>Transcript text stays until you remove it</span>
-          </div>
-        </article>
+        <div className="mini-meta-row">
+          <span>{snapshot.history.length} saved</span>
+          <span>{filteredHistory.length} visible</span>
+        </div>
       </section>
 
       {filteredHistory.length === 0 ? (

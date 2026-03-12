@@ -1,30 +1,130 @@
-import { sections } from "./constants";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { useEffect } from "react";
+
+import { sections, SHELL_ACTION_EVENT } from "./constants";
 import { NoticeBanner, StatusChip } from "./components/common";
-import { CheckIcon, SectionIcon } from "./components/icons";
+import { CheckIcon, HelpIcon, SectionIcon, SettingsIcon } from "./components/icons";
 import { useControlApp } from "./hooks/useControlApp";
 import { AboutSection } from "./sections/AboutSection";
-import { CleanupSection } from "./sections/CleanupSection";
+import { CaptureSection } from "./sections/CaptureSection";
 import { DebugSection } from "./sections/DebugSection";
 import { HistorySection } from "./sections/HistorySection";
-import { InputsSection } from "./sections/InputsSection";
-import { InterfaceSection } from "./sections/InterfaceSection";
-import { KeybindingsSection } from "./sections/KeybindingsSection";
 import { ModelsSection } from "./sections/ModelsSection";
-import { OverviewSection } from "./sections/OverviewSection";
+import { SettingsSheet } from "./sections/SettingsSheet";
 import { Sidebar } from "./sections/Sidebar";
-import type { Snapshot } from "./types";
+import { ShellDialog } from "./components/ShellDialog";
+import { VocabularySection } from "./sections/VocabularySection";
+import type { ShellActionId, Snapshot } from "./types";
 
 export function ControlApp({
   snapshot,
   setSnapshot,
+  loadError,
 }: {
   snapshot: Snapshot | null;
   setSnapshot: (snapshot: Snapshot | null) => void;
+  loadError?: string | null;
 }) {
   const control = useControlApp({ snapshot, setSnapshot });
+  const shellOpenAboutDialog = control.ready ? control.openAboutDialog : null;
+  const shellOpenSettingsDialog = control.ready ? control.openSettingsDialog : null;
+  const shellOpenTroubleshootingDialog = control.ready
+    ? control.openTroubleshootingDialog
+    : null;
+  const shellCloseDialog = control.ready ? control.closeDialog : null;
+  const shellSetActiveSection = control.ready ? control.setActiveSection : null;
+  const shellTranscribeFile = control.ready ? control.transcribeFile : null;
+
+  useEffect(() => {
+    if (
+      !control.ready ||
+      !shellCloseDialog ||
+      !shellOpenAboutDialog ||
+      !shellOpenSettingsDialog ||
+      !shellOpenTroubleshootingDialog ||
+      !shellSetActiveSection ||
+      !shellTranscribeFile
+    ) {
+      return;
+    }
+
+    let unlisten: (() => void) | undefined;
+
+    const handleShellAction = (action: ShellActionId) => {
+      switch (action) {
+        case "open-settings":
+          shellOpenSettingsDialog();
+          break;
+        case "open-troubleshooting":
+          shellOpenTroubleshootingDialog();
+          break;
+        case "open-about":
+          shellOpenAboutDialog();
+          break;
+        case "navigate-capture":
+          shellCloseDialog();
+          shellSetActiveSection("capture");
+          break;
+        case "navigate-models":
+          shellCloseDialog();
+          shellSetActiveSection("models");
+          break;
+        case "navigate-vocabulary":
+          shellCloseDialog();
+          shellSetActiveSection("vocabulary");
+          break;
+        case "navigate-history":
+          shellCloseDialog();
+          shellSetActiveSection("history");
+          break;
+        case "transcribe-file":
+          void shellTranscribeFile();
+          break;
+        default:
+          break;
+      }
+    };
+
+    const handleWindowShellAction = (event: Event) => {
+      if (event instanceof CustomEvent && typeof event.detail === "string") {
+        handleShellAction(event.detail as ShellActionId);
+      }
+    };
+
+    window.addEventListener(SHELL_ACTION_EVENT, handleWindowShellAction);
+
+    void (async () => {
+      unlisten = await getCurrentWebviewWindow().listen<ShellActionId>(
+        SHELL_ACTION_EVENT,
+        (event) => {
+          handleShellAction(event.payload);
+        },
+      );
+    })();
+
+    return () => {
+      window.removeEventListener(SHELL_ACTION_EVENT, handleWindowShellAction);
+      unlisten?.();
+    };
+  }, [
+    shellCloseDialog,
+    shellOpenAboutDialog,
+    shellOpenSettingsDialog,
+    shellOpenTroubleshootingDialog,
+    shellSetActiveSection,
+    shellTranscribeFile,
+    control.ready,
+  ]);
 
   if (!control.ready) {
-    return <main className="loading-shell">Loading...</main>;
+    return (
+      <main className={`loading-shell ${loadError ? "loading-shell-error" : ""}`}>
+        <div className="loading-shell-copy">
+          <strong>{loadError ? "Warble couldn't load." : "Loading..."}</strong>
+          {loadError ? <span>{loadError}</span> : null}
+        </div>
+      </main>
+    );
   }
 
   const {
@@ -33,6 +133,9 @@ export function ControlApp({
     setActiveSection,
     sidebarCollapsed,
     setSidebarCollapsed,
+    activeDialog,
+    activeSettingsPane,
+    setActiveSettingsPane,
     message,
     setMessage,
     buttonFeedback,
@@ -63,6 +166,9 @@ export function ControlApp({
     addCleanupTerm,
     removeCleanupTerm,
     restoreCleanupDefaults,
+    openSettingsDialog,
+    openTroubleshootingDialog,
+    closeDialog,
     activeSource,
     sourceOptions,
     activeModel,
@@ -70,7 +176,6 @@ export function ControlApp({
     streamingModelRows,
     readyModelOptions,
     activeReadyModelId,
-    installedStreamingModels,
     livePreviewOptions,
     resolvedLivePreviewModel,
     effectiveLivePreviewModelId,
@@ -114,6 +219,22 @@ export function ControlApp({
               label={currentSnapshot.shortcutsActive ? "Keys active" : "Keys off"}
               tone={currentSnapshot.shortcutsActive ? "accent" : "warning"}
             />
+            <button
+              type="button"
+              className="secondary small icon-button"
+              onClick={() => openSettingsDialog()}
+            >
+              <SettingsIcon className="small-icon" />
+              <span>Settings</span>
+            </button>
+            <button
+              type="button"
+              className="secondary small icon-button"
+              onClick={openTroubleshootingDialog}
+            >
+              <HelpIcon className="small-icon" />
+              <span>Help</span>
+            </button>
           </div>
         </header>
 
@@ -135,35 +256,31 @@ export function ControlApp({
         ) : null}
 
         <div className="content-stack">
-          {activeSection === "overview" ? (
-            <OverviewSection
-              activeModel={activeModel}
+          {activeSection === "capture" ? (
+            <CaptureSection
+              snapshot={currentSnapshot}
+              draft={draft}
+              sourceOptions={sourceOptions}
               activeSource={activeSource}
-              animationStyle={draft.overlayAnimationStyle}
-              showRecordingTimer={draft.showRecordingTimer}
-              showLiveTranscription={draft.showLiveTranscription}
-              liveTranscriptWidth={draft.liveTranscriptWidth}
-              liveTranscriptLines={draft.liveTranscriptLines}
-              phase={currentSnapshot.phase}
-              historyCount={currentSnapshot.history.length}
-              overlayTitle={currentSnapshot.overlay.title}
+              activeModel={activeModel}
               previewTitle={previewTitle}
               previewDetail={previewDetail}
-              levels={currentSnapshot.overlay.levels}
-              elapsedMs={currentSnapshot.overlay.elapsedMs}
-              limitMs={currentSnapshot.overlay.limitMs}
               recentFileTranscript={recentFileTranscript}
-              shortcutsActive={currentSnapshot.shortcutsActive}
+              historyCount={currentSnapshot.history.length}
+              cleanupTermsCount={cleanupTerms.length}
               fileActionState={buttonFeedback["transcribe-file"]}
+              refreshActionState={buttonFeedback["refresh-inputs"]}
+              onApplySettings={applySettings}
+              onRefreshDevices={refreshDevices}
               onStartRecording={startRecording}
               onStopRecording={() => {
                 void stopRecording();
               }}
-              onTranscribeFile={() => {
-                void transcribeFile();
-              }}
               onCancel={() => {
                 void cancelCurrentOperation();
+              }}
+              onTranscribeFile={() => {
+                void transcribeFile();
               }}
             />
           ) : null}
@@ -191,30 +308,8 @@ export function ControlApp({
             />
           ) : null}
 
-          {activeSection === "keybindings" ? (
-            <KeybindingsSection
-              snapshot={currentSnapshot}
-              draft={draft}
-              capturing={capturing}
-              onSetCapturing={setCapturing}
-              onApplySettings={applySettings}
-            />
-          ) : null}
-
-          {activeSection === "interface" ? (
-            <InterfaceSection
-              snapshot={currentSnapshot}
-              draft={draft}
-              onApplySettings={applySettings}
-              installedStreamingModels={installedStreamingModels}
-              previewDiagnostics={currentSnapshot.previewDiagnostics}
-            />
-          ) : null}
-
-          {activeSection === "debug" ? <DebugSection snapshot={currentSnapshot} /> : null}
-
-          {activeSection === "cleanup" ? (
-            <CleanupSection
+          {activeSection === "vocabulary" ? (
+            <VocabularySection
               draft={draft}
               cleanupInput={cleanupInput}
               cleanupTerms={cleanupTerms}
@@ -227,50 +322,56 @@ export function ControlApp({
             />
           ) : null}
 
-          {activeSection === "inputs" ? (
-            <InputsSection
-              snapshot={currentSnapshot}
-              draft={draft}
-              sourceOptions={sourceOptions}
-              activeSource={activeSource}
-              previewTitle={previewTitle}
-              previewDetail={previewDetail}
-              buttonFeedback={buttonFeedback}
-              elapsedMs={currentSnapshot.overlay.elapsedMs}
-              limitMs={currentSnapshot.overlay.limitMs}
-              liveTranscriptWidth={draft.liveTranscriptWidth}
-              liveTranscriptLines={draft.liveTranscriptLines}
-              onApplySettings={applySettings}
-              onRefreshDevices={refreshDevices}
-              onStartRecording={startRecording}
-              onStopRecording={() => {
-                void stopRecording();
-              }}
-              onCancel={() => {
-                void cancelCurrentOperation();
-              }}
-            />
-          ) : null}
-
           {activeSection === "history" ? (
             <HistorySection
               snapshot={currentSnapshot}
-              draft={draft}
               historyQuery={historyQuery}
               filteredHistory={filteredHistory}
               buttonFeedback={buttonFeedback}
               onSetHistoryQuery={setHistoryQuery}
-              onApplySettings={applySettings}
               onOpenHistoryAudio={(item) => openHistoryAudio(item.audioPath)}
               onCopyHistory={copyHistory}
               onRemoveHistoryItem={removeHistoryItem}
               onClearHistory={clearHistory}
             />
           ) : null}
-
-          {activeSection === "about" ? <AboutSection /> : null}
         </div>
       </section>
+
+      {activeDialog === "settings" ? (
+        <SettingsSheet
+          snapshot={currentSnapshot}
+          draft={draft}
+          activePane={activeSettingsPane}
+          capturing={capturing}
+          onClose={closeDialog}
+          onSetActivePane={setActiveSettingsPane}
+          onSetCapturing={setCapturing}
+          onApplySettings={applySettings}
+        />
+      ) : null}
+
+      {activeDialog === "troubleshooting" ? (
+        <ShellDialog
+          title="Troubleshooting"
+          description="Capture and live preview diagnostics stay here so the main IA stays focused on everyday use."
+          size="wide"
+          onClose={closeDialog}
+        >
+          <DebugSection snapshot={currentSnapshot} />
+        </ShellDialog>
+      ) : null}
+
+      {activeDialog === "about" ? (
+        <ShellDialog
+          title="About Warble"
+          description="Local-first dictation with a tray-first workflow and on-device history."
+          size="medium"
+          onClose={closeDialog}
+        >
+          <AboutSection />
+        </ShellDialog>
+      ) : null}
     </main>
   );
 }

@@ -42,6 +42,7 @@ const SHELL_PADDING_HEIGHT: i32 = 28;
 const COMPACT_INDICATOR_HEIGHT: i32 = 58;
 const PILL_PADDING_WITH_TRANSCRIPT: i32 = 34;
 const PILL_PADDING_WITHOUT_TRANSCRIPT: i32 = 30;
+const DYNAMIC_ISLAND_MARGIN_TOP: i32 = 6;
 
 pub(crate) fn default_overlay_levels() -> Vec<f32> {
     vec![0.0; LIVE_METER_BAR_COUNT]
@@ -254,6 +255,13 @@ fn indicator_origin(
     let top = work_area.position.y;
     let width = work_area.size.width as i32;
     let height = work_area.size.height as i32;
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let monitor_left = monitor_position.x;
+    let monitor_top = monitor_position.y;
+    let monitor_width = monitor_size.width as i32;
+    let work_max_x = left + width - indicator_width;
+    let monitor_max_x = monitor_left + monitor_width - indicator_width;
 
     if matches!(position, OverlayPosition::Caret) {
         if let Some(anchor) = overlay.anchor {
@@ -270,15 +278,50 @@ fn indicator_origin(
     }
 
     let x = match position {
-        OverlayPosition::BottomLeft => left + INDICATOR_MARGIN,
-        OverlayPosition::BottomRight => left + width - indicator_width - INDICATOR_MARGIN,
-        OverlayPosition::BottomCenter | OverlayPosition::Caret => {
+        OverlayPosition::DynamicIsland => monitor_left + (monitor_width - indicator_width) / 2,
+        OverlayPosition::TopLeft | OverlayPosition::BottomLeft => left + INDICATOR_MARGIN,
+        OverlayPosition::TopRight | OverlayPosition::BottomRight => {
+            left + width - indicator_width - INDICATOR_MARGIN
+        }
+        OverlayPosition::TopCenter | OverlayPosition::BottomCenter | OverlayPosition::Caret => {
             left + (width - indicator_width) / 2
         }
     };
-    let y = top + height - indicator_height - INDICATOR_MARGIN;
+    let y = match position {
+        OverlayPosition::DynamicIsland => {
+            if cfg!(target_os = "macos") {
+                monitor_top + DYNAMIC_ISLAND_MARGIN_TOP
+            } else {
+                top + INDICATOR_MARGIN
+            }
+        }
+        OverlayPosition::TopLeft | OverlayPosition::TopCenter | OverlayPosition::TopRight => {
+            top + INDICATOR_MARGIN
+        }
+        OverlayPosition::BottomLeft
+        | OverlayPosition::BottomRight
+        | OverlayPosition::BottomCenter
+        | OverlayPosition::Caret => {
+            top + height - indicator_height - INDICATOR_MARGIN
+        }
+    };
+    let (min_x, max_x, min_y) = match position {
+        OverlayPosition::DynamicIsland => (
+            monitor_left,
+            monitor_max_x.max(monitor_left),
+            if cfg!(target_os = "macos") {
+                monitor_top
+            } else {
+                top
+            },
+        ),
+        _ => (left, work_max_x.max(left), top),
+    };
 
-    Some(PhysicalPosition::new(x.max(left), y.max(top)))
+    Some(PhysicalPosition::new(
+        x.clamp(min_x, max_x),
+        y.max(min_y),
+    ))
 }
 
 pub(crate) fn update_indicator_window(app: &AppHandle, shared: &SharedState) {

@@ -8,9 +8,11 @@ import type {
   ModelFilter,
   OverlayAnimationStyle,
   SectionId,
+  SettingsPaneId,
 } from "./types";
 
 export const SNAPSHOT_EVENT = "warble://snapshot";
+export const SHELL_ACTION_EVENT = "warble://shell-action";
 export const SIDEBAR_COLLAPSED_KEY = "warble:sidebar-collapsed";
 export const CLEAR_HISTORY_CONFIRMATION_WINDOW_MS = 2_500;
 export const isIndicatorWindow = new URLSearchParams(window.location.search).has(
@@ -37,15 +39,32 @@ export const sections: Array<{
   id: SectionId;
   label: string;
 }> = [
-  { id: "overview", label: "Overview" },
+  { id: "capture", label: "Capture" },
   { id: "models", label: "Models" },
-  { id: "keybindings", label: "Keys" },
-  { id: "interface", label: "Interface" },
-  { id: "debug", label: "Debug" },
-  { id: "cleanup", label: "Cleanup" },
-  { id: "inputs", label: "Input" },
+  { id: "vocabulary", label: "Vocabulary" },
   { id: "history", label: "History" },
-  { id: "about", label: "About" },
+];
+
+export const settingsPanes: Array<{
+  id: SettingsPaneId;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "general",
+    label: "General",
+    description: "Output and storage preferences.",
+  },
+  {
+    id: "shortcuts",
+    label: "Shortcuts",
+    description: "Global recording hotkeys.",
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    description: "Indicator and theme options.",
+  },
 ];
 
 export const modelFilters: Array<{
@@ -60,10 +79,43 @@ export const modelFilters: Array<{
 export const overlayPositionOptions: Array<{
   id: EditableOverlayPosition;
   label: string;
+  description: string;
 }> = [
-  { id: "bottom-center", label: "Center" },
-  { id: "bottom-left", label: "Left" },
-  { id: "bottom-right", label: "Right" },
+  {
+    id: "dynamic-island",
+    label: "Dynamic Island",
+    description: "Top-center black HUD that blends into a MacBook notch.",
+  },
+  {
+    id: "top-center",
+    label: "Top center",
+    description: "Pin the HUD to the top middle of the screen.",
+  },
+  {
+    id: "top-left",
+    label: "Top left",
+    description: "Keep the HUD tucked into the top-left corner.",
+  },
+  {
+    id: "top-right",
+    label: "Top right",
+    description: "Keep the HUD tucked into the top-right corner.",
+  },
+  {
+    id: "bottom-center",
+    label: "Bottom center",
+    description: "Default centered placement near the bottom edge.",
+  },
+  {
+    id: "bottom-left",
+    label: "Bottom left",
+    description: "Keep the HUD tucked into the bottom-left corner.",
+  },
+  {
+    id: "bottom-right",
+    label: "Bottom right",
+    description: "Keep the HUD tucked into the bottom-right corner.",
+  },
 ];
 
 export const overlayAnimationOptions: Array<{

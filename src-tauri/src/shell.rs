@@ -1,12 +1,15 @@
 use anyhow::{anyhow, Context, Result};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use crate::constants::*;
 use crate::overlay::fallback_indicator_window_size;
-use crate::state::{Settings, SharedState};
+use crate::recording;
+use crate::state::{AppPhase, RecordingMode, Settings, SharedState};
 use crate::storage::normalize_shortcut;
+#[cfg(target_os = "macos")]
+use tauri::menu::{MenuEvent, SubmenuBuilder};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
@@ -38,16 +41,224 @@ pub(crate) fn toggle_main_window(app: &AppHandle) {
     }
 }
 
+fn emit_shell_action(app: &AppHandle, action: &str) {
+    let _ = app.emit_to(
+        EventTarget::webview_window("main"),
+        EVENT_SHELL_ACTION,
+        action,
+    );
+
+    if let Some(window) = app.get_webview_window("main") {
+        if let (Ok(event_name), Ok(payload)) = (
+            serde_json::to_string(EVENT_SHELL_ACTION),
+            serde_json::to_string(action),
+        ) {
+            let _ = window.eval(format!(
+                "window.dispatchEvent(new CustomEvent({event_name}, {{ detail: {payload} }}));"
+            ));
+        }
+    }
+}
+
+fn show_main_window_and_emit(app: &AppHandle, action: &str) {
+    show_main_window(app);
+    emit_shell_action(app, action);
+}
+
+fn start_recording_from_tray(app: &AppHandle, mode: RecordingMode) {
+    let shared = app.state::<SharedState>();
+    let _ = recording::begin_recording(app, &shared, mode);
+}
+
+fn stop_or_cancel_from_tray(app: &AppHandle) {
+    let shared = app.state::<SharedState>();
+    let phase = {
+        let core = shared.lock();
+        core.phase.clone()
+    };
+
+    match phase {
+        AppPhase::Recording => {
+            let _ = recording::stop_recording(app, &shared);
+        }
+        AppPhase::Transcribing => {
+            let _ = recording::cancel_current_operation(app, &shared);
+        }
+        _ => show_main_window(app),
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let about_item =
+        MenuItem::with_id(app, MENU_APP_ABOUT_ID, "About Warble", true, None::<&str>)?;
+    let settings_item = MenuItem::with_id(
+        app,
+        MENU_APP_SETTINGS_ID,
+        "Settings…",
+        true,
+        Some("CmdOrCtrl+,"),
+    )?;
+    let quit_item = PredefinedMenuItem::quit(app, None)?;
+
+    let transcribe_item = MenuItem::with_id(
+        app,
+        MENU_FILE_TRANSCRIBE_ID,
+        "Transcribe Audio File…",
+        true,
+        Some("CmdOrCtrl+O"),
+    )?;
+    let capture_item = MenuItem::with_id(
+        app,
+        MENU_VIEW_CAPTURE_ID,
+        "Capture",
+        true,
+        Some("CmdOrCtrl+1"),
+    )?;
+    let models_item = MenuItem::with_id(
+        app,
+        MENU_VIEW_MODELS_ID,
+        "Models",
+        true,
+        Some("CmdOrCtrl+2"),
+    )?;
+    let vocabulary_item = MenuItem::with_id(
+        app,
+        MENU_VIEW_VOCABULARY_ID,
+        "Vocabulary",
+        true,
+        Some("CmdOrCtrl+3"),
+    )?;
+    let history_item = MenuItem::with_id(
+        app,
+        MENU_VIEW_HISTORY_ID,
+        "History",
+        true,
+        Some("CmdOrCtrl+4"),
+    )?;
+
+    let troubleshooting_item = MenuItem::with_id(
+        app,
+        MENU_HELP_TROUBLESHOOTING_ID,
+        "Troubleshooting…",
+        true,
+        None::<&str>,
+    )?;
+    let project_item = MenuItem::with_id(
+        app,
+        MENU_HELP_PROJECT_ID,
+        "Project Page",
+        true,
+        None::<&str>,
+    )?;
+
+    let menu = Menu::new(app)?;
+
+    let hide_item = PredefinedMenuItem::hide(app, None)?;
+    let hide_others_item = PredefinedMenuItem::hide_others(app, None)?;
+    let show_all_item = PredefinedMenuItem::show_all(app, None)?;
+
+    let app_menu = SubmenuBuilder::new(app, "Warble")
+        .item(&about_item)
+        .item(&settings_item)
+        .separator()
+        .item(&hide_item)
+        .item(&hide_others_item)
+        .item(&show_all_item)
+        .separator()
+        .item(&quit_item)
+        .build()?;
+    let file_menu = SubmenuBuilder::new(app, "File")
+        .item(&transcribe_item)
+        .build()?;
+    let go_menu = SubmenuBuilder::new(app, "Go")
+        .item(&capture_item)
+        .item(&models_item)
+        .item(&vocabulary_item)
+        .item(&history_item)
+        .build()?;
+    let help_menu = SubmenuBuilder::new(app, "Help")
+        .item(&troubleshooting_item)
+        .separator()
+        .item(&project_item)
+        .build()?;
+
+    menu.append(&app_menu)?;
+    menu.append(&file_menu)?;
+    menu.append(&go_menu)?;
+    menu.append(&help_menu)?;
+
+    Ok(menu)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
+    match event.id().as_ref() {
+        MENU_APP_ABOUT_ID => show_main_window_and_emit(app, SHELL_ACTION_OPEN_ABOUT),
+        MENU_APP_SETTINGS_ID => show_main_window_and_emit(app, SHELL_ACTION_OPEN_SETTINGS),
+        MENU_FILE_TRANSCRIBE_ID => {
+            show_main_window_and_emit(app, SHELL_ACTION_TRANSCRIBE_FILE)
+        }
+        MENU_VIEW_CAPTURE_ID => show_main_window_and_emit(app, SHELL_ACTION_NAVIGATE_CAPTURE),
+        MENU_VIEW_MODELS_ID => show_main_window_and_emit(app, SHELL_ACTION_NAVIGATE_MODELS),
+        MENU_VIEW_VOCABULARY_ID => {
+            show_main_window_and_emit(app, SHELL_ACTION_NAVIGATE_VOCABULARY)
+        }
+        MENU_VIEW_HISTORY_ID => show_main_window_and_emit(app, SHELL_ACTION_NAVIGATE_HISTORY),
+        MENU_HELP_TROUBLESHOOTING_ID => {
+            show_main_window_and_emit(app, SHELL_ACTION_OPEN_TROUBLESHOOTING)
+        }
+        MENU_HELP_PROJECT_ID => {
+            let _ = tauri_plugin_opener::open_url(PROJECT_URL, None::<&str>);
+        }
+        _ => {}
+    }
+}
+
 pub(crate) fn create_tray_icon(app: &AppHandle) -> Result<()> {
     if app.tray_by_id(TRAY_ID).is_some() {
         return Ok(());
     }
 
-    let show_item = MenuItem::with_id(app, TRAY_SHOW_ID, "Open Warble", true, None::<&str>)?;
-    let hide_item = MenuItem::with_id(app, TRAY_HIDE_ID, "Hide Window", true, None::<&str>)?;
+    let show_item =
+        MenuItem::with_id(app, TRAY_SHOW_ID, "Open Warble", true, None::<&str>)?;
+    let settings_item =
+        MenuItem::with_id(app, TRAY_SETTINGS_ID, "Settings…", true, None::<&str>)?;
+    let hold_item = MenuItem::with_id(
+        app,
+        TRAY_RECORD_HOLD_ID,
+        "Start Hold Dictation",
+        true,
+        None::<&str>,
+    )?;
+    let toggle_item = MenuItem::with_id(
+        app,
+        TRAY_RECORD_TOGGLE_ID,
+        "Start Toggle Dictation",
+        true,
+        None::<&str>,
+    )?;
+    let stop_item = MenuItem::with_id(
+        app,
+        TRAY_STOP_OR_CANCEL_ID,
+        "Stop / Cancel",
+        true,
+        None::<&str>,
+    )?;
     let quit_item = MenuItem::with_id(app, TRAY_QUIT_ID, "Quit", true, None::<&str>)?;
-    let separator = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&show_item, &hide_item, &separator, &quit_item])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &show_item,
+            &settings_item,
+            &PredefinedMenuItem::separator(app)?,
+            &hold_item,
+            &toggle_item,
+            &stop_item,
+            &PredefinedMenuItem::separator(app)?,
+            &quit_item,
+        ],
+    )?;
     let icon = app
         .default_window_icon()
         .cloned()
@@ -60,7 +271,10 @@ pub(crate) fn create_tray_icon(app: &AppHandle) -> Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             TRAY_SHOW_ID => show_main_window(app),
-            TRAY_HIDE_ID => hide_main_window(app),
+            TRAY_SETTINGS_ID => show_main_window_and_emit(app, SHELL_ACTION_OPEN_SETTINGS),
+            TRAY_RECORD_HOLD_ID => start_recording_from_tray(app, RecordingMode::Hold),
+            TRAY_RECORD_TOGGLE_ID => start_recording_from_tray(app, RecordingMode::Toggle),
+            TRAY_STOP_OR_CANCEL_ID => stop_or_cancel_from_tray(app),
             TRAY_QUIT_ID => app.exit(0),
             _ => {}
         })
@@ -134,8 +348,9 @@ pub(crate) fn create_indicator_window(app: &AppHandle) -> Result<()> {
         "indicator",
         WebviewUrl::App("index.html?indicator=1".into()),
     )
-    .title("Warble Indicator")
-    .transparent(true);
+    .title("Warble Indicator");
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.transparent(true);
     let window = builder
         .decorations(false)
         .shadow(false)

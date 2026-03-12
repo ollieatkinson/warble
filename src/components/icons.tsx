@@ -37,6 +37,17 @@ export function OverviewIcon(props: IconProps) {
   );
 }
 
+export function CaptureIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <path d="M12 4.5a3 3 0 0 1 3 3v4a3 3 0 0 1-6 0v-4a3 3 0 0 1 3-3Z" />
+      <path d="M7.5 10.5a4.5 4.5 0 1 0 9 0" />
+      <path d="M12 15v4.5" />
+      <path d="M8 19.5h8" />
+    </GlyphBase>
+  );
+}
+
 export function ModelsIcon(props: IconProps) {
   return (
     <GlyphBase {...props}>
@@ -289,6 +300,32 @@ export function TrashIcon(props: IconProps) {
   );
 }
 
+export function SettingsIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <circle cx="12" cy="12" r="2.6" />
+      <path d="M12 3.8v2.1" />
+      <path d="M12 18.1v2.1" />
+      <path d="m5.3 5.3 1.5 1.5" />
+      <path d="m17.2 17.2 1.5 1.5" />
+      <path d="M3.8 12h2.1" />
+      <path d="M18.1 12h2.1" />
+      <path d="m5.3 18.7 1.5-1.5" />
+      <path d="m17.2 6.8 1.5-1.5" />
+    </GlyphBase>
+  );
+}
+
+export function HelpIcon(props: IconProps) {
+  return (
+    <GlyphBase {...props}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M9.7 9.2a2.6 2.6 0 1 1 4.6 1.7c-.5.6-1 .9-1.6 1.3-.7.4-1.2 1-1.2 2" />
+      <path d="M12 17.1h.01" />
+    </GlyphBase>
+  );
+}
+
 export function SectionIcon({
   section,
   className,
@@ -297,24 +334,15 @@ export function SectionIcon({
   className?: string;
 }) {
   switch (section) {
+    case "capture":
+      return <CaptureIcon className={className} />;
     case "models":
       return <ModelsIcon className={className} />;
-    case "keybindings":
-      return <KeysIcon className={className} />;
-    case "interface":
-      return <InterfaceIcon className={className} />;
-    case "debug":
-      return <DebugIcon className={className} />;
-    case "cleanup":
+    case "vocabulary":
       return <CleanupIcon className={className} />;
-    case "inputs":
-      return <InputIcon className={className} />;
     case "history":
       return <HistoryIcon className={className} />;
-    case "about":
-      return <AboutIcon className={className} />;
-    case "overview":
     default:
-      return <OverviewIcon className={className} />;
+      return <CaptureIcon className={className} />;
   }
 }
