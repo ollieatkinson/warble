@@ -46,6 +46,17 @@ export function KeybindingsSection({
             }}
             onCancel={() => onSetCapturing(null)}
           />
+          <ShortcutField
+            label="Paste last"
+            value={draft.pasteLastShortcut}
+            armed={capturing === "pasteLastShortcut"}
+            onArm={() => onSetCapturing("pasteLastShortcut")}
+            onCapture={(value) => {
+              void onApplySettings({ pasteLastShortcut: value });
+              onSetCapturing(null);
+            }}
+            onCancel={() => onSetCapturing(null)}
+          />
         </div>
 
         <div className="mini-meta-row">
@@ -55,7 +66,10 @@ export function KeybindingsSection({
 
         <div className="detail-copy">
           <p>Press Esc while recording or transcribing to cancel the current dictation.</p>
-          <p>Use Hold for push-to-talk behavior or Toggle for one-tap start and stop.</p>
+          <p>
+            Use Hold for push-to-talk behavior, Toggle for one-tap start and stop, and Paste
+            last to resend your latest successful transcript.
+          </p>
         </div>
       </article>
     </section>

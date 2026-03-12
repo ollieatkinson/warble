@@ -22,6 +22,7 @@ describe("buildDraftFromSnapshot", () => {
       settings: createSettings({
         holdShortcut: "Ctrl+H",
         toggleShortcut: "Ctrl+T",
+        pasteLastShortcut: "Ctrl+Shift+V",
         selectedSourceId: "mic-2",
         autoPaste: false,
         cleanupEnabled: false,
@@ -41,6 +42,7 @@ describe("buildDraftFromSnapshot", () => {
 
     expect(draft.holdShortcut).toBe("Ctrl+H");
     expect(draft.toggleShortcut).toBe("Ctrl+T");
+    expect(draft.pasteLastShortcut).toBe("Ctrl+Shift+V");
     expect(draft.selectedSourceId).toBe("mic-2");
     expect(draft.autoPaste).toBe(false);
     expect(draft.cleanupEnabled).toBe(false);

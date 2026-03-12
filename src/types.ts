@@ -23,7 +23,10 @@ export type LivePreviewModel =
   | "parakeet-eou";
 export type LiveTranscriptWidth = "compact" | "balanced" | "wide";
 export type LiveTranscriptLines = "one" | "two" | "three";
-export type ShortcutFieldName = "holdShortcut" | "toggleShortcut";
+export type ShortcutFieldName =
+  | "holdShortcut"
+  | "toggleShortcut"
+  | "pasteLastShortcut";
 export type SectionId = "capture" | "models" | "vocabulary" | "history";
 export type SettingsPaneId =
   | "general"
@@ -59,6 +62,7 @@ export type ModelFeatureItem = {
 export type Settings = {
   holdShortcut: string;
   toggleShortcut: string;
+  pasteLastShortcut: string;
   selectedSourceId: string | null;
   autoPaste: boolean;
   selectedModelId: string;
@@ -137,6 +141,7 @@ export type Snapshot = {
   platform: PlatformKind;
   autoPasteSupport: AutoPasteSupport;
   settings: Settings;
+  lastTranscriptAvailable: boolean;
   sources: SourceInfo[];
   history: HistoryItem[];
   modelStatus: ModelStatus;
@@ -176,6 +181,7 @@ export type DebugLogs = {
 export type SettingsDraft = {
   holdShortcut: string;
   toggleShortcut: string;
+  pasteLastShortcut: string;
   selectedSourceId: string;
   autoPaste: boolean;
   cleanupEnabled: boolean;

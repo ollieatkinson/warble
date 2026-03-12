@@ -12,6 +12,7 @@ export function buildDraftFromSnapshot(snapshot: Snapshot): SettingsDraft {
   return {
     holdShortcut: snapshot.settings.holdShortcut,
     toggleShortcut: snapshot.settings.toggleShortcut,
+    pasteLastShortcut: snapshot.settings.pasteLastShortcut,
     selectedSourceId: snapshot.settings.selectedSourceId ?? snapshot.sources[0]?.id ?? "",
     autoPaste: snapshot.settings.autoPaste,
     cleanupEnabled: snapshot.settings.cleanupEnabled,

@@ -116,11 +116,12 @@ pub fn run() {
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |app, shortcut, event| {
                             let shortcut_text = shortcut.to_string();
-                            let (hold_shortcut, toggle_shortcut) = {
+                            let (hold_shortcut, toggle_shortcut, paste_last_shortcut) = {
                                 let core = state_for_shortcuts.lock();
                                 (
                                     normalize_shortcut(&core.settings.hold_shortcut),
                                     normalize_shortcut(&core.settings.toggle_shortcut),
+                                    normalize_shortcut(&core.settings.paste_last_shortcut),
                                 )
                             };
                             let shortcut_text = normalize_shortcut(&shortcut_text);
@@ -176,6 +177,13 @@ pub fn run() {
                                         RecordingMode::Toggle,
                                     );
                                 }
+                                return;
+                            }
+
+                            if shortcut_text == paste_last_shortcut
+                                && matches!(event.state, ShortcutState::Pressed)
+                            {
+                                let _ = paste_last_transcript(app, &state_for_shortcuts);
                             }
                         })
                         .build(),
@@ -227,6 +235,7 @@ pub fn run() {
             clear_error_message_command,
             remove_history_item,
             clear_history,
+            paste_last_transcript_command,
             report_indicator_layout_command,
             start_manual_recording,
             stop_manual_recording,

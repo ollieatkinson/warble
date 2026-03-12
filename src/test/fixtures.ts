@@ -12,6 +12,7 @@ export function createSettings(overrides?: Partial<Settings>): Settings {
   return {
     holdShortcut: "Ctrl+Shift+Space",
     toggleShortcut: "",
+    pasteLastShortcut: "Ctrl+Shift+V",
     selectedSourceId: "default-mic",
     autoPaste: true,
     selectedModelId: "parakeet",
@@ -39,6 +40,7 @@ export function createSettingsDraft(
   return {
     holdShortcut: "Ctrl+Shift+Space",
     toggleShortcut: "",
+    pasteLastShortcut: "Ctrl+Shift+V",
     selectedSourceId: "default-mic",
     autoPaste: true,
     cleanupEnabled: true,
@@ -112,6 +114,7 @@ export function createSnapshot(overrides?: Partial<Snapshot>): Snapshot {
     platform: "windows",
     autoPasteSupport: "active-app",
     settings: createSettings(overrides?.settings),
+    lastTranscriptAvailable: false,
     sources: [createSourceInfo()],
     history: [],
     modelStatus: "ready",

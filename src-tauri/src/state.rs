@@ -8,7 +8,9 @@ use std::time::Instant;
 
 use cpal::Stream;
 
-use crate::constants::{DEFAULT_HOLD_SHORTCUT, DEFAULT_TOGGLE_SHORTCUT};
+use crate::constants::{
+    DEFAULT_HOLD_SHORTCUT, DEFAULT_PASTE_LAST_SHORTCUT, DEFAULT_TOGGLE_SHORTCUT,
+};
 use crate::overlay::default_overlay_levels;
 use crate::parakeet;
 use crate::platform;
@@ -193,6 +195,7 @@ impl Default for AudioRetentionPolicy {
 pub(crate) struct Settings {
     pub(crate) hold_shortcut: String,
     pub(crate) toggle_shortcut: String,
+    pub(crate) paste_last_shortcut: String,
     pub(crate) selected_source_id: Option<String>,
     pub(crate) auto_paste: bool,
     pub(crate) selected_model_id: String,
@@ -217,6 +220,7 @@ impl Default for Settings {
         Self {
             hold_shortcut: DEFAULT_HOLD_SHORTCUT.to_string(),
             toggle_shortcut: DEFAULT_TOGGLE_SHORTCUT.to_string(),
+            paste_last_shortcut: DEFAULT_PASTE_LAST_SHORTCUT.to_string(),
             selected_source_id: None,
             auto_paste: true,
             selected_model_id: "parakeet".to_string(),
@@ -250,12 +254,20 @@ impl Settings {
             .as_ref()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        let paste_last_shortcut = update
+            .paste_last_shortcut
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
 
         if let Some(hold_shortcut) = hold_shortcut {
             self.hold_shortcut = hold_shortcut;
         }
         if let Some(toggle_shortcut) = toggle_shortcut {
             self.toggle_shortcut = toggle_shortcut;
+        }
+        if let Some(paste_last_shortcut) = paste_last_shortcut {
+            self.paste_last_shortcut = paste_last_shortcut;
         }
         if let Some(selected_source_id) = update.selected_source_id.as_ref() {
             self.selected_source_id = Some(selected_source_id.clone());
@@ -366,6 +378,7 @@ pub(crate) struct PersistedState {
 pub(crate) struct SettingsUpdate {
     pub(crate) hold_shortcut: Option<String>,
     pub(crate) toggle_shortcut: Option<String>,
+    pub(crate) paste_last_shortcut: Option<String>,
     pub(crate) selected_source_id: Option<String>,
     pub(crate) auto_paste: Option<bool>,
     pub(crate) selected_model_id: Option<String>,
@@ -474,6 +487,7 @@ pub(crate) struct Snapshot {
     pub(crate) platform: platform::PlatformKind,
     pub(crate) auto_paste_support: platform::AutoPasteSupport,
     pub(crate) settings: Settings,
+    pub(crate) last_transcript_available: bool,
     pub(crate) sources: Vec<SourceInfo>,
     pub(crate) history: Vec<HistoryItem>,
     pub(crate) model_status: ModelStatus,
@@ -554,6 +568,7 @@ pub(crate) enum RecorderRequest {
 pub(crate) struct AppCore {
     pub(crate) settings: Settings,
     pub(crate) history: Vec<HistoryItem>,
+    pub(crate) last_transcript_text: Option<String>,
     pub(crate) sources: Vec<SourceInfo>,
     pub(crate) system_profile: SystemProfile,
     pub(crate) phase: AppPhase,
@@ -573,9 +588,11 @@ pub(crate) struct AppCore {
 
 impl AppCore {
     pub(crate) fn new(settings: Settings, history: Vec<HistoryItem>) -> Self {
+        let last_transcript_text = history.first().map(|item| item.text.clone());
         Self {
             settings,
             history,
+            last_transcript_text,
             sources: Vec::new(),
             system_profile: detect_system_profile(),
             phase: AppPhase::Idle,
@@ -685,6 +702,7 @@ mod tests {
         let settings = Settings::default();
         assert_eq!(settings.hold_shortcut, "F8");
         assert_eq!(settings.toggle_shortcut, "F9");
+        assert_eq!(settings.paste_last_shortcut, "F10");
         assert!(settings.auto_paste);
         assert_eq!(settings.selected_model_id, "parakeet");
         assert!(settings.cleanup_enabled);
@@ -707,6 +725,10 @@ mod tests {
         let deserialized: Settings = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(deserialized.hold_shortcut, settings.hold_shortcut);
         assert_eq!(deserialized.toggle_shortcut, settings.toggle_shortcut);
+        assert_eq!(
+            deserialized.paste_last_shortcut,
+            settings.paste_last_shortcut
+        );
         assert_eq!(deserialized.auto_paste, settings.auto_paste);
         assert_eq!(deserialized.selected_model_id, settings.selected_model_id);
         assert_eq!(deserialized.cleanup_enabled, settings.cleanup_enabled);
@@ -802,5 +824,28 @@ mod tests {
         let gen2 = control.next_generation();
         assert_eq!(gen2, 2);
         assert_eq!(control.current_generation(), 2);
+    }
+
+    #[test]
+    fn app_core_uses_latest_history_item_for_last_transcript() {
+        let core = AppCore::new(
+            Settings::default(),
+            vec![HistoryItem {
+                id: "latest".to_string(),
+                text: "Latest transcript".to_string(),
+                created_at: "2024-01-01T00:00:00Z".to_string(),
+                source_name: "Microphone".to_string(),
+                mode: RecordingMode::Hold,
+                duration_ms: 500,
+                pasted: true,
+                audio_path: None,
+                capture: HistoryCaptureDetails::default(),
+            }],
+        );
+
+        assert_eq!(
+            core.last_transcript_text.as_deref(),
+            Some("Latest transcript")
+        );
     }
 }
