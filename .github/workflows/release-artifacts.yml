@@ -111,6 +111,7 @@ jobs:
           CERTIFICATE_PATH="$RUNNER_TEMP/warble-signing.p12"
           CERTIFICATE_PEM_PATH="$RUNNER_TEMP/warble-signing.pem"
 
+          echo "Decoding macOS signing certificate"
           echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
           openssl pkcs12 \
             -in "$CERTIFICATE_PATH" \
@@ -119,9 +120,11 @@ jobs:
             -passin pass:"$APPLE_CERTIFICATE_PASSWORD" \
             -out "$CERTIFICATE_PEM_PATH"
 
+          echo "Creating temporary CI keychain"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          echo "Importing signing identity into temporary CI keychain"
           security import "$CERTIFICATE_PATH" \
             -k "$KEYCHAIN_PATH" \
             -P "$APPLE_CERTIFICATE_PASSWORD" \
@@ -129,8 +132,8 @@ jobs:
             -A \
             -T /usr/bin/codesign \
             -T /usr/bin/security
+          echo "Trusting self-signed root in temporary CI keychain"
           security add-trusted-cert \
-            -d \
             -r trustRoot \
             -k "$KEYCHAIN_PATH" \
             "$CERTIFICATE_PEM_PATH"
@@ -144,13 +147,14 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH" $CURRENT_KEYCHAINS
           security default-keychain -d user -s "$KEYCHAIN_PATH"
 
+          echo "Resolving macOS signing identity from active keychains"
           RESOLVED_IDENTITY="$(
-            security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            security find-identity -v -p codesigning \
               | awk -v identity="$APPLE_SIGNING_IDENTITY" 'index($0, identity) { print $2; exit }'
           )"
           if [ -z "$RESOLVED_IDENTITY" ]; then
             echo "Unable to resolve macOS signing identity after importing certificate:" >&2
-            security find-identity -v -p codesigning "$KEYCHAIN_PATH" >&2 || true
+            security find-identity -v -p codesigning >&2 || true
             exit 1
           fi
 
