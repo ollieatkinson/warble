@@ -55,20 +55,24 @@ pub(crate) fn post_event_access_error_message() -> &'static str {
 
 #[cfg(target_os = "macos")]
 mod imp {
-    use anyhow::{anyhow, bail, Context, Result};
+    use anyhow::{bail, Context, Result};
     use block2::RcBlock;
+    use chrono::Utc;
     use objc2::runtime::Bool;
-    use objc2_av_foundation::{
-        AVAuthorizationStatus, AVCaptureDevice, AVMediaType, AVMediaTypeAudio,
-    };
+    use objc2_avf_audio::{AVAudioApplication, AVAudioApplicationRecordPermission};
     use objc2_core_graphics::{CGPreflightPostEventAccess, CGRequestPostEventAccess};
     use std::sync::mpsc;
     use tauri::AppHandle;
 
+    use crate::storage::append_capture_log;
+
     use super::{post_event_access_error_message, MicrophoneAccess};
 
     pub(super) fn ensure_microphone_access(app: &AppHandle) -> Result<MicrophoneAccess> {
-        match current_microphone_access()? {
+        let state = current_microphone_access()?;
+        log_microphone_access(app, "status", format!("{state:?}"));
+
+        match state {
             MicrophoneAccess::Authorized => Ok(MicrophoneAccess::Authorized),
             MicrophoneAccess::NotDetermined => request_microphone_access(app),
             state => Ok(state),
@@ -93,41 +97,36 @@ mod imp {
     }
 
     fn current_microphone_access() -> Result<MicrophoneAccess> {
-        let media_type = audio_media_type()?;
-        let status = unsafe { AVCaptureDevice::authorizationStatusForMediaType(media_type) };
+        let application = unsafe { AVAudioApplication::sharedInstance() };
+        let status = unsafe { application.recordPermission() };
+
         Ok(match status {
-            AVAuthorizationStatus::NotDetermined => MicrophoneAccess::NotDetermined,
-            AVAuthorizationStatus::Restricted => MicrophoneAccess::Restricted,
-            AVAuthorizationStatus::Denied => MicrophoneAccess::Denied,
-            AVAuthorizationStatus::Authorized => MicrophoneAccess::Authorized,
+            AVAudioApplicationRecordPermission::Undetermined => MicrophoneAccess::NotDetermined,
+            AVAudioApplicationRecordPermission::Denied => MicrophoneAccess::Denied,
+            AVAudioApplicationRecordPermission::Granted => MicrophoneAccess::Authorized,
             _ => MicrophoneAccess::Denied,
         })
     }
 
     fn request_microphone_access(app: &AppHandle) -> Result<MicrophoneAccess> {
         let (sender, receiver) = mpsc::channel::<Result<bool>>();
+        log_microphone_access(app, "request-started", "using AVAudioApplication");
 
         run_on_main_thread_and_wait(app, move || {
-            let media_type = match audio_media_type() {
-                Ok(media_type) => media_type,
-                Err(error) => {
-                    let _ = sender.send(Err(error));
-                    return;
-                }
-            };
             let completion_sender = sender.clone();
             let handler = RcBlock::new(move |granted: Bool| {
                 let _ = completion_sender.send(Ok(granted.as_bool()));
             });
 
             unsafe {
-                AVCaptureDevice::requestAccessForMediaType_completionHandler(media_type, &handler);
+                AVAudioApplication::requestRecordPermissionWithCompletionHandler(&handler);
             }
         })?;
 
         let granted = receiver
             .recv()
             .context("macOS microphone permission request did not complete")??;
+        log_microphone_access(app, "request-finished", format!("granted={granted}"));
 
         Ok(if granted {
             MicrophoneAccess::Authorized
@@ -136,8 +135,20 @@ mod imp {
         })
     }
 
-    fn audio_media_type() -> Result<&'static AVMediaType> {
-        unsafe { AVMediaTypeAudio.ok_or_else(|| anyhow!("macOS audio media type is unavailable")) }
+    fn log_microphone_access(app: &AppHandle, stage: &str, detail: impl Into<String>) {
+        let detail = detail.into();
+        let message = if detail.is_empty() {
+            format!(
+                "{} [permissions] microphone {stage}",
+                Utc::now().to_rfc3339()
+            )
+        } else {
+            format!(
+                "{} [permissions] microphone {stage}: {detail}",
+                Utc::now().to_rfc3339()
+            )
+        };
+        append_capture_log(app, &message);
     }
 
     fn run_on_main_thread_and_wait<T, F>(app: &AppHandle, task: F) -> Result<T>
