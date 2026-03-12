@@ -53,6 +53,7 @@ const artifactsDir = path.resolve(
 
 if (!args.skipTauriBuild) {
   ensureMacosSigningConfigured(platform);
+  removeDirectory(bundleDir);
   runChecked(resolveCommand("pnpm"), ["tauri", "build"], { cwd: repoRoot });
 }
 

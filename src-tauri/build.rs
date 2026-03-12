@@ -2,6 +2,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const WINDOWS_RUNTIME_BUNDLE_DIR: &str = "target/windows-runtime-bundle";
 const WINDOWS_RUNTIME_FILES: &[&str] = &[
     "onnxruntime.dll",
     "DirectML.dll",
@@ -10,8 +11,26 @@ const WINDOWS_RUNTIME_FILES: &[&str] = &[
 ];
 
 fn main() {
+    prepare_windows_ort_runtime_bundle_dir();
     tauri_build::build();
     copy_windows_ort_runtime();
+}
+
+fn prepare_windows_ort_runtime_bundle_dir() {
+    let Some(bundle_dir) = windows_ort_runtime_bundle_dir() else {
+        return;
+    };
+
+    if let Err(error) = fs::create_dir_all(&bundle_dir) {
+        println!(
+            "cargo:warning=failed to create {}: {}",
+            bundle_dir.display(),
+            error
+        );
+        return;
+    }
+
+    clear_runtime_files(&bundle_dir);
 }
 
 fn copy_windows_ort_runtime() {
@@ -35,11 +54,15 @@ fn copy_windows_ort_runtime() {
         return;
     };
 
-    for destination_dir in [
-        target_dir.clone(),
-        target_dir.join("deps"),
-        target_dir.join("examples"),
-    ] {
+    let mut destination_dirs = Vec::new();
+    if let Some(bundle_dir) = windows_ort_runtime_bundle_dir() {
+        destination_dirs.push(bundle_dir);
+    }
+    destination_dirs.push(target_dir.clone());
+    destination_dirs.push(target_dir.join("deps"));
+    destination_dirs.push(target_dir.join("examples"));
+
+    for destination_dir in destination_dirs {
         if !destination_dir.exists() {
             continue;
         }
@@ -71,11 +94,24 @@ fn copy_runtime_files(source_dir: &Path, destination_dir: &Path) {
     }
 }
 
+fn clear_runtime_files(destination_dir: &Path) {
+    for file_name in WINDOWS_RUNTIME_FILES {
+        let destination = destination_dir.join(file_name);
+        if destination.exists() || destination.is_symlink() {
+            let _ = fs::remove_file(destination);
+        }
+    }
+}
+
 fn find_windows_ort_runtime_dir() -> Option<PathBuf> {
     env::var_os("WARBLE_ORT_RUNTIME_DIR")
         .map(PathBuf::from)
         .filter(|path| runtime_dir_ready(path))
         .or_else(find_workspace_onnxruntime_node_dir)
+}
+
+fn windows_ort_runtime_bundle_dir() -> Option<PathBuf> {
+    Some(PathBuf::from(env::var_os("CARGO_MANIFEST_DIR")?).join(WINDOWS_RUNTIME_BUNDLE_DIR))
 }
 
 fn find_workspace_onnxruntime_node_dir() -> Option<PathBuf> {
