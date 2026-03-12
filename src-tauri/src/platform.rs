@@ -3,6 +3,7 @@ use arboard::Clipboard;
 use serde::Serialize;
 use std::thread;
 use std::time::Duration;
+use tauri::AppHandle;
 
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct CaretAnchor {
@@ -119,7 +120,7 @@ pub fn detect_caret_anchor() -> Option<CaretAnchor> {
     None
 }
 
-pub fn paste_text(text: &str) -> Result<PasteOutcome> {
+pub fn paste_text(_app: &AppHandle, text: &str) -> Result<PasteOutcome> {
     #[cfg(target_os = "windows")]
     {
         return paste_text_windows(text);
@@ -127,7 +128,7 @@ pub fn paste_text(text: &str) -> Result<PasteOutcome> {
 
     #[cfg(target_os = "macos")]
     {
-        return paste_text_macos(text);
+        return paste_text_macos(_app, text);
     }
 
     #[cfg(target_os = "linux")]
@@ -219,7 +220,9 @@ fn paste_text_windows(text: &str) -> Result<PasteOutcome> {
 }
 
 #[cfg(target_os = "macos")]
-fn paste_text_macos(text: &str) -> Result<PasteOutcome> {
+fn paste_text_macos(app: &AppHandle, text: &str) -> Result<PasteOutcome> {
+    crate::permissions::ensure_post_event_access(app)?;
+
     use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 
