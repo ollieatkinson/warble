@@ -8,10 +8,6 @@
   Local-first desktop dictation and transcription with offline models, live preview, and one-step paste.
 </p>
 
-<p align="center">
-  <img src="./docs/assets/warble-ui-overview.svg" alt="Warble overview showing capture, models, and settings views" width="100%" />
-</p>
-
 > [!WARNING]
 > Warble is still alpha. Development and active testing have mostly been on Windows so far, so that is the path that currently gets the most attention. Other platforms may build, but expect rough edges.
 
