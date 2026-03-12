@@ -90,10 +90,16 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
         }
     };
     let needs_directml_tuning = matches!(provider, InferenceProvider::Directml);
+    #[cfg(target_os = "macos")]
+    let needs_webgpu_serialization = matches!(provider, InferenceProvider::Webgpu);
+    #[cfg(not(target_os = "macos"))]
+    let needs_webgpu_serialization = false;
+
+    let intra_threads = if needs_webgpu_serialization { 1 } else { 4 };
 
     let config = ExecutionConfig::new()
         .with_execution_provider(execution_provider)
-        .with_intra_threads(4)
+        .with_intra_threads(intra_threads)
         .with_inter_threads(1);
 
     if needs_directml_tuning {
@@ -103,6 +109,12 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
             Ok(builder
                 .with_parallel_execution(false)?
                 .with_memory_pattern(false)?)
+        })
+    } else if needs_webgpu_serialization {
+        config.with_custom_configure(move |builder| {
+            // macOS WebGPU currently has upstream Dawn/Metal concurrency bugs.
+            // Keep the GPU path, but avoid ORT threadpool fan-out on Apple.
+            Ok(builder.with_parallel_execution(false)?)
         })
     } else {
         config
@@ -141,6 +153,15 @@ mod tests {
         let order = super::preferred_inference_providers();
         assert_eq!(order.first(), Some(&InferenceProvider::Webgpu));
         assert_eq!(order.last(), Some(&InferenceProvider::Cpu));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_webgpu_config_uses_serial_execution() {
+        let config = super::execution_config(InferenceProvider::Webgpu);
+        assert_eq!(config.intra_threads, 1);
+        assert_eq!(config.inter_threads, 1);
+        assert!(config.configure.is_some());
     }
 
     #[test]
