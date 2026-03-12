@@ -1,0 +1,5 @@
+{
+  "build": {
+    "beforeDevCommand": "powershell -NoProfile -ExecutionPolicy Bypass -Command exit 0"
+  }
+}

@@ -1678,6 +1678,8 @@ input::placeholder {
   place-items: center;
   min-height: 180px;
   padding: 1rem;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-radius: 8px;
   border: 1px solid var(--border);
   background:
@@ -1687,8 +1689,8 @@ input::placeholder {
 
 .interface-demo-screen {
   position: relative;
-  width: 100%;
-  max-width: 310px;
+  width: var(--interface-demo-screen-width, 400px);
+  flex: 0 0 auto;
   aspect-ratio: 1.45 / 1;
   padding: 1rem;
   border-radius: 8px;
@@ -1699,6 +1701,18 @@ input::placeholder {
   display: flex;
   align-items: flex-end;
   overflow: hidden;
+}
+
+.interface-demo-screen-width-compact {
+  --interface-demo-screen-width: 336px;
+}
+
+.interface-demo-screen-width-balanced {
+  --interface-demo-screen-width: 400px;
+}
+
+.interface-demo-screen-width-wide {
+  --interface-demo-screen-width: 472px;
 }
 
 .interface-demo-screen::before {
@@ -1838,6 +1852,174 @@ input::placeholder {
   gap: 0.35rem;
 }
 
+.capture-control-surface {
+  display: grid;
+  gap: 0.8rem;
+  align-content: start;
+}
+
+.capture-source-field {
+  max-width: 440px;
+}
+
+.capture-action-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.capture-setup-list {
+  margin-top: 0.1rem;
+}
+
+.shell-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: rgba(6, 8, 12, 0.52);
+  backdrop-filter: blur(12px);
+}
+
+.shell-dialog {
+  width: min(1120px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2.5rem);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  background: var(--panel-strong);
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+}
+
+.shell-dialog-medium {
+  width: min(760px, calc(100vw - 2rem));
+}
+
+.shell-dialog-large {
+  width: min(980px, calc(100vw - 2rem));
+}
+
+.shell-dialog-wide {
+  width: min(1220px, calc(100vw - 2rem));
+}
+
+.shell-dialog-full-height {
+  height: calc(100vh - 2.5rem);
+}
+
+.shell-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--divider);
+}
+
+.shell-dialog-copy {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.shell-dialog-copy h2,
+.shell-dialog-copy p {
+  margin: 0;
+}
+
+.shell-dialog-copy p {
+  color: var(--muted);
+  max-width: 64ch;
+}
+
+.shell-dialog-close {
+  width: 2.2rem;
+  min-width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-hover);
+  color: var(--muted-strong);
+  box-shadow: none;
+}
+
+.shell-dialog-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem 1.1rem 1.15rem;
+}
+
+.shell-dialog-full-height .shell-dialog-body {
+  display: flex;
+}
+
+.settings-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 1rem;
+  min-height: 100%;
+  align-items: start;
+}
+
+.settings-nav {
+  display: grid;
+  gap: 0.45rem;
+  align-content: start;
+}
+
+.settings-nav-button {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text);
+  text-align: left;
+  box-shadow: none;
+}
+
+.settings-nav-button span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.settings-nav-button-active,
+.settings-nav-button:hover {
+  background: var(--surface-hover-strong);
+  border-color: var(--accent-border-soft);
+}
+
+.settings-nav-button-active {
+  box-shadow: inset 2px 0 0 var(--accent-rail);
+}
+
+.settings-pane {
+  min-width: 0;
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+}
+
+.settings-pane .compact-grid-two,
+.settings-pane .field-grid,
+.settings-pane .interface-preview-grid {
+  grid-template-columns: 1fr;
+}
+
+.settings-pane-intro {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.settings-pane-intro span {
+  color: var(--muted);
+}
+
 .history-row-head {
   display: flex;
   justify-content: space-between;
@@ -1938,6 +2120,21 @@ input::placeholder {
 
 .loading-shell {
   min-height: 100vh;
+}
+
+.loading-shell-copy {
+  display: grid;
+  gap: 0.4rem;
+  max-width: 560px;
+}
+
+.loading-shell-copy strong,
+.loading-shell-copy span {
+  display: block;
+}
+
+.loading-shell-error {
+  color: var(--danger-text);
 }
 
 .indicator-root {
@@ -2776,25 +2973,30 @@ input::placeholder {
 
   .workspace-header,
   .surface-bar,
-  .history-row-head {
+  .history-row-head,
+  .shell-dialog-header {
     flex-direction: column;
     align-items: flex-start;
   }
 
   .header-actions,
   .inline-actions,
-  .segmented {
+  .segmented,
+  .capture-action-strip {
     width: 100%;
   }
 
   .setting-row,
-  .interface-preview-grid {
+  .interface-preview-grid,
+  .settings-shell {
     grid-template-columns: 1fr;
   }
 
   .header-actions button,
   .inline-actions button,
-  .segment {
+  .capture-action-strip button,
+  .segment,
+  .settings-nav-button {
     flex: 1 1 100%;
   }
 
@@ -2802,5 +3004,21 @@ input::placeholder {
   .indicator-shell-inline {
     min-width: 0;
     width: 100%;
+  }
+
+  .shell-dialog-backdrop {
+    padding: 0.75rem;
+  }
+
+  .shell-dialog,
+  .shell-dialog-medium,
+  .shell-dialog-large,
+  .shell-dialog-wide {
+    width: 100%;
+    max-height: calc(100vh - 1.5rem);
+  }
+
+  .shell-dialog-full-height {
+    height: calc(100vh - 1.5rem);
   }
 }

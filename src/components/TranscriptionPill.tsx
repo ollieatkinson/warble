@@ -689,7 +689,13 @@ export function InterfacePreviewCard({
 }) {
   return (
     <div className="interface-demo-frame">
-      <div className={`interface-demo-screen interface-demo-screen-${overlayPosition}`}>
+      <div
+        className={[
+          "interface-demo-screen",
+          `interface-demo-screen-${overlayPosition}`,
+          `interface-demo-screen-width-${liveTranscriptWidth}`,
+        ].join(" ")}
+      >
         <div className="interface-demo-pill">
           <TranscriptionPill
             phase="recording"

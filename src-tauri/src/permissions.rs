@@ -25,13 +25,13 @@ pub(crate) fn microphone_access_status_message(state: MicrophoneAccess) -> &'sta
 pub(crate) fn microphone_access_error_message(state: MicrophoneAccess) -> &'static str {
     match state {
         MicrophoneAccess::Restricted => {
-            "macOS has restricted microphone access for Transcribed. Check your device restrictions or Screen Time settings."
+            "macOS has restricted microphone access for Warble. Check your device restrictions or Screen Time settings."
         }
         MicrophoneAccess::Denied => {
-            "Transcribed needs microphone access on macOS. Enable it in System Settings > Privacy & Security > Microphone."
+            "Warble needs microphone access on macOS. Enable it in System Settings > Privacy & Security > Microphone."
         }
         MicrophoneAccess::NotDetermined => {
-            "Transcribed needs microphone access on macOS before it can list or record from your inputs."
+            "Warble needs microphone access on macOS before it can list or record from your inputs."
         }
         MicrophoneAccess::Authorized => "Microphone access is available.",
     }

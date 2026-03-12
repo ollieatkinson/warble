@@ -20,16 +20,21 @@ export type LivePreviewModel =
 export type LiveTranscriptWidth = "compact" | "balanced" | "wide";
 export type LiveTranscriptLines = "one" | "two" | "three";
 export type ShortcutFieldName = "holdShortcut" | "toggleShortcut";
-export type SectionId =
-  | "overview"
-  | "models"
-  | "keybindings"
-  | "interface"
-  | "debug"
-  | "cleanup"
-  | "inputs"
-  | "history"
-  | "about";
+export type SectionId = "capture" | "models" | "history";
+export type SettingsPaneId =
+  | "general"
+  | "shortcuts"
+  | "appearance";
+export type ShellDialogId = "settings" | "troubleshooting" | "about";
+export type ShellActionId =
+  | "open-settings"
+  | "open-troubleshooting"
+  | "open-about"
+  | "navigate-capture"
+  | "navigate-models"
+  | "navigate-history"
+  | "transcribe-file"
+  | "open-project-page";
 export type ModelFilter = "all" | "available" | "streaming";
 export type EditableOverlayPosition = Exclude<OverlayPosition, "caret">;
 export type AudioRetentionPolicy = "one-day" | "seven-days" | "thirty-days";

@@ -33,7 +33,7 @@ export function CleanupSection({
       <article className="surface preference-surface">
         <div className="surface-bar">
           <div className="surface-title">
-            <span className="surface-title-label">Transcript cleanup</span>
+            <span className="surface-title-label">Cleanup vocabulary</span>
           </div>
         </div>
 
@@ -50,7 +50,7 @@ export function CleanupSection({
             />
             <div>
               <strong>Remove filler words</strong>
-              <span>Clean transcripts before paste and history save.</span>
+              <span>Clean transcripts before paste and before saving to history.</span>
             </div>
           </label>
 
@@ -106,7 +106,7 @@ export function CleanupSection({
       <article className="surface preference-surface">
         <div className="surface-bar">
           <div className="surface-title">
-            <span className="surface-title-label">Managed terms</span>
+            <span className="surface-title-label">Active phrases</span>
           </div>
           <ActionButton
             className="secondary small"
@@ -120,7 +120,7 @@ export function CleanupSection({
         </div>
 
         {cleanupTerms.length === 0 ? (
-          <div className="empty-state cleanup-empty-state">No cleanup terms yet.</div>
+          <div className="empty-state cleanup-empty-state">No cleanup phrases yet.</div>
         ) : (
           <div className="cleanup-list">
             {cleanupTerms.map((term) => (

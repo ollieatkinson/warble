@@ -4,13 +4,25 @@ Local-first desktop transcription built with Tauri, React, and TypeScript.
 
 ## Windows Dev
 
-For the most reliable local run, start the app from Windows rather than WSL:
+If you are already in a Windows shell, launch the dev environment with:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-windows.ps1
 ```
 
-That opens one PowerShell window for Vite and a second for the Tauri app.
+If you are in WSL, use a Windows-path wrapper instead of passing `/mnt/c/...` directly to `powershell.exe`:
+
+```bash
+make windows-dev
+```
+
+or:
+
+```bash
+./scripts/dev-windows.sh
+```
+
+That opens one Windows shell for Vite and a second for the Tauri app. Passing a Linux path such as `/mnt/c/.../scripts/dev-windows.ps1` to `powershell.exe -File` will fail because Windows PowerShell does not resolve WSL paths there.
 
 If you prefer manual commands:
 
@@ -76,5 +88,6 @@ make check
 make web-build
 make release-artifacts
 make windows-dev
+make dev-windows
 make windows-release
 ```

@@ -2,11 +2,12 @@ import { useEffect } from "react";
 
 import { isIndicatorWindow } from "./constants";
 import { ControlApp } from "./ControlApp";
+import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { IndicatorApp } from "./components/TranscriptionPill";
 import { useSnapshotState } from "./hooks/useSnapshotState";
 
 export default function App() {
-  const [snapshot, setSnapshot] = useSnapshotState();
+  const [snapshot, setSnapshot, loadError] = useSnapshotState();
 
   useEffect(() => {
     document.documentElement.classList.toggle(
@@ -21,9 +22,17 @@ export default function App() {
     };
   }, []);
 
-  return isIndicatorWindow ? (
-    <IndicatorApp snapshot={snapshot} />
-  ) : (
-    <ControlApp snapshot={snapshot} setSnapshot={setSnapshot} />
+  return (
+    <AppErrorBoundary>
+      {isIndicatorWindow ? (
+        <IndicatorApp snapshot={snapshot} />
+      ) : (
+        <ControlApp
+          snapshot={snapshot}
+          setSnapshot={setSnapshot}
+          loadError={loadError}
+        />
+      )}
+    </AppErrorBoundary>
   );
 }

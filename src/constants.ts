@@ -8,9 +8,11 @@ import type {
   ModelFilter,
   OverlayAnimationStyle,
   SectionId,
+  SettingsPaneId,
 } from "./types";
 
 export const SNAPSHOT_EVENT = "warble://snapshot";
+export const SHELL_ACTION_EVENT = "warble://shell-action";
 export const SIDEBAR_COLLAPSED_KEY = "warble:sidebar-collapsed";
 export const CLEAR_HISTORY_CONFIRMATION_WINDOW_MS = 2_500;
 export const isIndicatorWindow = new URLSearchParams(window.location.search).has(
@@ -37,15 +39,31 @@ export const sections: Array<{
   id: SectionId;
   label: string;
 }> = [
-  { id: "overview", label: "Overview" },
+  { id: "capture", label: "Capture" },
   { id: "models", label: "Models" },
-  { id: "keybindings", label: "Keys" },
-  { id: "interface", label: "Interface" },
-  { id: "debug", label: "Debug" },
-  { id: "cleanup", label: "Cleanup" },
-  { id: "inputs", label: "Input" },
   { id: "history", label: "History" },
-  { id: "about", label: "About" },
+];
+
+export const settingsPanes: Array<{
+  id: SettingsPaneId;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "general",
+    label: "General",
+    description: "Output and storage preferences.",
+  },
+  {
+    id: "shortcuts",
+    label: "Shortcuts",
+    description: "Global recording hotkeys.",
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    description: "Indicator and theme options.",
+  },
 ];
 
 export const modelFilters: Array<{

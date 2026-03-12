@@ -24,6 +24,8 @@ use audio::enumerate_sources;
 use commands::*;
 use constants::*;
 use models::{built_in_parakeet_status, current_model_status};
+#[cfg(target_os = "macos")]
+use shell::{build_app_menu, handle_menu_event};
 use shell::{
     create_indicator_window, create_tray_icon, hide_main_window, register_shortcuts,
     show_main_window,
@@ -48,11 +50,19 @@ pub fn run() {
         AppCore::new(placeholder.settings, placeholder.history)
     });
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(shared.clone())
         .manage(recorder)
         .manage(transcriber)
-        .manage(preview_control)
+        .manage(preview_control);
+
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(build_app_menu).on_menu_event(handle_menu_event);
+
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder;
+
+    builder
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![BACKGROUND_ARG]),

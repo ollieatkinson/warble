@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { SNAPSHOT_EVENT } from "../constants";
 import { getSnapshot } from "../lib/tauriApi";
+import { formatInvokeError } from "../lib/utils";
 import type { Snapshot } from "../types";
 
 export async function fetchSnapshot() {
@@ -11,20 +12,29 @@ export async function fetchSnapshot() {
 
 export function useSnapshotState() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
     let unlisten: (() => void) | undefined;
 
     void (async () => {
-      const current = await fetchSnapshot();
-      if (mounted) {
-        setSnapshot(current);
-      }
+      try {
+        const current = await fetchSnapshot();
+        if (mounted) {
+          setSnapshot(current);
+          setLoadError(null);
+        }
 
-      unlisten = await listen<Snapshot>(SNAPSHOT_EVENT, (event) => {
-        setSnapshot(event.payload);
-      });
+        unlisten = await listen<Snapshot>(SNAPSHOT_EVENT, (event) => {
+          setSnapshot(event.payload);
+          setLoadError(null);
+        });
+      } catch (error) {
+        if (mounted) {
+          setLoadError(formatInvokeError(error));
+        }
+      }
     })();
 
     return () => {
@@ -33,5 +43,5 @@ export function useSnapshotState() {
     };
   }, []);
 
-  return [snapshot, setSnapshot] as const;
+  return [snapshot, setSnapshot, loadError] as const;
 }

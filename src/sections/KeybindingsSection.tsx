@@ -14,23 +14,15 @@ export function KeybindingsSection({
   onSetCapturing: (value: ShortcutFieldName | null) => void;
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
 }) {
-  const autoPasteDetail =
-    snapshot.autoPasteSupport === "active-app"
-      ? snapshot.platform === "macos"
-        ? "Warble will use Cmd+V after final transcription. macOS may ask for Accessibility permission."
-        : snapshot.platform === "linux"
-          ? "Warble will paste into the active app when an X11 display is available."
-          : "Warble will paste into the active app after the final transcript is ready."
-      : "This session will copy the transcript to the clipboard instead of pasting into the active app.";
-
   return (
-    <section className="compact-grid-two">
+    <section>
       <article className="surface">
         <div className="surface-bar">
           <div className="surface-title">
             <span className="surface-title-label">Global shortcuts</span>
           </div>
         </div>
+
         <div className="field-grid">
           <ShortcutField
             label="Hold"
@@ -55,34 +47,16 @@ export function KeybindingsSection({
             onCancel={() => onSetCapturing(null)}
           />
         </div>
+
         <div className="mini-meta-row">
           <span>{snapshot.shortcutMessage}</span>
           <span>{snapshot.shortcutsActive ? "Ready globally" : "Unavailable globally"}</span>
         </div>
+
         <div className="detail-copy">
           <p>Press Esc while recording or transcribing to cancel the current dictation.</p>
+          <p>Use Hold for push-to-talk behavior or Toggle for one-tap start and stop.</p>
         </div>
-      </article>
-
-      <article className="surface preference-note-surface">
-        <div className="surface-title">
-          <span className="surface-title-label">Recording</span>
-        </div>
-        <label className="toggle-row toggle-row-card">
-          <input
-            type="checkbox"
-            checked={draft.autoPaste}
-            onChange={(event) =>
-              void onApplySettings({
-                autoPaste: event.currentTarget.checked,
-              })
-            }
-          />
-          <div>
-            <strong>Auto paste</strong>
-            <span>{autoPasteDetail}</span>
-          </div>
-        </label>
       </article>
     </section>
   );
