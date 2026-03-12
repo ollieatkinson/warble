@@ -1,9 +1,9 @@
 // Integration tests for audio processing functions exposed via the public API.
 //
-// The `parakeet` module is the only public module in transcribed_lib, so we
+// The `parakeet` module is the only public module in warble_lib, so we
 // exercise its resampling, model-readiness, and detection helpers here.
 
-use transcribed_lib::parakeet;
+use warble_lib::parakeet;
 
 // ---------------------------------------------------------------------------
 // resample_to_16khz
@@ -15,7 +15,7 @@ fn resample_identity_at_16khz() {
     let output = parakeet::resample_to_16khz(&input, 16_000);
     assert_eq!(output.len(), input.len());
     for (a, b) in input.iter().zip(output.iter()) {
-        assert!((a - b).abs() < 1e-6, "mismatch: {a} vs {b}");
+        assert!((*a - *b).abs() < 1e-6f32, "mismatch: {a} vs {b}");
     }
 }
 
@@ -40,7 +40,7 @@ fn resample_preserves_dc_offset() {
     let output = parakeet::resample_to_16khz(&input, 48_000);
     for sample in &output {
         assert!(
-            (sample - dc).abs() < 1e-5,
+            (*sample - dc).abs() < 1e-5f32,
             "DC offset not preserved: got {sample}"
         );
     }
@@ -53,7 +53,7 @@ fn resample_upsamples_8khz() {
     let expected_len = (800.0_f64 * 16_000.0 / 8_000.0).round() as usize;
     assert_eq!(output.len(), expected_len);
     for sample in &output {
-        assert!((sample - 1.0).abs() < 1e-5);
+        assert!((*sample - 1.0f32).abs() < 1e-5f32);
     }
 }
 

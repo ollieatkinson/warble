@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from "react";
 
 import {
+  buildSupportReport,
   formatDuration,
   formatElapsedClock,
   formatPhaseLabel,
@@ -31,6 +32,8 @@ import {
 
 import {
   createHistoryItem,
+  createSettings,
+  createSnapshot,
   createSettingsDraft,
   createSystemProfile,
 } from "../../test/fixtures";
@@ -259,6 +262,84 @@ describe("formatCaptureInput", () => {
   it("shows only available parts", () => {
     expect(formatCaptureInput(16000, 0)).toBe("16 kHz");
     expect(formatCaptureInput(0, 1)).toBe("1 ch");
+  });
+});
+
+describe("buildSupportReport", () => {
+  it("includes source selection and diagnostic events", () => {
+    const snapshot = createSnapshot({
+      phase: "transcribing",
+      statusMessage: "Working",
+      errorMessage: "Disk busy",
+      previewDiagnostics: {
+        backend: "nemotron",
+        status: "warming",
+        detail: "Loading preview model",
+        recentEvents: ["Preview booted", "Streaming chunk 1"],
+        logPath: "/tmp/preview.log",
+      },
+      captureDiagnostics: {
+        status: "listening",
+        detail: "Microphone active",
+        recentEvents: ["Mic selected", "Samples flowing"],
+        logPath: "/tmp/capture.log",
+        sourceName: "Built-in Microphone",
+        sampleRate: 48000,
+        channels: 2,
+        lastBufferedSamples: 2048,
+      },
+    });
+
+    const report = buildSupportReport(snapshot);
+
+    expect(report).toContain("Warble support report");
+    expect(report).toContain("Platform: windows");
+    expect(report).toContain("Phase: transcribing");
+    expect(report).toContain("Status: Working");
+    expect(report).toContain("Error: Disk busy");
+    expect(report).toContain("Source: Built-in Microphone (48 kHz \u00B7 2 ch)");
+    expect(report).toContain("Model: parakeet (parakeet)");
+    expect(report).toContain("Buffered samples: 2048");
+    expect(report).toContain("Backend: nemotron");
+    expect(report).toContain("- Mic selected");
+    expect(report).toContain("- Streaming chunk 1");
+  });
+
+  it("falls back when selection and events are unavailable", () => {
+    const snapshot = createSnapshot({
+      settings: createSettings({ selectedSourceId: null }),
+      sources: [],
+      errorMessage: null,
+      captureDiagnostics: {
+        status: "idle",
+        detail: "",
+        recentEvents: [],
+        logPath: null,
+        sourceName: "",
+        sampleRate: 0,
+        channels: 0,
+        lastBufferedSamples: 0,
+      },
+      previewDiagnostics: {
+        backend: "",
+        status: "idle",
+        detail: "",
+        recentEvents: [],
+        logPath: null,
+      },
+    });
+
+    const report = buildSupportReport(snapshot);
+
+    expect(report).toContain("Error: None");
+    expect(report).toContain("Source: None");
+    expect(report).toContain("Detail: None");
+    expect(report).toContain("Input: Unknown input");
+    expect(report).toContain("Source: Unknown");
+    expect(report).toContain("Backend: Unknown");
+    expect(report).toContain("Log: Unavailable");
+    expect(report).toContain("- No capture events recorded");
+    expect(report).toContain("- No live preview events recorded");
   });
 });
 

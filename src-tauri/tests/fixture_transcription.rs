@@ -141,10 +141,10 @@ fn transcribe_silence_returns_empty_or_short() {
     // This test requires a loaded ParakeetTdt model.
     // It validates that silence does not produce spurious transcription.
     let model_root = std::path::PathBuf::from(
-        std::env::var("TRANSCRIBED_MODEL_ROOT").expect("set TRANSCRIBED_MODEL_ROOT"),
+        std::env::var("WARBLE_MODEL_ROOT").expect("set WARBLE_MODEL_ROOT"),
     );
     let mut model =
-        transcribed_lib::parakeet::ParakeetTdt::load(&model_root).expect("load model");
+        warble_lib::parakeet::ParakeetTdt::load(&model_root).expect("load model");
     let result = model
         .transcribe_wav_path(&path)
         .expect("transcribe silence");
@@ -163,10 +163,10 @@ fn transcribe_sine_wave_returns_empty_or_short() {
     write_wav(&path, &samples, 16000);
 
     let model_root = std::path::PathBuf::from(
-        std::env::var("TRANSCRIBED_MODEL_ROOT").expect("set TRANSCRIBED_MODEL_ROOT"),
+        std::env::var("WARBLE_MODEL_ROOT").expect("set WARBLE_MODEL_ROOT"),
     );
     let mut model =
-        transcribed_lib::parakeet::ParakeetTdt::load(&model_root).expect("load model");
+        warble_lib::parakeet::ParakeetTdt::load(&model_root).expect("load model");
     let result = model
         .transcribe_wav_path(&path)
         .expect("transcribe sine");

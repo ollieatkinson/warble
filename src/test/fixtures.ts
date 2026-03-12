@@ -130,6 +130,16 @@ export function createSnapshot(overrides?: Partial<Snapshot>): Snapshot {
       recentEvents: [],
       logPath: null,
     },
+    captureDiagnostics: {
+      status: "idle",
+      detail: "",
+      recentEvents: [],
+      logPath: null,
+      sourceName: "Built-in Microphone",
+      sampleRate: 48000,
+      channels: 2,
+      lastBufferedSamples: 0,
+    },
     overlay: {
       visible: false,
       title: "",
