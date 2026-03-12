@@ -15,7 +15,14 @@ pub(crate) fn supported_acceleration_providers() -> Vec<InferenceProvider> {
         return Vec::new();
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        // WebGPU session creation is not reliable enough on macOS for the
+        // default transcription path; prefer the stable CPU backend.
+        return Vec::new();
+    }
+
+    #[cfg(target_os = "linux")]
     {
         return vec![InferenceProvider::Webgpu];
     }
@@ -135,12 +142,19 @@ mod tests {
         assert_eq!(order.last(), Some(&InferenceProvider::Cpu));
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(target_os = "linux")]
     #[test]
     fn preferred_order_starts_with_webgpu() {
         let order = super::preferred_inference_providers();
         assert_eq!(order.first(), Some(&InferenceProvider::Webgpu));
         assert_eq!(order.last(), Some(&InferenceProvider::Cpu));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn preferred_order_is_cpu_only_on_macos() {
+        let order = super::preferred_inference_providers();
+        assert_eq!(order, vec![InferenceProvider::Cpu]);
     }
 
     #[test]
