@@ -10,7 +10,6 @@ import {
 } from "../lib/controlAppModel";
 import {
   primeAutoPasteAccess as primeAutoPasteAccessCommand,
-  primeMicrophoneAccess as primeMicrophoneAccessCommand,
   refreshDevices as refreshDevicesCommand,
 } from "../lib/tauriApi";
 import { formatInvokeError } from "../lib/utils";
@@ -47,7 +46,6 @@ export function useControlApp({
   setSnapshot: (snapshot: Snapshot | null) => void;
 }) {
   const [activeSection, setActiveSection] = useState<SectionId>("capture");
-  const primedMacMicrophoneAccess = useRef(false);
   const primedMacAutoPasteAccess = useRef(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     loadSidebarCollapsedPreference,
@@ -172,19 +170,6 @@ export function useControlApp({
       showError(error);
     }
   }
-
-  useEffect(() => {
-    if (
-      !snapshot ||
-      snapshot.platform !== "macos" ||
-      primedMacMicrophoneAccess.current
-    ) {
-      return;
-    }
-
-    primedMacMicrophoneAccess.current = true;
-    void primeMicrophoneAccessCommand().catch(() => {});
-  }, [snapshot]);
 
   useEffect(() => {
     if (
