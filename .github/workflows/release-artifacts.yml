@@ -196,7 +196,6 @@ jobs:
           ENTITLEMENTS_PATH="$(mktemp)"
           codesign -d --entitlements :- "$APP_PATH" > "$ENTITLEMENTS_PATH" 2>/dev/null
           /usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' "$ENTITLEMENTS_PATH" | grep -qx 'true'
-          /usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.microphone' "$ENTITLEMENTS_PATH" | grep -qx 'true'
           spctl -a -vvv --type exec "$APP_PATH" || true
 
       - name: Verify macOS DMG install path
@@ -241,7 +240,6 @@ jobs:
           ENTITLEMENTS_PATH="$(mktemp)"
           codesign -d --entitlements :- "$INSTALLED_APP_PATH" > "$ENTITLEMENTS_PATH" 2>/dev/null
           /usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' "$ENTITLEMENTS_PATH" | grep -qx 'true'
-          /usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.microphone' "$ENTITLEMENTS_PATH" | grep -qx 'true'
           spctl -a -vvv --type exec "$INSTALLED_APP_PATH" || true
 
       - name: Verify Linux package install paths

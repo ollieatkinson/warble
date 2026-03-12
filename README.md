@@ -140,7 +140,7 @@ distributable builds.
 Warble's macOS bundle also relies on `src-tauri/Info.plist` and
 `src-tauri/Entitlements.plist` for microphone access. The built app must carry
 `NSMicrophoneUsageDescription` plus the `com.apple.security.device.audio-input`
-and `com.apple.security.device.microphone` entitlements.
+entitlement.
 
 You can inspect the available identities on your Mac with:
 
