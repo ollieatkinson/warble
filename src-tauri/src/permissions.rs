@@ -19,6 +19,11 @@ pub(crate) fn ensure_post_event_access(app: &AppHandle) -> Result<()> {
     imp::ensure_post_event_access(app)
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn request_post_event_access(app: &AppHandle) -> Result<bool> {
+    imp::request_post_event_access(app)
+}
+
 pub(crate) fn microphone_access_status_message(state: MicrophoneAccess) -> &'static str {
     match state {
         MicrophoneAccess::Restricted => "Microphone access restricted",
@@ -71,16 +76,20 @@ mod imp {
     }
 
     pub(super) fn ensure_post_event_access(app: &AppHandle) -> Result<()> {
-        if CGPreflightPostEventAccess() {
-            return Ok(());
-        }
-
-        let granted = run_on_main_thread_and_wait(app, || CGRequestPostEventAccess())?;
+        let granted = request_post_event_access(app)?;
         if granted {
             Ok(())
         } else {
             bail!(post_event_access_error_message())
         }
+    }
+
+    pub(super) fn request_post_event_access(app: &AppHandle) -> Result<bool> {
+        if CGPreflightPostEventAccess() {
+            return Ok(true);
+        }
+
+        run_on_main_thread_and_wait(app, || CGRequestPostEventAccess())
     }
 
     fn current_microphone_access() -> Result<MicrophoneAccess> {
@@ -166,5 +175,9 @@ mod imp {
     #[allow(dead_code)]
     pub(super) fn ensure_post_event_access(_app: &AppHandle) -> Result<()> {
         Ok(())
+    }
+
+    pub(super) fn request_post_event_access(_app: &AppHandle) -> Result<bool> {
+        Ok(true)
     }
 }

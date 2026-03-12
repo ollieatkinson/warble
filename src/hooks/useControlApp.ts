@@ -8,7 +8,11 @@ import {
   deriveSourceState,
   mapInstalledStreamingModels,
 } from "../lib/controlAppModel";
-import { refreshDevices as refreshDevicesCommand } from "../lib/tauriApi";
+import {
+  primeAutoPasteAccess as primeAutoPasteAccessCommand,
+  primeMicrophoneAccess as primeMicrophoneAccessCommand,
+  refreshDevices as refreshDevicesCommand,
+} from "../lib/tauriApi";
 import { formatInvokeError } from "../lib/utils";
 import type {
   FlashMessage,
@@ -43,7 +47,8 @@ export function useControlApp({
   setSnapshot: (snapshot: Snapshot | null) => void;
 }) {
   const [activeSection, setActiveSection] = useState<SectionId>("capture");
-  const primedMacCaptureAccess = useRef(false);
+  const primedMacMicrophoneAccess = useRef(false);
+  const primedMacAutoPasteAccess = useRef(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     loadSidebarCollapsedPreference,
   );
@@ -172,15 +177,28 @@ export function useControlApp({
     if (
       !snapshot ||
       snapshot.platform !== "macos" ||
-      snapshot.sources.length > 0 ||
-      primedMacCaptureAccess.current
+      primedMacMicrophoneAccess.current
     ) {
       return;
     }
 
-    primedMacCaptureAccess.current = true;
-    void refreshDevicesCommand().catch(() => {});
+    primedMacMicrophoneAccess.current = true;
+    void primeMicrophoneAccessCommand().catch(() => {});
   }, [snapshot]);
+
+  useEffect(() => {
+    if (
+      !snapshot ||
+      snapshot.platform !== "macos" ||
+      !draft.autoPaste ||
+      primedMacAutoPasteAccess.current
+    ) {
+      return;
+    }
+
+    primedMacAutoPasteAccess.current = true;
+    void primeAutoPasteAccessCommand().catch(() => {});
+  }, [draft.autoPaste, snapshot]);
 
   if (!snapshot) {
     return {
