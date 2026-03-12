@@ -15,14 +15,7 @@ pub(crate) fn supported_acceleration_providers() -> Vec<InferenceProvider> {
         return Vec::new();
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        // WebGPU session creation is not reliable enough on macOS for the
-        // default transcription path; prefer the stable CPU backend.
-        return Vec::new();
-    }
-
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         return vec![InferenceProvider::Webgpu];
     }
@@ -103,17 +96,17 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
         .with_intra_threads(4)
         .with_inter_threads(1);
 
-    config.with_custom_configure(move |builder| {
-        let builder = builder
-            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
-        if needs_directml_tuning {
+    if needs_directml_tuning {
+        config.with_custom_configure(move |builder| {
+            let builder = builder
+                .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
             Ok(builder
                 .with_parallel_execution(false)?
                 .with_memory_pattern(false)?)
-        } else {
-            Ok(builder)
-        }
-    })
+        })
+    } else {
+        config
+    }
 }
 
 #[cfg(test)]
@@ -142,19 +135,12 @@ mod tests {
         assert_eq!(order.last(), Some(&InferenceProvider::Cpu));
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
     fn preferred_order_starts_with_webgpu() {
         let order = super::preferred_inference_providers();
         assert_eq!(order.first(), Some(&InferenceProvider::Webgpu));
         assert_eq!(order.last(), Some(&InferenceProvider::Cpu));
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn preferred_order_is_cpu_only_on_macos() {
-        let order = super::preferred_inference_providers();
-        assert_eq!(order, vec![InferenceProvider::Cpu]);
     }
 
     #[test]
