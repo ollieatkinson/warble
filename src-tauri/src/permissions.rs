@@ -13,6 +13,21 @@ pub(crate) fn ensure_microphone_access() -> Result<MicrophoneAccess> {
     imp::ensure_microphone_access()
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn resolve_microphone_access<F>(
+    state: MicrophoneAccess,
+    request_access: F,
+) -> Result<MicrophoneAccess>
+where
+    F: FnOnce() -> Result<MicrophoneAccess>,
+{
+    match state {
+        MicrophoneAccess::Authorized => Ok(MicrophoneAccess::Authorized),
+        MicrophoneAccess::NotDetermined => request_access(),
+        state => Ok(state),
+    }
+}
+
 pub(crate) fn microphone_access_status_message(state: MicrophoneAccess) -> &'static str {
     match state {
         MicrophoneAccess::Restricted => "Microphone access restricted",
@@ -50,11 +65,7 @@ mod imp {
     use super::MicrophoneAccess;
 
     pub(super) fn ensure_microphone_access() -> Result<MicrophoneAccess> {
-        match current_microphone_access()? {
-            MicrophoneAccess::Authorized => Ok(MicrophoneAccess::Authorized),
-            MicrophoneAccess::NotDetermined => request_microphone_access(),
-            state => Ok(state),
-        }
+        super::resolve_microphone_access(current_microphone_access()?, request_microphone_access)
     }
 
     fn current_microphone_access() -> Result<MicrophoneAccess> {
@@ -104,5 +115,94 @@ mod imp {
 
     pub(super) fn ensure_microphone_access() -> Result<MicrophoneAccess> {
         Ok(MicrophoneAccess::Authorized)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::{anyhow, Result};
+
+    use super::{
+        microphone_access_error_message, microphone_access_status_message,
+        resolve_microphone_access, MicrophoneAccess,
+    };
+
+    #[test]
+    fn resolve_microphone_access_skips_request_when_already_authorized() {
+        let mut requested = false;
+
+        let resolved = resolve_microphone_access(MicrophoneAccess::Authorized, || {
+            requested = true;
+            Ok(MicrophoneAccess::Denied)
+        })
+        .expect("authorized access should succeed");
+
+        assert_eq!(resolved, MicrophoneAccess::Authorized);
+        assert!(!requested);
+    }
+
+    #[test]
+    fn resolve_microphone_access_preserves_denied_state_without_prompting() {
+        let mut requested = false;
+
+        let resolved = resolve_microphone_access(MicrophoneAccess::Denied, || {
+            requested = true;
+            Ok(MicrophoneAccess::Authorized)
+        })
+        .expect("denied access should be returned as-is");
+
+        assert_eq!(resolved, MicrophoneAccess::Denied);
+        assert!(!requested);
+    }
+
+    #[test]
+    fn resolve_microphone_access_requests_when_status_is_not_determined() {
+        let mut requested = false;
+
+        let resolved = resolve_microphone_access(MicrophoneAccess::NotDetermined, || {
+            requested = true;
+            Ok(MicrophoneAccess::Authorized)
+        })
+        .expect("request result should be returned");
+
+        assert_eq!(resolved, MicrophoneAccess::Authorized);
+        assert!(requested);
+    }
+
+    #[test]
+    fn resolve_microphone_access_propagates_request_failures() {
+        let error = resolve_microphone_access(MicrophoneAccess::NotDetermined, || -> Result<_> {
+            Err(anyhow!("permission request failed"))
+        })
+        .expect_err("request failure should bubble up");
+
+        assert_eq!(error.to_string(), "permission request failed");
+    }
+
+    #[test]
+    fn microphone_access_messages_use_warble_branding() {
+        for state in [
+            MicrophoneAccess::NotDetermined,
+            MicrophoneAccess::Restricted,
+            MicrophoneAccess::Denied,
+        ] {
+            assert!(
+                microphone_access_error_message(state).contains("Warble"),
+                "expected {state:?} guidance to mention Warble"
+            );
+        }
+
+        assert_eq!(
+            microphone_access_status_message(MicrophoneAccess::Restricted),
+            "Microphone access restricted"
+        );
+        assert_eq!(
+            microphone_access_status_message(MicrophoneAccess::Denied),
+            "Microphone access denied"
+        );
+        assert_eq!(
+            microphone_access_status_message(MicrophoneAccess::NotDetermined),
+            "Microphone access required"
+        );
     }
 }
