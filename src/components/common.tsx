@@ -152,14 +152,61 @@ export function ShortcutField({
   onCapture: (value: string) => void;
   onCancel: () => void;
 }) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!armed) {
+      return;
+    }
+
+    buttonRef.current?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const captured = captureShortcut(event);
+      if (captured) {
+        onCapture(captured);
+      }
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (
+        buttonRef.current &&
+        event.target instanceof Node &&
+        !buttonRef.current.contains(event.target)
+      ) {
+        onCancel();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [armed, onCancel, onCapture]);
+
   return (
     <label className="field">
       <span>{label}</span>
       <button
+        ref={buttonRef}
         type="button"
         className={`shortcut-button ${armed ? "shortcut-button-armed" : ""}`}
         onClick={onArm}
         onKeyDown={(event) => {
+          if (!armed) {
+            return;
+          }
+
           event.preventDefault();
           const captured = captureShortcut(event);
           if (captured) {

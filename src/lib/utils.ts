@@ -373,7 +373,12 @@ export function formatShortcutKey(key: string) {
   return key;
 }
 
-export function captureShortcut(event: KeyboardEvent<HTMLButtonElement>) {
+type ShortcutCaptureEvent = Pick<
+  KeyboardEvent<HTMLButtonElement>,
+  "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey"
+>;
+
+export function captureShortcut(event: ShortcutCaptureEvent) {
   const ignored = new Set(["Control", "Shift", "Alt", "Meta"]);
   const mainKey = formatShortcutKey(event.key);
 

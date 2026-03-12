@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("../../components/icons", () => ({
@@ -12,7 +12,12 @@ vi.mock("../../components/icons", () => ({
   SectionIcon: () => null,
 }));
 
-import { ActionButton, StatusChip, NoticeBanner } from "../../components/common";
+import {
+  ActionButton,
+  NoticeBanner,
+  ShortcutField,
+  StatusChip,
+} from "../../components/common";
 
 describe("ActionButton", () => {
   it("renders idle label", () => {
@@ -125,5 +130,69 @@ describe("NoticeBanner", () => {
     await userEvent.click(screen.getByRole("button", { name: "Dismiss message" }));
 
     expect(handleDismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ShortcutField", () => {
+  it("captures the next window key press once armed", async () => {
+    const user = userEvent.setup();
+    const handleArm = vi.fn();
+    const handleCapture = vi.fn();
+
+    const { rerender } = render(
+      <ShortcutField
+        label="Hold"
+        value="F8"
+        armed={false}
+        onArm={handleArm}
+        onCapture={handleCapture}
+        onCancel={() => {}}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Hold" }));
+    expect(handleArm).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ShortcutField
+        label="Hold"
+        value="F8"
+        armed
+        onArm={handleArm}
+        onCapture={handleCapture}
+        onCancel={() => {}}
+      />,
+    );
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "k",
+        metaKey: true,
+      }),
+    );
+
+    expect(handleCapture).toHaveBeenCalledWith("Meta+K");
+  });
+
+  it("cancels armed capture when clicking outside the field", async () => {
+    const handleCancel = vi.fn();
+
+    render(
+      <>
+        <ShortcutField
+          label="Hold"
+          value="F8"
+          armed
+          onArm={() => {}}
+          onCapture={() => {}}
+          onCancel={handleCancel}
+        />
+        <button type="button">Outside</button>
+      </>,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Outside" }));
+
+    expect(handleCancel).toHaveBeenCalledTimes(1);
   });
 });
