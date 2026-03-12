@@ -1,6 +1,6 @@
 use anyhow::Result;
-use std::fs::OpenOptions;
-use std::io::Write;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
 
@@ -17,6 +17,10 @@ pub(crate) fn live_preview_log_path(app: &AppHandle) -> Result<PathBuf> {
     Ok(diagnostics_dir(app)?.join("live-preview.log"))
 }
 
+pub(crate) fn capture_log_path(app: &AppHandle) -> Result<PathBuf> {
+    Ok(diagnostics_dir(app)?.join("capture.log"))
+}
+
 pub(crate) fn append_live_preview_log(app: &AppHandle, line: &str) {
     let Ok(path) = live_preview_log_path(app) else {
         return;
@@ -29,10 +33,68 @@ pub(crate) fn append_live_preview_log(app: &AppHandle, line: &str) {
     let _ = writeln!(file, "{line}");
 }
 
+pub(crate) fn append_capture_log(app: &AppHandle, line: &str) {
+    let Ok(path) = capture_log_path(app) else {
+        return;
+    };
+
+    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) else {
+        return;
+    };
+
+    let _ = writeln!(file, "{line}");
+}
+
+fn read_log_tail(path: PathBuf, max_bytes: usize) -> String {
+    let Ok(mut file) = File::open(path) else {
+        return String::new();
+    };
+
+    let Ok(file_len) = file.metadata().map(|metadata| metadata.len()) else {
+        return String::new();
+    };
+
+    let start = file_len.saturating_sub(max_bytes as u64);
+    if file.seek(SeekFrom::Start(start)).is_err() {
+        return String::new();
+    }
+
+    let mut bytes = Vec::with_capacity((file_len - start) as usize);
+    if file.read_to_end(&mut bytes).is_err() {
+        return String::new();
+    }
+
+    if start > 0 {
+        if let Some(first_newline) = bytes.iter().position(|byte| *byte == b'\n') {
+            bytes.drain(..=first_newline);
+        }
+    }
+
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+pub(crate) fn read_live_preview_log(app: &AppHandle) -> String {
+    let Ok(path) = live_preview_log_path(app) else {
+        return String::new();
+    };
+    read_log_tail(path, 24 * 1024)
+}
+
+pub(crate) fn read_capture_log(app: &AppHandle) -> String {
+    let Ok(path) = capture_log_path(app) else {
+        return String::new();
+    };
+    read_log_tail(path, 24 * 1024)
+}
+
 pub(crate) fn build_snapshot(app: &AppHandle, shared: &SharedState) -> Snapshot {
     let core = shared.lock();
     let mut preview_diagnostics = core.preview_diagnostics.clone();
+    let mut capture_diagnostics = core.capture_diagnostics.clone();
     preview_diagnostics.log_path = live_preview_log_path(app)
+        .ok()
+        .map(|path| path.to_string_lossy().into_owned());
+    capture_diagnostics.log_path = capture_log_path(app)
         .ok()
         .map(|path| path.to_string_lossy().into_owned());
     Snapshot {
@@ -52,6 +114,7 @@ pub(crate) fn build_snapshot(app: &AppHandle, shared: &SharedState) -> Snapshot 
         status_message: core.status_message.clone(),
         error_message: core.error_message.clone(),
         preview_diagnostics,
+        capture_diagnostics,
         overlay: core.overlay.clone(),
     }
 }

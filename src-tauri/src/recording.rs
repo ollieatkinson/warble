@@ -17,9 +17,19 @@ use crate::permissions::{
 };
 use crate::state::*;
 use crate::storage::*;
-use crate::transcript::note_preview_diagnostic;
+use crate::transcript::{note_capture_diagnostic, note_preview_diagnostic};
 use crate::transcription;
 use crate::{audio, parakeet, platform};
+
+fn macos_capture_hint(message: &str) -> String {
+    if cfg!(target_os = "macos") {
+        format!(
+            "{message}. If microphone capture never starts, check System Settings > Privacy & Security > Microphone for Warble."
+        )
+    } else {
+        message.to_string()
+    }
+}
 
 fn report_runtime_error(
     app: &AppHandle,
@@ -60,6 +70,12 @@ fn ensure_recording_access(app: &AppHandle, shared: &SharedState) -> Result<()> 
                 "Microphone access check failed",
                 error.to_string(),
             );
+            note_capture_diagnostic(
+                app,
+                shared,
+                "Microphone access check failed",
+                error.to_string(),
+            );
             Err(error)
         }
     }
@@ -87,25 +103,28 @@ pub(crate) fn begin_recording(
     let preview_control = app.state::<PreviewControl>();
     let preview_generation = preview_control.next_generation();
     let (response_tx, response_rx) = mpsc::channel();
-    recorder
-        .sender
-        .send(RecorderRequest::Start {
-            selected_source_id,
-            mode: mode.clone(),
-            anchor,
-            response: response_tx,
-        })
-        .map_err(|_| anyhow!("Recording worker is unavailable"))?;
+    let started = match (|| -> Result<StartRecordingResponse> {
+        recorder
+            .sender
+            .send(RecorderRequest::Start {
+                selected_source_id,
+                mode: mode.clone(),
+                anchor,
+                response: response_tx,
+            })
+            .map_err(|_| anyhow!("Recording worker is unavailable"))?;
 
-    let started = match response_rx
-        .recv()
-        .map_err(|_| anyhow!("Recording worker did not respond"))?
-        .map_err(|error| anyhow!(error))
-    {
+        response_rx
+            .recv()
+            .map_err(|_| anyhow!("Recording worker did not respond"))?
+            .map_err(|error| anyhow!(error))
+    })() {
         Ok(started) => started,
         Err(error) => {
-            report_runtime_error(app, shared, "Recording couldn't start", error.to_string());
-            return Err(error);
+            let detail = macos_capture_hint(&error.to_string());
+            report_runtime_error(app, shared, "Recording couldn't start", detail.clone());
+            note_capture_diagnostic(app, shared, "Capture start failed", detail.clone());
+            return Err(anyhow!(detail));
         }
     };
 
@@ -124,12 +143,25 @@ pub(crate) fn begin_recording(
         core.overlay.anchor = anchor;
         core.settings.selected_source_id = Some(started.source_id);
         core.sources = enumerate_sources();
+        core.capture_diagnostics.source_name = started.source_name.clone();
+        core.capture_diagnostics.sample_rate = started.preview_sample_rate;
+        core.capture_diagnostics.channels = started.preview_channels;
+        core.capture_diagnostics.last_buffered_samples = 0;
         core.settings.show_live_transcription
     };
 
     let _ = save_persisted_state(app, shared);
     update_indicator_window(app, shared);
     emit_snapshot(app, shared);
+    note_capture_diagnostic(
+        app,
+        shared,
+        "Recording started",
+        format!(
+            "{} at {} Hz · {} ch",
+            started.source_name, started.preview_sample_rate, started.preview_channels
+        ),
+    );
     if should_spawn_preview {
         note_preview_diagnostic(
             app,
@@ -159,29 +191,43 @@ pub(crate) fn begin_recording(
     Ok(())
 }
 
-pub(crate) fn finalize_recording(session: RecordingSession) -> Result<Option<CompletedRecording>> {
+pub(crate) fn finalize_recording(session: RecordingSession) -> Result<CompletedRecording> {
     drop(session.stream);
 
     let samples = {
         let samples = session.buffer.lock().expect("recording buffer poisoned");
         samples.clone()
     };
+    let stream_errors = {
+        let errors = session
+            .stream_errors
+            .lock()
+            .expect("stream error buffer poisoned");
+        errors.clone()
+    };
 
     let duration_ms = session.started_at.elapsed().as_millis() as u64;
-    if duration_ms < HOLD_MIN_DURATION_MS || samples.len() < session.channels * 256 {
-        return Ok(None);
-    }
+    let captured_sample_count = samples.len();
+    let should_transcribe =
+        duration_ms >= HOLD_MIN_DURATION_MS && captured_sample_count >= session.channels * 256;
 
-    Ok(Some(CompletedRecording {
-        samples: parakeet::resample_to_16khz(&samples, session.sample_rate),
+    Ok(CompletedRecording {
+        samples: if should_transcribe {
+            parakeet::resample_to_16khz(&samples, session.sample_rate)
+        } else {
+            Vec::new()
+        },
         captured_samples: samples,
         captured_sample_rate: session.sample_rate,
         captured_channels: session.channels as u16,
+        captured_sample_count,
+        stream_errors,
+        should_transcribe,
         duration_ms,
         source_name: session.source_name,
         mode: session.mode,
         anchor: session.anchor,
-    }))
+    })
 }
 
 pub(crate) fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()> {
@@ -190,18 +236,43 @@ pub(crate) fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()
     let preview_control = app.state::<PreviewControl>();
     let transcription_generation = preview_control.next_generation();
     let (response_tx, response_rx) = mpsc::channel();
-    recorder
-        .sender
-        .send(RecorderRequest::Stop {
-            response: response_tx,
-        })
-        .map_err(|_| anyhow!("Recording worker is unavailable"))?;
+    let completed = match (|| -> Result<Option<CompletedRecording>> {
+        recorder
+            .sender
+            .send(RecorderRequest::Stop {
+                response: response_tx,
+            })
+            .map_err(|_| anyhow!("Recording worker is unavailable"))?;
 
-    let completed = response_rx
-        .recv()
-        .map_err(|_| anyhow!("Recording worker did not respond"))?
-        .map_err(|error| anyhow!(error))?;
+        response_rx
+            .recv()
+            .map_err(|_| anyhow!("Recording worker did not respond"))?
+            .map_err(|error| anyhow!(error))
+    })() {
+        Ok(completed) => completed,
+        Err(error) => {
+            let detail = macos_capture_hint(&error.to_string());
+            note_capture_diagnostic(app, shared, "Capture stop failed", detail.clone());
+            return Err(anyhow!(detail));
+        }
+    };
     let Some(completed) = completed else {
+        return Ok(());
+    };
+
+    {
+        let mut core = shared.lock();
+        core.capture_diagnostics.source_name = completed.source_name.clone();
+        core.capture_diagnostics.sample_rate = completed.captured_sample_rate;
+        core.capture_diagnostics.channels = completed.captured_channels;
+        core.capture_diagnostics.last_buffered_samples = completed.captured_sample_count;
+    }
+
+    for stream_error in &completed.stream_errors {
+        note_capture_diagnostic(app, shared, "Microphone stream error", stream_error.clone());
+    }
+
+    if !completed.should_transcribe {
         {
             let mut core = shared.lock();
             core.phase = AppPhase::Idle;
@@ -209,10 +280,19 @@ pub(crate) fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()
             core.error_message = None;
             clear_overlay_session_state(&mut core);
         }
+        note_capture_diagnostic(
+            app,
+            shared,
+            "Capture too short",
+            format!(
+                "{} buffered samples over {} ms",
+                completed.captured_sample_count, completed.duration_ms
+            ),
+        );
         update_indicator_window(app, shared);
         emit_snapshot(app, shared);
         return Ok(());
-    };
+    }
 
     {
         let mut core = shared.lock();
@@ -228,6 +308,15 @@ pub(crate) fn stop_recording(app: &AppHandle, shared: &SharedState) -> Result<()
         core.overlay.anchor = completed.anchor;
     }
 
+    note_capture_diagnostic(
+        app,
+        shared,
+        "Transcribing microphone capture",
+        format!(
+            "{} buffered samples over {} ms",
+            completed.captured_sample_count, completed.duration_ms
+        ),
+    );
     update_indicator_window(app, shared);
     emit_snapshot(app, shared);
     transcription::complete_transcription(
@@ -271,6 +360,12 @@ pub(crate) fn cancel_current_operation(app: &AppHandle, shared: &SharedState) ->
                 clear_overlay_session_state(&mut core);
             }
 
+            note_capture_diagnostic(
+                app,
+                shared,
+                "Recording cancelled",
+                "Stopped before transcription",
+            );
             update_indicator_window(app, shared);
             emit_snapshot(app, shared);
             Ok(())
@@ -285,6 +380,12 @@ pub(crate) fn cancel_current_operation(app: &AppHandle, shared: &SharedState) ->
                 clear_overlay_session_state(&mut core);
             }
 
+            note_capture_diagnostic(
+                app,
+                shared,
+                "Transcription cancelled",
+                "Stopped current microphone job",
+            );
             update_indicator_window(app, shared);
             emit_snapshot(app, shared);
             Ok(())
@@ -336,7 +437,7 @@ pub(crate) fn spawn_recorder_thread() -> RecorderHandle {
                         let config = supported_config.config();
                         let channels = config.channels as usize;
 
-                        let (stream, destination) =
+                        let (stream, destination, stream_errors) =
                             audio::build_input_stream(&device, &supported_config)?;
 
                         stream.play()?;
@@ -350,6 +451,7 @@ pub(crate) fn spawn_recorder_thread() -> RecorderHandle {
                             mode,
                             source_name: source.name.clone(),
                             anchor,
+                            stream_errors,
                         });
 
                         Ok(StartRecordingResponse {
@@ -357,6 +459,7 @@ pub(crate) fn spawn_recorder_thread() -> RecorderHandle {
                             source_name: source.name,
                             preview_buffer,
                             preview_sample_rate: config.sample_rate.0,
+                            preview_channels: config.channels,
                         })
                     })()
                     .map_err(|error| error.to_string());
@@ -365,9 +468,9 @@ pub(crate) fn spawn_recorder_thread() -> RecorderHandle {
                 }
                 RecorderRequest::Stop { response } => {
                     let result = match current.take() {
-                        Some(session) => {
-                            finalize_recording(session).map_err(|error| error.to_string())
-                        }
+                        Some(session) => finalize_recording(session)
+                            .map(Some)
+                            .map_err(|error| error.to_string()),
                         None => Ok(None),
                     };
                     let _ = response.send(result);

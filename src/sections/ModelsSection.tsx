@@ -100,8 +100,8 @@ function ModelDownloadAction({
       className="secondary small model-download-button"
       state={buttonFeedback[`model-download:${row.id}`]}
       idleLabel="Download"
-      workingLabel="Downloading"
-      doneLabel="Downloaded"
+      workingLabel="Starting"
+      doneLabel="Queued"
       idleIcon={<DownloadIcon className="small-icon" />}
       workingIcon={<DownloadIcon className="small-icon" />}
       doneIcon={<CheckIcon className="small-icon" />}
@@ -455,7 +455,7 @@ export function ModelsSection({
           </div>
 
           <div className="model-group-copy">
-            <p>Pick the TDT or CTC variant you want Transcribed to use for final text.</p>
+            <p>Pick the TDT or CTC variant you want Warble to use for final text.</p>
           </div>
 
           <div className="model-list">

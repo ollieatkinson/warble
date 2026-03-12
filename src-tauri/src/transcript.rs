@@ -6,7 +6,7 @@ use crate::constants::{
     DEFAULT_CLEANUP_TERMS, LIVE_PREVIEW_MAX_WORDS, LIVE_PREVIEW_RESET_AFTER_DIVERGENCE,
 };
 use crate::state::{AppPhase, PreviewControl, PreviewStabilizer, SharedState};
-use crate::storage::{append_live_preview_log, emit_snapshot};
+use crate::storage::{append_capture_log, append_live_preview_log, emit_snapshot};
 
 pub(crate) fn default_cleanup_terms() -> Vec<String> {
     DEFAULT_CLEANUP_TERMS
@@ -178,6 +178,14 @@ fn trim_preview_line(text: &str, max_words: usize) -> String {
     words[words.len().saturating_sub(max_words)..].join(" ")
 }
 
+fn push_recent_event(events: &mut Vec<String>, event_line: String) {
+    events.push(event_line);
+    if events.len() > 6 {
+        let overflow = events.len() - 6;
+        events.drain(..overflow);
+    }
+}
+
 pub(crate) fn note_preview_diagnostic(
     app: &AppHandle,
     shared: &SharedState,
@@ -198,19 +206,44 @@ pub(crate) fn note_preview_diagnostic(
         core.preview_diagnostics.backend = backend.to_string();
         core.preview_diagnostics.status = status.to_string();
         core.preview_diagnostics.detail = detail.clone();
-        core.preview_diagnostics
-            .recent_events
-            .push(format!("{timestamp}  {event_line}"));
-        if core.preview_diagnostics.recent_events.len() > 6 {
-            let overflow = core.preview_diagnostics.recent_events.len() - 6;
-            core.preview_diagnostics.recent_events.drain(..overflow);
-        }
+        push_recent_event(
+            &mut core.preview_diagnostics.recent_events,
+            format!("{timestamp}  {event_line}"),
+        );
     }
 
     append_live_preview_log(
         app,
         &format!("{} [{}] {}", Utc::now().to_rfc3339(), backend, event_line),
     );
+    emit_snapshot(app, shared);
+}
+
+pub(crate) fn note_capture_diagnostic(
+    app: &AppHandle,
+    shared: &SharedState,
+    status: &str,
+    detail: impl Into<String>,
+) {
+    let detail = detail.into();
+    let event_line = if detail.is_empty() {
+        status.to_string()
+    } else {
+        format!("{status}: {detail}")
+    };
+    let timestamp = Utc::now().format("%H:%M:%S").to_string();
+
+    {
+        let mut core = shared.lock();
+        core.capture_diagnostics.status = status.to_string();
+        core.capture_diagnostics.detail = detail.clone();
+        push_recent_event(
+            &mut core.capture_diagnostics.recent_events,
+            format!("{timestamp}  {event_line}"),
+        );
+    }
+
+    append_capture_log(app, &format!("{} {}", Utc::now().to_rfc3339(), event_line));
     emit_snapshot(app, shared);
 }
 

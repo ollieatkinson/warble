@@ -74,12 +74,15 @@ export function useModelActions({
       return;
     }
 
+    const actionId = `model-download:${row.id}`;
     clearMessage();
+    setButtonFeedbackState(actionId, "working");
 
     try {
       await downloadCatalogModelCommand(row.id);
-      finishButtonFeedback(`model-download:${row.id}`, MODEL_DOWNLOAD_FEEDBACK_MS);
+      finishButtonFeedback(actionId, MODEL_DOWNLOAD_FEEDBACK_MS);
     } catch (error) {
+      clearButtonFeedback(actionId);
       showError(error);
     }
   }

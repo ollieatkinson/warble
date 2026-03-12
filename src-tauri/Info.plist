@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Transcribed needs microphone access to capture local dictation.</string>
+  <string>Warble needs microphone access to capture local dictation.</string>
 </dict>
 </plist>

@@ -13,6 +13,7 @@ import type {
   LiveTranscriptWidth,
   OverlayAnimationStyle,
   OverlayPosition,
+  Snapshot,
   SettingsDraft,
   StatusTone,
   SystemProfile,
@@ -231,6 +232,60 @@ export function formatCaptureInput(sampleRate: number, channels: number) {
   }
 
   return parts.join(" · ") || "Unknown input";
+}
+
+export function buildSupportReport(snapshot: Snapshot) {
+  const selectedSource =
+    snapshot.sources.find((source) => source.id === snapshot.settings.selectedSourceId) ?? null;
+  const previewEvents =
+    snapshot.previewDiagnostics.recentEvents.length > 0
+      ? snapshot.previewDiagnostics.recentEvents.map((event) => `- ${event}`).join("\n")
+      : "- No live preview events recorded";
+  const captureEvents =
+    snapshot.captureDiagnostics.recentEvents.length > 0
+      ? snapshot.captureDiagnostics.recentEvents.map((event) => `- ${event}`).join("\n")
+      : "- No capture events recorded";
+
+  return [
+    "Warble support report",
+    `Generated: ${new Date().toISOString()}`,
+    "",
+    `Platform: ${snapshot.platform}`,
+    `Phase: ${snapshot.phase}`,
+    `Status: ${snapshot.statusMessage}`,
+    `Error: ${snapshot.errorMessage ?? "None"}`,
+    "",
+    "Selection",
+    `Source: ${
+      selectedSource
+        ? `${selectedSource.name} (${formatCaptureInput(
+            selectedSource.sampleRate,
+            selectedSource.channels,
+          )})`
+        : snapshot.settings.selectedSourceId ?? "None"
+    }`,
+    `Model: ${snapshot.settings.selectedModelId} (${snapshot.settings.selectedModelKind})`,
+    `Live preview model: ${snapshot.settings.livePreviewModel}`,
+    "",
+    "Capture diagnostics",
+    `Status: ${snapshot.captureDiagnostics.status}`,
+    `Detail: ${snapshot.captureDiagnostics.detail || "None"}`,
+    `Source: ${snapshot.captureDiagnostics.sourceName || "Unknown"}`,
+    `Input: ${formatCaptureInput(
+      snapshot.captureDiagnostics.sampleRate,
+      snapshot.captureDiagnostics.channels,
+    )}`,
+    `Buffered samples: ${snapshot.captureDiagnostics.lastBufferedSamples || 0}`,
+    `Log: ${snapshot.captureDiagnostics.logPath ?? "Unavailable"}`,
+    captureEvents,
+    "",
+    "Live preview diagnostics",
+    `Backend: ${snapshot.previewDiagnostics.backend || "Unknown"}`,
+    `Status: ${snapshot.previewDiagnostics.status}`,
+    `Detail: ${snapshot.previewDiagnostics.detail || "None"}`,
+    `Log: ${snapshot.previewDiagnostics.logPath ?? "Unavailable"}`,
+    previewEvents,
+  ].join("\n");
 }
 
 export function toneForPhase(phase: AppPhase): StatusTone {

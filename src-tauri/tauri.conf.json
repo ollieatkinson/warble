@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Transcribed",
+  "productName": "Warble",
   "version": "0.1.0",
-  "identifier": "com.ollie.transcribed",
+  "identifier": "com.ollie.warble",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -10,10 +10,11 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
-        "title": "Transcribed",
+        "title": "Warble",
         "width": 1180,
         "height": 860,
         "resizable": true,

@@ -11,7 +11,9 @@ use crate::overlay::{
 };
 use crate::state::*;
 use crate::storage::*;
-use crate::transcript::{cleanup_transcript_text, transcription_cancelled};
+use crate::transcript::{
+    cleanup_transcript_text, note_capture_diagnostic, transcription_cancelled,
+};
 use crate::{media, parakeet, platform};
 
 pub(crate) struct TranscriptionOutput {
@@ -205,6 +207,15 @@ pub(crate) fn complete_transcription(
                         &settings.cleanup_terms,
                     );
                     if text.is_empty() {
+                        note_capture_diagnostic(
+                            &app,
+                            &shared,
+                            "No speech detected",
+                            format!(
+                                "{} buffered samples from {}",
+                                completed.captured_sample_count, completed.source_name
+                            ),
+                        );
                         let mut core = shared.lock();
                         core.phase = AppPhase::Idle;
                         core.status_message = "Nothing intelligible was detected".to_string();
@@ -240,6 +251,8 @@ pub(crate) fn complete_transcription(
                         completed.captured_sample_rate,
                     )
                     .ok();
+                    let model_name = output.model_name.clone();
+                    let inference_provider = output.inference_provider;
 
                     let mut core = shared.lock();
                     core.history.insert(
@@ -256,8 +269,8 @@ pub(crate) fn complete_transcription(
                             capture: HistoryCaptureDetails {
                                 source_kind: CaptureSourceKind::Microphone,
                                 model_id: settings.selected_model_id.clone(),
-                                model_name: output.model_name,
-                                inference_provider: output.inference_provider,
+                                model_name,
+                                inference_provider,
                                 input_sample_rate: completed.captured_sample_rate,
                                 input_channels: completed.captured_channels,
                                 transcription_sample_rate: parakeet::SAMPLE_RATE,
@@ -272,12 +285,12 @@ pub(crate) fn complete_transcription(
                     core.phase = AppPhase::Idle;
                     core.status_message = match paste_outcome {
                         Some(platform::PasteOutcome::ActiveApp) => {
-                            "Transcribed in Rust and pasted".to_string()
+                            "Warble transcribed and pasted".to_string()
                         }
                         Some(platform::PasteOutcome::ClipboardOnly) => {
-                            "Transcribed in Rust and copied to clipboard".to_string()
+                            "Warble transcribed and copied to clipboard".to_string()
                         }
-                        None => "Transcribed in Rust".to_string(),
+                        None => "Warble transcribed locally".to_string(),
                     };
                     core.error_message = paste_error;
                     core.model_status = current_model_status(&app, &core.settings);
@@ -285,10 +298,27 @@ pub(crate) fn complete_transcription(
                     clear_overlay_session_state(&mut core);
                     drop(core);
 
+                    note_capture_diagnostic(
+                        &app,
+                        &shared,
+                        "Microphone transcription complete",
+                        format!(
+                            "{} chars with {} on {}",
+                            text.chars().count(),
+                            inference_provider,
+                            output.model_name
+                        ),
+                    );
                     let _ = save_persisted_state(&app, &shared);
                 }
                 Ok(None) => {}
                 Err(error) => {
+                    note_capture_diagnostic(
+                        &app,
+                        &shared,
+                        "Microphone transcription failed",
+                        error.to_string(),
+                    );
                     let mut core = shared.lock();
                     core.phase = AppPhase::Error;
                     core.status_message = "Transcription failed".to_string();
@@ -304,12 +334,19 @@ pub(crate) fn complete_transcription(
         }));
 
         if let Err(error) = outcome {
+            let panic_message = panic_payload_message(error);
+            note_capture_diagnostic(
+                &app,
+                &shared,
+                "Transcription worker crashed",
+                panic_message.clone(),
+            );
             let mut core = shared.lock();
             core.phase = AppPhase::Error;
             core.status_message = "Transcription worker failed".to_string();
             core.error_message = Some(format!(
                 "The transcription worker crashed unexpectedly: {}",
-                panic_payload_message(error)
+                panic_message
             ));
             core.model_status = current_model_status(&app, &core.settings);
             core.parakeet_model_status = built_in_parakeet_status(&app);
@@ -469,7 +506,7 @@ pub(crate) fn transcribe_media_file(
                         remove_history_audio_file(item);
                     }
                     core.phase = AppPhase::Idle;
-                    core.status_message = "File transcribed locally".to_string();
+                    core.status_message = "Warble transcribed the file locally".to_string();
                     core.error_message = None;
                     core.model_status = current_model_status(&app, &core.settings);
                     core.parakeet_model_status = built_in_parakeet_status(&app);
