@@ -179,10 +179,10 @@ function ensureMacosSigningConfigured(targetPlatform) {
   }
 
   throw new Error(
-    "macOS release artifacts must be signed with a real Apple code signing identity. " +
+    "macOS release artifacts must be signed with a stable code signing identity. " +
       "Ad hoc signing (`APPLE_SIGNING_IDENTITY=-`) does not produce reliable TCC permission prompts " +
-      "for microphone access. Set APPLE_SIGNING_IDENTITY to an Apple Development or " +
-      "Developer ID Application identity before running `pnpm release:artifacts`.",
+      "for microphone access. Set APPLE_SIGNING_IDENTITY to an Apple Development, " +
+      "Developer ID Application, or self-signed root code signing identity before running `pnpm release:artifacts`.",
   );
 }
 

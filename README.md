@@ -130,11 +130,12 @@ To build release artifacts for the current platform:
 pnpm release:artifacts
 ```
 
-On macOS, release artifacts must be signed with a real Apple code signing identity.
+On macOS, release artifacts must be signed with a stable code signing identity.
 Ad hoc signing (`APPLE_SIGNING_IDENTITY=-`) is enough to run an app bundle locally, but
 it does not produce reliable TCC privacy prompts for microphone access. Use an
-`Apple Development` identity for local testing or a `Developer ID Application`
-identity for distributable builds.
+`Apple Development` identity for normal local testing, a self-signed root code-signing
+identity if you are the only tester, or a `Developer ID Application` identity for
+distributable builds.
 
 You can inspect the available identities on your Mac with:
 
@@ -144,6 +145,21 @@ security find-identity -v -p codesigning
 
 The GitHub macOS release job expects `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
 and `APPLE_SIGNING_IDENTITY` repository secrets to be configured.
+
+If you generate a local self-signed root code-signing `.p12` with OpenSSL 3 for CI
+testing, export it with legacy-compatible PKCS#12 settings so macOS Keychain can
+import it:
+
+```bash
+openssl pkcs12 -export \
+  -legacy \
+  -descert \
+  -macalg sha1 \
+  -inkey key.pem \
+  -in cert.pem \
+  -out certificate.p12 \
+  -name "Warble Local Signing"
+```
 
 This runs the Tauri build and writes artifacts into:
 
