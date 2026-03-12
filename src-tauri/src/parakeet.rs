@@ -52,10 +52,11 @@ impl ParakeetTdt {
         }
 
         runtime::ensure_ort_initialized()?;
+        let model_dir = model_dir.to_path_buf();
 
-        let (provider, runtime) = inference::load_with_provider_fallback(|provider| {
+        let (provider, runtime) = inference::load_with_provider_fallback(move |provider| {
             LibraryParakeetTdt::from_pretrained(
-                model_dir,
+                &model_dir,
                 Some(inference::execution_config(provider)),
             )
             .map_err(|error| anyhow!("failed to load Parakeet TDT runtime: {error}"))
@@ -109,9 +110,10 @@ impl ParakeetCtc {
         }
 
         runtime::ensure_ort_initialized()?;
+        let model_dir = model_dir.to_path_buf();
 
-        let (provider, runtime) = inference::load_with_provider_fallback(|provider| {
-            Parakeet::from_pretrained(model_dir, Some(inference::execution_config(provider)))
+        let (provider, runtime) = inference::load_with_provider_fallback(move |provider| {
+            Parakeet::from_pretrained(&model_dir, Some(inference::execution_config(provider)))
                 .map_err(|error| anyhow!("failed to load Parakeet CTC runtime: {error}"))
         })?;
 

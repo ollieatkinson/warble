@@ -137,6 +137,11 @@ it does not produce reliable TCC privacy prompts for microphone access. Use an
 identity if you are the only tester, or a `Developer ID Application` identity for
 distributable builds.
 
+Warble's macOS bundle also relies on `src-tauri/Info.plist` and
+`src-tauri/Entitlements.plist` for microphone access. The built app must carry
+`NSMicrophoneUsageDescription` plus the `com.apple.security.device.audio-input`
+entitlement.
+
 You can inspect the available identities on your Mac with:
 
 ```bash
