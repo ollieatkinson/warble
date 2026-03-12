@@ -283,4 +283,26 @@ mod tests {
 
         assert!(error.to_string().contains("cpu failed"));
     }
+
+    #[test]
+    fn eou_model_ready_requires_all_files() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!super::eou_model_ready_in_dir(dir.path()));
+
+        for file in super::EOU_REQUIRED_FILES {
+            std::fs::write(dir.path().join(file), "").unwrap();
+        }
+        assert!(super::eou_model_ready_in_dir(dir.path()));
+    }
+
+    #[test]
+    fn nemotron_model_ready_requires_all_files() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!super::nemotron_model_ready_in_dir(dir.path()));
+
+        for file in super::NEMOTRON_REQUIRED_FILES {
+            std::fs::write(dir.path().join(file), "").unwrap();
+        }
+        assert!(super::nemotron_model_ready_in_dir(dir.path()));
+    }
 }

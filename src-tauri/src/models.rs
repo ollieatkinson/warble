@@ -605,3 +605,119 @@ pub(crate) fn remove_catalog_model(
 
     persist_and_emit_settings_change(app, shared)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::constants::{PARAKEET_CTC_AUDIO_LIMIT_MS, PARAKEET_TDT_AUDIO_LIMIT_MS};
+
+    #[test]
+    fn model_kind_for_parakeet_id() {
+        assert_eq!(
+            model_kind_for_model_id("parakeet"),
+            TranscriptionModelKind::Parakeet
+        );
+    }
+
+    #[test]
+    fn model_kind_for_parakeet_ctc_id() {
+        assert_eq!(
+            model_kind_for_model_id("parakeet-ctc"),
+            TranscriptionModelKind::ParakeetCtc
+        );
+    }
+
+    #[test]
+    fn model_kind_for_unknown_defaults_to_parakeet() {
+        let kind = model_kind_for_model_id("unknown-model");
+        assert_eq!(kind, TranscriptionModelKind::Parakeet);
+    }
+
+    #[test]
+    fn selected_model_cache_key_parakeet_builtin() {
+        let settings = Settings::default();
+        let key = selected_model_cache_key(&settings);
+        assert_eq!(key, "parakeet:builtin");
+    }
+
+    #[test]
+    fn selected_model_cache_key_with_custom_path() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("vocab.txt"), "").unwrap();
+        std::fs::write(dir.path().join("encoder-model.onnx"), "").unwrap();
+        std::fs::write(dir.path().join("decoder_joint-model.onnx"), "").unwrap();
+        let path_str = dir.path().display().to_string();
+
+        let mut settings = Settings::default();
+        settings.selected_model_path = Some(path_str.clone());
+        let key = selected_model_cache_key(&settings);
+        assert!(key.starts_with("parakeet:"), "key should start with parakeet: got {key}");
+        assert!(!key.ends_with("builtin"), "key should not be builtin when path is set: {key}");
+    }
+
+    #[test]
+    fn selected_model_cache_key_ctc_without_path() {
+        let mut settings = Settings::default();
+        settings.selected_model_kind = TranscriptionModelKind::ParakeetCtc;
+        let key = selected_model_cache_key(&settings);
+        assert_eq!(key, "parakeet-ctc:missing");
+    }
+
+    #[test]
+    fn audio_limit_parakeet_tdt() {
+        let settings = Settings::default();
+        let limit = selected_model_audio_limit_ms(&settings);
+        assert_eq!(limit, Some(PARAKEET_TDT_AUDIO_LIMIT_MS));
+    }
+
+    #[test]
+    fn audio_limit_parakeet_ctc() {
+        let mut settings = Settings::default();
+        settings.selected_model_id = "parakeet-ctc".to_string();
+        let limit = selected_model_audio_limit_ms(&settings);
+        assert_eq!(limit, Some(PARAKEET_CTC_AUDIO_LIMIT_MS));
+    }
+
+    #[test]
+    fn audio_limit_unknown_model() {
+        let mut settings = Settings::default();
+        settings.selected_model_id = "unknown".to_string();
+        let limit = selected_model_audio_limit_ms(&settings);
+        assert_eq!(limit, None);
+    }
+
+    #[test]
+    fn display_name_parakeet() {
+        let settings = Settings::default();
+        assert_eq!(selected_model_display_name(&settings), "Parakeet TDT");
+    }
+
+    #[test]
+    fn display_name_parakeet_ctc() {
+        let mut settings = Settings::default();
+        settings.selected_model_id = "parakeet-ctc".to_string();
+        assert_eq!(selected_model_display_name(&settings), "Parakeet CTC");
+    }
+
+    #[test]
+    fn display_name_unknown_falls_back_to_id() {
+        let mut settings = Settings::default();
+        settings.selected_model_id = "my-custom-model".to_string();
+        assert_eq!(selected_model_display_name(&settings), "my-custom-model");
+    }
+
+    #[test]
+    fn parakeet_status_for_path_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(parakeet_status_for_path(dir.path()), ModelStatus::Missing);
+    }
+
+    #[test]
+    fn parakeet_status_for_path_ready() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("vocab.txt"), "").unwrap();
+        std::fs::write(dir.path().join("encoder-model.onnx"), "").unwrap();
+        std::fs::write(dir.path().join("decoder_joint-model.onnx"), "").unwrap();
+        assert_eq!(parakeet_status_for_path(dir.path()), ModelStatus::Ready);
+    }
+}

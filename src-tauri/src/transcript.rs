@@ -451,4 +451,54 @@ mod tests {
 
         assert_eq!(common_prefix_len(&left, &right), 2);
     }
+
+    #[test]
+    fn cleanup_returns_original_when_disabled() {
+        let text = "Um, I think uh this should work.";
+        let cleaned = cleanup_transcript_text(text, false, &default_cleanup_terms());
+        assert_eq!(cleaned, text);
+    }
+
+    #[test]
+    fn cleanup_handles_empty_input() {
+        let cleaned = cleanup_transcript_text("", true, &default_cleanup_terms());
+        assert_eq!(cleaned, "");
+    }
+
+    #[test]
+    fn cleanup_handles_all_filler_input() {
+        let cleaned = cleanup_transcript_text("um uh erm", true, &default_cleanup_terms());
+        assert_eq!(cleaned, "");
+    }
+
+    #[test]
+    fn cleanup_preserves_words_containing_filler_substring() {
+        let cleaned =
+            cleanup_transcript_text("umbrella and uhm drums", true, &default_cleanup_terms());
+        assert!(cleaned.contains("umbrella"), "umbrella should be preserved");
+        assert!(cleaned.contains("drums"), "drums should be preserved");
+    }
+
+    #[test]
+    fn cleanup_handles_punctuation_around_fillers() {
+        let cleaned = cleanup_transcript_text(
+            "Well, um, I think so.",
+            true,
+            &default_cleanup_terms(),
+        );
+        assert!(cleaned.contains("Well"));
+        assert!(cleaned.contains("I think so"));
+    }
+
+    #[test]
+    fn live_preview_text_empty_input() {
+        let preview = live_preview_text("", true, &default_cleanup_terms());
+        assert_eq!(preview, "");
+    }
+
+    #[test]
+    fn live_preview_text_single_line() {
+        let preview = live_preview_text("hello world", true, &default_cleanup_terms());
+        assert_eq!(preview, "hello world");
+    }
 }

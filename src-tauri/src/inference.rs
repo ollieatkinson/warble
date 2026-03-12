@@ -142,4 +142,34 @@ mod tests {
         assert_eq!(order.first(), Some(&InferenceProvider::Webgpu));
         assert_eq!(order.last(), Some(&InferenceProvider::Cpu));
     }
+
+    #[test]
+    fn load_with_provider_order_first_success_skips_rest() {
+        let order = [InferenceProvider::Directml, InferenceProvider::Cpu];
+        let (provider, value) = load_with_provider_order(&order, |provider| match provider {
+            InferenceProvider::Directml => Ok("directml-ok"),
+            _ => panic!("should not be called"),
+        })
+        .expect("first provider should succeed");
+
+        assert_eq!(provider, InferenceProvider::Directml);
+        assert_eq!(value, "directml-ok");
+    }
+
+    #[test]
+    fn load_with_provider_order_all_fail_returns_error() {
+        let order = [InferenceProvider::Webgpu, InferenceProvider::Cpu];
+        let result = load_with_provider_order(&order, |_| Err::<(), _>(anyhow::anyhow!("fail")));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn load_with_provider_order_single_cpu_success() {
+        let order = [InferenceProvider::Cpu];
+        let (provider, value) =
+            load_with_provider_order(&order, |_| Ok("cpu-ok")).expect("should succeed");
+
+        assert_eq!(provider, InferenceProvider::Cpu);
+        assert_eq!(value, "cpu-ok");
+    }
 }

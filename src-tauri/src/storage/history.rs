@@ -117,3 +117,89 @@ pub(crate) fn prune_history_audio(app: &AppHandle, shared: &SharedState) -> bool
 
     changed
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audio_retention_one_day() {
+        let duration = audio_retention_duration(&AudioRetentionPolicy::OneDay);
+        assert_eq!(duration.num_days(), 1);
+    }
+
+    #[test]
+    fn audio_retention_seven_days() {
+        let duration = audio_retention_duration(&AudioRetentionPolicy::SevenDays);
+        assert_eq!(duration.num_days(), 7);
+    }
+
+    #[test]
+    fn audio_retention_thirty_days() {
+        let duration = audio_retention_duration(&AudioRetentionPolicy::ThirtyDays);
+        assert_eq!(duration.num_days(), 30);
+    }
+
+    #[test]
+    fn write_recording_wav_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.wav");
+        let samples: Vec<f32> = (0..1600)
+            .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 16000.0).sin() * 0.5)
+            .collect();
+
+        write_recording_wav(&path, &samples, 16_000).expect("write should succeed");
+
+        let reader = hound::WavReader::open(&path).expect("read back");
+        let spec = reader.spec();
+        assert_eq!(spec.channels, 1);
+        assert_eq!(spec.sample_rate, 16_000);
+        assert_eq!(spec.bits_per_sample, 16);
+        assert_eq!(spec.sample_format, hound::SampleFormat::Int);
+
+        let read_samples: Vec<i16> = reader
+            .into_samples::<i16>()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(read_samples.len(), samples.len());
+    }
+
+    #[test]
+    fn history_limit_constant_value() {
+        use crate::constants::HISTORY_LIMIT;
+        assert_eq!(HISTORY_LIMIT, 50);
+    }
+
+    #[test]
+    fn history_item_created_at_parses_valid_rfc3339() {
+        let item = HistoryItem {
+            id: "id".to_string(),
+            text: "text".to_string(),
+            created_at: "2024-06-15T10:30:00Z".to_string(),
+            source_name: "mic".to_string(),
+            mode: crate::state::RecordingMode::Hold,
+            duration_ms: 100,
+            pasted: false,
+            audio_path: None,
+            capture: crate::state::HistoryCaptureDetails::default(),
+        };
+        let dt = history_item_created_at(&item);
+        assert!(dt.is_some());
+    }
+
+    #[test]
+    fn history_item_created_at_returns_none_for_invalid() {
+        let item = HistoryItem {
+            id: "id".to_string(),
+            text: "text".to_string(),
+            created_at: "not-a-date".to_string(),
+            source_name: "mic".to_string(),
+            mode: crate::state::RecordingMode::Hold,
+            duration_ms: 100,
+            pasted: false,
+            audio_path: None,
+            capture: crate::state::HistoryCaptureDetails::default(),
+        };
+        assert!(history_item_created_at(&item).is_none());
+    }
+}
