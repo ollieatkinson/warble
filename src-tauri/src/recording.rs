@@ -51,7 +51,7 @@ fn report_runtime_error(
 }
 
 fn ensure_recording_access(app: &AppHandle, shared: &SharedState) -> Result<()> {
-    match ensure_microphone_access() {
+    match ensure_microphone_access(app) {
         Ok(MicrophoneAccess::Authorized) => Ok(()),
         Ok(state) => {
             let error_message = microphone_access_error_message(state).to_string();

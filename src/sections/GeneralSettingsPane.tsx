@@ -14,7 +14,7 @@ export function GeneralSettingsPane({
   const autoPasteDetail =
     snapshot.autoPasteSupport === "active-app"
       ? snapshot.platform === "macos"
-        ? "Paste the finished transcript with Cmd+V into the active app. macOS may ask for Accessibility permission."
+        ? "Paste the finished transcript with Cmd+V into the active app. macOS will ask for Accessibility permission the first time Warble posts the paste shortcut."
         : snapshot.platform === "linux"
           ? "Paste into the active app when an X11 display is available."
           : "Paste the finished transcript into the active app."

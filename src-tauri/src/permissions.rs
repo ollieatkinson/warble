@@ -1,4 +1,5 @@
 use anyhow::Result;
+use tauri::AppHandle;
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,8 +10,13 @@ pub(crate) enum MicrophoneAccess {
     Authorized,
 }
 
-pub(crate) fn ensure_microphone_access() -> Result<MicrophoneAccess> {
-    imp::ensure_microphone_access()
+pub(crate) fn ensure_microphone_access(app: &AppHandle) -> Result<MicrophoneAccess> {
+    imp::ensure_microphone_access(app)
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn ensure_post_event_access(app: &AppHandle) -> Result<()> {
+    imp::ensure_post_event_access(app)
 }
 
 pub(crate) fn microphone_access_status_message(state: MicrophoneAccess) -> &'static str {
@@ -37,23 +43,43 @@ pub(crate) fn microphone_access_error_message(state: MicrophoneAccess) -> &'stat
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn post_event_access_error_message() -> &'static str {
+    "Warble needs Accessibility permission on macOS to paste into other apps. Enable Warble in System Settings > Privacy & Security > Accessibility."
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
-    use anyhow::{anyhow, Context, Result};
+    use anyhow::{anyhow, bail, Context, Result};
     use block2::RcBlock;
     use objc2::runtime::Bool;
     use objc2_av_foundation::{
         AVAuthorizationStatus, AVCaptureDevice, AVMediaType, AVMediaTypeAudio,
     };
+    use objc2_core_graphics::{CGPreflightPostEventAccess, CGRequestPostEventAccess};
     use std::sync::mpsc;
+    use tauri::AppHandle;
 
-    use super::MicrophoneAccess;
+    use super::{post_event_access_error_message, MicrophoneAccess};
 
-    pub(super) fn ensure_microphone_access() -> Result<MicrophoneAccess> {
+    pub(super) fn ensure_microphone_access(app: &AppHandle) -> Result<MicrophoneAccess> {
         match current_microphone_access()? {
             MicrophoneAccess::Authorized => Ok(MicrophoneAccess::Authorized),
-            MicrophoneAccess::NotDetermined => request_microphone_access(),
+            MicrophoneAccess::NotDetermined => request_microphone_access(app),
             state => Ok(state),
+        }
+    }
+
+    pub(super) fn ensure_post_event_access(app: &AppHandle) -> Result<()> {
+        if CGPreflightPostEventAccess() {
+            return Ok(());
+        }
+
+        let granted = run_on_main_thread_and_wait(app, CGRequestPostEventAccess)?;
+        if granted {
+            Ok(())
+        } else {
+            bail!(post_event_access_error_message())
         }
     }
 
@@ -69,20 +95,30 @@ mod imp {
         })
     }
 
-    fn request_microphone_access() -> Result<MicrophoneAccess> {
-        let media_type = audio_media_type()?;
-        let (sender, receiver) = mpsc::channel();
-        let handler = RcBlock::new(move |granted: Bool| {
-            let _ = sender.send(granted.as_bool());
-        });
+    fn request_microphone_access(app: &AppHandle) -> Result<MicrophoneAccess> {
+        let (sender, receiver) = mpsc::channel::<Result<bool>>();
 
-        unsafe {
-            AVCaptureDevice::requestAccessForMediaType_completionHandler(media_type, &handler);
-        }
+        run_on_main_thread_and_wait(app, move || {
+            let media_type = match audio_media_type() {
+                Ok(media_type) => media_type,
+                Err(error) => {
+                    let _ = sender.send(Err(error));
+                    return;
+                }
+            };
+            let completion_sender = sender.clone();
+            let handler = RcBlock::new(move |granted: Bool| {
+                let _ = completion_sender.send(Ok(granted.as_bool()));
+            });
+
+            unsafe {
+                AVCaptureDevice::requestAccessForMediaType_completionHandler(media_type, &handler);
+            }
+        })?;
 
         let granted = receiver
             .recv()
-            .context("macOS microphone permission request did not complete")?;
+            .context("macOS microphone permission request did not complete")??;
 
         Ok(if granted {
             MicrophoneAccess::Authorized
@@ -94,15 +130,41 @@ mod imp {
     fn audio_media_type() -> Result<&'static AVMediaType> {
         unsafe { AVMediaTypeAudio.ok_or_else(|| anyhow!("macOS audio media type is unavailable")) }
     }
+
+    fn run_on_main_thread_and_wait<T, F>(app: &AppHandle, task: F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce() -> T + Send + 'static,
+    {
+        if unsafe { libc::pthread_main_np() == 1 } {
+            return Ok(task());
+        }
+
+        let (sender, receiver) = mpsc::channel();
+        app.run_on_main_thread(move || {
+            let _ = sender.send(task());
+        })
+        .context("failed to run macOS permission request on the main thread")?;
+
+        receiver
+            .recv()
+            .context("macOS main-thread permission request did not complete")
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
 mod imp {
     use anyhow::Result;
+    use tauri::AppHandle;
 
     use super::MicrophoneAccess;
 
-    pub(super) fn ensure_microphone_access() -> Result<MicrophoneAccess> {
+    pub(super) fn ensure_microphone_access(_app: &AppHandle) -> Result<MicrophoneAccess> {
         Ok(MicrophoneAccess::Authorized)
+    }
+
+    #[allow(dead_code)]
+    pub(super) fn ensure_post_event_access(_app: &AppHandle) -> Result<()> {
+        Ok(())
     }
 }
