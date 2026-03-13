@@ -20,6 +20,7 @@ export function createSettings(overrides?: Partial<Settings>): Settings {
     selectedModelKind: "parakeet",
     selectedModelPath: null,
     installedModelPaths: {},
+    macosModelRuntimePreferences: {},
     cleanupEnabled: true,
     cleanupTerms: ["um", "uh", "erm"],
     replacementRules: [],

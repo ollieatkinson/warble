@@ -1006,6 +1006,17 @@ input::placeholder {
   min-width: 190px;
 }
 
+.model-runtime-field {
+  width: min(230px, 100%);
+}
+
+.model-runtime-field .field > span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .model-list-stat {
   color: var(--muted);
   font-size: 0.78rem;

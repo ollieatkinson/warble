@@ -90,12 +90,27 @@ describe("buildModelRows", () => {
 
   it("marks a non-installed catalog model as downloadable", () => {
     const snapshot = createSnapshot({
-      parakeetModelStatus: "not-available",
+      parakeetModelStatus: "missing",
       settings: { installedModelPaths: {} },
     });
     const rows = buildModelRows(snapshot);
     const ctc = rows.find((r) => r.id === "parakeet-ctc")!;
     expect(ctc.state).toBe("downloadable");
+  });
+
+  it("adds the macOS CPU/CoreML helper note to Parakeet-backed rows", () => {
+    const snapshot = createSnapshot({
+      platform: "macos",
+      systemProfile: createSystemProfile({
+        supportedAccelerationProviders: ["coreml"],
+      }),
+    });
+
+    const rows = buildModelRows(snapshot);
+    const parakeet = rows.find((row) => row.id === "parakeet")!;
+
+    expect(parakeet.note).toContain("CPU by default");
+    expect(parakeet.note).toContain("experimental CoreML");
   });
 });
 
@@ -166,7 +181,7 @@ describe("describeHardwareFit", () => {
       recommendedMemoryBytes: 8 * 1024 ** 3,
       minimumCores: 4,
       recommendedCores: 8,
-      supportedAccelerationProviders: ["directml", "webgpu"],
+      supportedAccelerationProviders: ["directml", "coreml", "webgpu"],
     });
     const profile = createSystemProfile({
       totalMemoryBytes: 4 * 1024 ** 3,
@@ -193,6 +208,30 @@ describe("describeHardwareFit", () => {
     const result = describeHardwareFit(row, profile);
     expect(result.label).toBe("Unknown");
     expect(result.tone).toBe("muted");
+  });
+
+  it("does not require detected VRAM for CoreML-capable macOS systems", () => {
+    const row = createModelRow({
+      minimumMemoryBytes: 4 * 1024 ** 3,
+      recommendedMemoryBytes: 8 * 1024 ** 3,
+      minimumGpuMemoryBytes: 4 * 1024 ** 3,
+      recommendedGpuMemoryBytes: 8 * 1024 ** 3,
+      minimumCores: 4,
+      recommendedCores: 8,
+      supportedAccelerationProviders: ["coreml"],
+    });
+    const profile = createSystemProfile({
+      totalMemoryBytes: 16 * 1024 ** 3,
+      logicalCores: 8,
+      gpuMemoryBytes: 0,
+      gpuName: "Apple M3 Pro",
+      supportedAccelerationProviders: ["coreml"],
+    });
+
+    const result = describeHardwareFit(row, profile);
+
+    expect(result.label).toContain("CoreML");
+    expect(result.tone).toBe("success");
   });
 });
 

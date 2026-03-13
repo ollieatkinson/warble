@@ -1,8 +1,9 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use parakeet_rs::{Nemotron, ParakeetEOU};
 use std::path::{Path, PathBuf};
 
 use crate::inference;
+use crate::platform;
 use crate::runtime;
 use crate::state::{LivePreviewModelPreference, Settings, SystemProfile};
 
@@ -58,7 +59,7 @@ impl StreamingPreviewBackend {
 pub(crate) struct StreamingPreviewConfig {
     backend: StreamingPreviewBackend,
     model_path: PathBuf,
-    preferred_provider: crate::state::InferenceProvider,
+    selected_provider: crate::state::InferenceProvider,
 }
 
 impl StreamingPreviewConfig {
@@ -75,11 +76,6 @@ pub(crate) fn resolve_streaming_preview_config(
     settings: &Settings,
     system_profile: &SystemProfile,
 ) -> Option<StreamingPreviewConfig> {
-    let preferred_provider = system_profile
-        .supported_acceleration_providers
-        .first()
-        .copied()
-        .unwrap_or(crate::state::InferenceProvider::Cpu);
     let preferred_order = match settings.live_preview_model {
         LivePreviewModelPreference::Auto | LivePreviewModelPreference::NemotronStreaming => [
             StreamingPreviewBackend::Nemotron,
@@ -92,8 +88,7 @@ pub(crate) fn resolve_streaming_preview_config(
     };
 
     for backend in preferred_order {
-        if let Some(config) = ready_streaming_preview_config(settings, preferred_provider, backend)
-        {
+        if let Some(config) = ready_streaming_preview_config(settings, system_profile, backend) {
             return Some(config);
         }
     }
@@ -103,7 +98,7 @@ pub(crate) fn resolve_streaming_preview_config(
 
 fn ready_streaming_preview_config(
     settings: &Settings,
-    preferred_provider: crate::state::InferenceProvider,
+    system_profile: &SystemProfile,
     backend: StreamingPreviewBackend,
 ) -> Option<StreamingPreviewConfig> {
     let model_id = match backend {
@@ -118,7 +113,12 @@ fn ready_streaming_preview_config(
     ready.then_some(StreamingPreviewConfig {
         backend,
         model_path,
-        preferred_provider,
+        selected_provider: inference::selected_provider_for_model(
+            platform::current_platform(),
+            settings,
+            &system_profile.supported_acceleration_providers,
+            model_id,
+        ),
     })
 }
 
@@ -138,11 +138,11 @@ impl StreamingPreviewEngine {
     pub(crate) fn load(config: &StreamingPreviewConfig) -> Result<Self> {
         let runtime = match config.backend {
             StreamingPreviewBackend::Nemotron => StreamingPreviewRuntime::Nemotron(
-                load_nemotron_runtime(&config.model_path, config.preferred_provider)?,
+                load_nemotron_runtime(&config.model_path, config.selected_provider)?,
             ),
             StreamingPreviewBackend::Eou => StreamingPreviewRuntime::Eou(load_eou_runtime(
                 &config.model_path,
-                config.preferred_provider,
+                config.selected_provider,
             )?),
         };
 
@@ -208,38 +208,61 @@ impl StreamingPreviewEngine {
 
 fn load_nemotron_runtime(
     model_path: &Path,
-    preferred_provider: crate::state::InferenceProvider,
+    selected_provider: crate::state::InferenceProvider,
 ) -> Result<Nemotron> {
     runtime::ensure_ort_initialized()?;
-    load_with_provider_fallback(preferred_provider, |provider| {
-        Nemotron::from_pretrained(model_path, Some(inference::execution_config(provider)))
-            .map_err(|error| anyhow!("failed to load Nemotron streaming runtime: {error}"))
-    })
+    let model_path = model_path.to_path_buf();
+    load_with_selected_provider(
+        platform::current_platform(),
+        selected_provider,
+        move |provider| {
+            Nemotron::from_pretrained(&model_path, Some(inference::execution_config(provider)))
+                .map_err(|error| anyhow!("failed to load Nemotron streaming runtime: {error}"))
+        },
+    )
 }
 
 fn load_eou_runtime(
     model_path: &Path,
-    preferred_provider: crate::state::InferenceProvider,
+    selected_provider: crate::state::InferenceProvider,
 ) -> Result<ParakeetEOU> {
     runtime::ensure_ort_initialized()?;
-    load_with_provider_fallback(preferred_provider, |provider| {
-        ParakeetEOU::from_pretrained(model_path, Some(inference::execution_config(provider)))
-            .map_err(|error| anyhow!("failed to load Parakeet EOU runtime: {error}"))
-    })
+    let model_path = model_path.to_path_buf();
+    load_with_selected_provider(
+        platform::current_platform(),
+        selected_provider,
+        move |provider| {
+            ParakeetEOU::from_pretrained(&model_path, Some(inference::execution_config(provider)))
+                .map_err(|error| anyhow!("failed to load Parakeet EOU runtime: {error}"))
+        },
+    )
 }
 
-fn load_with_provider_fallback<T>(
-    preferred_provider: crate::state::InferenceProvider,
-    loader: impl Fn(crate::state::InferenceProvider) -> Result<T>,
-) -> Result<T> {
-    match loader(preferred_provider) {
-        Ok(runtime) => Ok(runtime),
-        Err(primary_error) if preferred_provider != crate::state::InferenceProvider::Cpu => {
-            loader(crate::state::InferenceProvider::Cpu)
-                .with_context(|| format!("{primary_error}; falling back to CPU"))
-        }
-        Err(error) => Err(error),
-    }
+fn allow_streaming_provider_fallback(
+    platform: platform::PlatformKind,
+    provider: crate::state::InferenceProvider,
+) -> bool {
+    !matches!(platform, platform::PlatformKind::Macos)
+        && provider != crate::state::InferenceProvider::Cpu
+}
+
+fn load_with_selected_provider<T>(
+    platform: platform::PlatformKind,
+    selected_provider: crate::state::InferenceProvider,
+    loader: impl Fn(crate::state::InferenceProvider) -> Result<T> + Send + Sync + 'static,
+) -> Result<T>
+where
+    T: Send + 'static,
+{
+    let (_, runtime) = if allow_streaming_provider_fallback(platform, selected_provider) {
+        inference::load_with_preferred_provider_then_cpu(selected_provider, loader)
+            .map_err(|error| anyhow!("{error}"))?
+    } else {
+        inference::load_with_exact_provider(selected_provider, loader)
+            .map_err(|error| anyhow!("{error}"))?
+    };
+
+    Ok(runtime)
 }
 
 fn eou_model_ready_in_dir(model_dir: &Path) -> bool {
@@ -258,30 +281,65 @@ fn nemotron_model_ready_in_dir(model_dir: &Path) -> bool {
 mod tests {
     use anyhow::anyhow;
 
-    use super::load_with_provider_fallback;
+    use super::allow_streaming_provider_fallback;
+    use super::load_with_selected_provider;
+    use crate::platform::PlatformKind;
     use crate::state::InferenceProvider;
 
     #[test]
-    fn load_with_provider_fallback_uses_cpu_after_webgpu_failure() {
-        let value =
-            load_with_provider_fallback(InferenceProvider::Webgpu, |provider| match provider {
+    fn load_with_selected_provider_uses_cpu_after_webgpu_failure_off_macos() {
+        let value = load_with_selected_provider(
+            PlatformKind::Linux,
+            InferenceProvider::Webgpu,
+            |provider| match provider {
                 InferenceProvider::Webgpu => Err(anyhow!("webgpu failed")),
                 InferenceProvider::Cpu => Ok("cpu"),
-                InferenceProvider::Directml => unreachable!(),
-            })
-            .expect("cpu fallback should succeed");
+                InferenceProvider::Coreml | InferenceProvider::Directml => unreachable!(),
+            },
+        )
+        .expect("cpu fallback should succeed");
 
         assert_eq!(value, "cpu");
     }
 
     #[test]
-    fn load_with_provider_fallback_returns_cpu_error_without_retry() {
-        let error = load_with_provider_fallback(InferenceProvider::Cpu, |_| {
-            Err::<(), _>(anyhow!("cpu failed"))
-        })
-        .expect_err("cpu-only load should fail immediately");
+    fn load_with_selected_provider_returns_cpu_error_without_retry() {
+        let error =
+            load_with_selected_provider(PlatformKind::Linux, InferenceProvider::Cpu, |_| {
+                Err::<(), _>(anyhow!("cpu failed"))
+            })
+            .expect_err("cpu-only load should fail immediately");
 
         assert!(error.to_string().contains("cpu failed"));
+    }
+
+    #[test]
+    fn load_with_selected_provider_does_not_fallback_when_macos_coreml_fails() {
+        let error = load_with_selected_provider(
+            PlatformKind::Macos,
+            InferenceProvider::Coreml,
+            |provider| match provider {
+                InferenceProvider::Coreml => Err::<(), _>(anyhow!("coreml failed")),
+                InferenceProvider::Cpu
+                | InferenceProvider::Directml
+                | InferenceProvider::Webgpu => unreachable!(),
+            },
+        )
+        .expect_err("macOS explicit provider selection should fail immediately");
+
+        assert!(error.to_string().contains("coreml failed"));
+    }
+
+    #[test]
+    fn allow_streaming_provider_fallback_is_disabled_on_macos() {
+        assert!(!allow_streaming_provider_fallback(
+            PlatformKind::Macos,
+            InferenceProvider::Coreml
+        ));
+        assert!(allow_streaming_provider_fallback(
+            PlatformKind::Linux,
+            InferenceProvider::Webgpu
+        ));
     }
 
     #[test]

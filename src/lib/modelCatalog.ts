@@ -30,11 +30,11 @@ const MODEL_CATALOG: Array<
     runtime: "Ready in app",
     license: "See model card",
     supportsDefaultSelection: true,
-    supportedAccelerationProviders: ["directml", "webgpu"],
+    supportedAccelerationProviders: ["directml", "coreml", "webgpu"],
     summary:
       "Multilingual long-form offline dictation model for final microphone and file transcription.",
     note:
-      "Warble uses parakeet-rs for this model and will prefer DirectML on Windows, WebGPU on macOS/Linux, then fall back to CPU if needed. In-app chunking treats TDT v3 as the long-form batch option.",
+      "Warble uses parakeet-rs for this model. Windows prefers DirectML, Linux prefers WebGPU, and macOS defaults to CPU with optional experimental CoreML per model. In-app chunking treats TDT v3 as the long-form batch option.",
     bestFor: "Long-form multilingual dictation",
     capabilities: ["TDT decoder", "Auto language detection", "Token timestamps"],
     featureBadges: [
@@ -45,7 +45,7 @@ const MODEL_CATALOG: Array<
     ],
     highlights: [
       "Current default final transcription engine in Warble",
-      "Uses DirectML on Windows and WebGPU on macOS/Linux when available",
+      "Uses DirectML on Windows, WebGPU on Linux, and CPU by default on macOS",
       "Best balance of speed, multilingual coverage, and long-form support today",
     ],
     hfUrl: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3",
@@ -76,11 +76,11 @@ const MODEL_CATALOG: Array<
     runtime: "Ready when installed",
     license: "See model card",
     supportsDefaultSelection: true,
-    supportedAccelerationProviders: ["directml", "webgpu"],
+    supportedAccelerationProviders: ["directml", "coreml", "webgpu"],
     summary:
       "English-first Parakeet variant aimed at fast offline transcription with punctuation and capitalization.",
     note:
-      "Uses the same parakeet-rs runtime path as TDT, but with a CTC decoder and English-focused ONNX export. Kept on a shorter soft chunk size than TDT in Warble.",
+      "Uses the same parakeet-rs runtime path as TDT, but with a CTC decoder and English-focused ONNX export. Windows can use DirectML, Linux can use WebGPU, and macOS stays on CPU unless you opt this model into experimental CoreML.",
     bestFor: "English punctuation-heavy offline transcription",
     capabilities: ["CTC decoding", "Punctuation and caps", "Word timestamps"],
     featureBadges: [
@@ -125,11 +125,11 @@ const MODEL_CATALOG: Array<
     runtime: "Streaming add-on",
     license: "See model card",
     supportsDefaultSelection: false,
-    supportedAccelerationProviders: ["directml", "webgpu"],
+    supportedAccelerationProviders: ["directml", "coreml", "webgpu"],
     summary:
       "Lightweight streaming ASR model with end-of-utterance detection for low-latency voice UX.",
     note:
-      "The best candidate for a low-latency live transcript path, with GPU acceleration available through DirectML on Windows and WebGPU on macOS/Linux.",
+      "The best candidate for a low-latency live transcript path, with DirectML on Windows, WebGPU on Linux, and CPU by default on macOS unless you opt this model into experimental CoreML.",
     bestFor: "Low-latency live dictation",
     capabilities: ["EOU detection", "160 ms chunking", "Stateful streaming"],
     unlockedFeatures: ["Live transcript", "Low-latency preview", "Long-form guidance"],
@@ -173,11 +173,11 @@ const MODEL_CATALOG: Array<
     runtime: "Streaming add-on",
     license: "See model card",
     supportsDefaultSelection: false,
-    supportedAccelerationProviders: ["directml", "webgpu"],
+    supportedAccelerationProviders: ["directml", "coreml", "webgpu"],
     summary:
       "English streaming model with punctuation-oriented decoding and a cache-aware inference path.",
     note:
-      "A stronger live transcript candidate than the batch models when you want cleaner punctuation, with DirectML on Windows and WebGPU on macOS/Linux available through parakeet-rs.",
+      "A stronger live transcript candidate than the batch models when you want cleaner punctuation, with DirectML on Windows, WebGPU on Linux, and CPU by default on macOS unless you opt this model into experimental CoreML.",
     bestFor: "Streaming English transcription with punctuation",
     capabilities: ["Cache-aware streaming", "Punctuation-friendly", "Batch + stream capable"],
     unlockedFeatures: ["Live transcript", "Punctuated live transcript", "Long-form guidance"],
@@ -207,6 +207,34 @@ const MODEL_CATALOG: Array<
     recommendedCores: 12,
   },
 ];
+
+const MACOS_RUNTIME_MODEL_IDS = new Set([
+  "parakeet",
+  "parakeet-ctc",
+  "parakeet-eou",
+  "nemotron-streaming",
+]);
+
+function isMacosRuntimeModel(modelId: string) {
+  return MACOS_RUNTIME_MODEL_IDS.has(modelId);
+}
+
+function macosRuntimeHelperText(platform: Snapshot["platform"], modelId: string) {
+  if (platform !== "macos" || !isMacosRuntimeModel(modelId)) {
+    return null;
+  }
+
+  return "On macOS, this model stays on CPU by default. You can switch it to experimental CoreML below.";
+}
+
+function withMacosRuntimeHelper(
+  platform: Snapshot["platform"],
+  modelId: string,
+  text: string,
+) {
+  const helper = macosRuntimeHelperText(platform, modelId);
+  return helper ? `${text} ${helper}` : text;
+}
 
 export function formatModelSizeLabel(row: ModelRow) {
   if (row.diskSizeBytes && row.diskSizeBytes > 0) {
@@ -281,10 +309,18 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
         selectable: isReady,
         runtime: builtInReady || installedPath ? "Ready in app" : "Download in app",
         note: builtInReady
-          ? entry.note
+          ? withMacosRuntimeHelper(snapshot.platform, entry.id, entry.note)
           : installedPath
-            ? "Downloaded into Warble and ready as the default final transcription engine."
-            : "Download this managed TDT bundle into Warble to use it for final microphone and file transcription.",
+            ? withMacosRuntimeHelper(
+                snapshot.platform,
+                entry.id,
+                "Downloaded into Warble and ready as the default final transcription engine.",
+              )
+            : withMacosRuntimeHelper(
+                snapshot.platform,
+                entry.id,
+                "Download this managed TDT bundle into Warble to use it for final microphone and file transcription.",
+              ),
         path: installedPath,
         diskSizeBytes,
       };
@@ -328,13 +364,29 @@ export function buildModelRows(snapshot: Snapshot): ModelRow[] {
           : entry.runtime,
       note: isReady
         ? supportsDefaultSelection
-          ? "Downloaded into Warble and ready as a selectable final transcription engine."
-          : `Installed in Warble. Live preview can now use ${entry.name}.`
+          ? withMacosRuntimeHelper(
+              snapshot.platform,
+              entry.id,
+              "Downloaded into Warble and ready as a selectable final transcription engine.",
+            )
+          : withMacosRuntimeHelper(
+              snapshot.platform,
+              entry.id,
+              `Installed in Warble. Live preview can now use ${entry.name}.`,
+            )
         : supportsDownload
           ? supportsDefaultSelection
-            ? "Download this model into Warble, then choose it as the Default speech model for final dictation."
-            : "Download this streaming add-on into Warble to unlock live preview with this model."
-          : entry.note,
+            ? withMacosRuntimeHelper(
+                snapshot.platform,
+                entry.id,
+                "Download this model into Warble, then choose it as the Default speech model for final dictation.",
+              )
+            : withMacosRuntimeHelper(
+                snapshot.platform,
+                entry.id,
+                "Download this streaming add-on into Warble to unlock live preview with this model.",
+              )
+          : withMacosRuntimeHelper(snapshot.platform, entry.id, entry.note),
       path: installedPath,
       diskSizeBytes: snapshot.installedModelSizes[entry.id] ?? 0,
       tags: isReady ? Array.from(new Set([...entry.tags, "available"])) : entry.tags,
@@ -417,10 +469,16 @@ export function describeHardwareFit(row: ModelRow, profile: SystemProfile) {
   const accelerationLabel = preferredProvider
     ? formatAccelerationProvider(preferredProvider)
     : "CPU";
+  const requiresDedicatedGpuMemory =
+    accelerationAvailable && preferredProvider !== "coreml";
   const gpuRecommendedMet =
-    !accelerationAvailable || recommendedGpuMemory <= 0 || gpuMemory >= recommendedGpuMemory;
+    !requiresDedicatedGpuMemory ||
+    recommendedGpuMemory <= 0 ||
+    gpuMemory >= recommendedGpuMemory;
   const gpuMinimumMet =
-    !accelerationAvailable || minimumGpuMemory <= 0 || gpuMemory >= minimumGpuMemory;
+    !requiresDedicatedGpuMemory ||
+    minimumGpuMemory <= 0 ||
+    gpuMemory >= minimumGpuMemory;
 
   if (
     memory >= recommendedMemory &&
@@ -446,7 +504,7 @@ export function describeHardwareFit(row: ModelRow, profile: SystemProfile) {
     return {
       label: "CPU only",
       tone: "warning",
-      detail: `${row.name} supports GPU acceleration through DirectML on Windows and WebGPU on macOS/Linux, but this installation is currently using the CPU path. Target: ${formatHardwareTarget(row)}.`,
+      detail: `${row.name} supports DirectML on Windows, experimental CoreML on macOS, and WebGPU on Linux, but this installation is currently using the CPU path. Target: ${formatHardwareTarget(row)}.`,
     } as const;
   }
 

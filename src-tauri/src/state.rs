@@ -48,6 +48,7 @@ pub(crate) enum ModelStatus {
 pub(crate) enum InferenceProvider {
     #[default]
     Cpu,
+    Coreml,
     Directml,
     Webgpu,
 }
@@ -62,8 +63,26 @@ impl fmt::Display for InferenceProvider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Cpu => f.write_str("CPU"),
+            Self::Coreml => f.write_str("CoreML"),
             Self::Directml => f.write_str("DirectML"),
             Self::Webgpu => f.write_str("WebGPU"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum MacosModelRuntimePreference {
+    #[default]
+    Cpu,
+    Coreml,
+}
+
+impl From<MacosModelRuntimePreference> for InferenceProvider {
+    fn from(value: MacosModelRuntimePreference) -> Self {
+        match value {
+            MacosModelRuntimePreference::Cpu => Self::Cpu,
+            MacosModelRuntimePreference::Coreml => Self::Coreml,
         }
     }
 }
@@ -204,6 +223,7 @@ pub(crate) struct Settings {
     pub(crate) selected_model_kind: TranscriptionModelKind,
     pub(crate) selected_model_path: Option<String>,
     pub(crate) installed_model_paths: BTreeMap<String, String>,
+    pub(crate) macos_model_runtime_preferences: BTreeMap<String, MacosModelRuntimePreference>,
     pub(crate) cleanup_enabled: bool,
     pub(crate) cleanup_terms: Vec<String>,
     pub(crate) replacement_rules: Vec<ReplacementRule>,
@@ -230,6 +250,7 @@ impl Default for Settings {
             selected_model_kind: TranscriptionModelKind::Parakeet,
             selected_model_path: None,
             installed_model_paths: BTreeMap::new(),
+            macos_model_runtime_preferences: BTreeMap::new(),
             cleanup_enabled: true,
             cleanup_terms: default_cleanup_terms(),
             replacement_rules: Vec::new(),
@@ -247,6 +268,16 @@ impl Default for Settings {
 }
 
 impl Settings {
+    pub(crate) fn macos_runtime_preference_for_model(
+        &self,
+        model_id: &str,
+    ) -> MacosModelRuntimePreference {
+        self.macos_model_runtime_preferences
+            .get(model_id)
+            .copied()
+            .unwrap_or_default()
+    }
+
     pub(crate) fn apply_update(&mut self, update: &SettingsUpdate) -> bool {
         let hold_shortcut = update
             .hold_shortcut
@@ -287,6 +318,11 @@ impl Settings {
         }
         if let Some(selected_model_path) = update.selected_model_path.as_ref() {
             self.selected_model_path = path_if_not_empty(selected_model_path.clone());
+        }
+        if let Some(macos_model_runtime_preferences) =
+            update.macos_model_runtime_preferences.as_ref()
+        {
+            self.macos_model_runtime_preferences = macos_model_runtime_preferences.clone();
         }
         if let Some(cleanup_enabled) = update.cleanup_enabled {
             self.cleanup_enabled = cleanup_enabled;
@@ -399,6 +435,8 @@ pub(crate) struct SettingsUpdate {
     pub(crate) selected_model_id: Option<String>,
     pub(crate) selected_model_kind: Option<TranscriptionModelKind>,
     pub(crate) selected_model_path: Option<Option<String>>,
+    pub(crate) macos_model_runtime_preferences:
+        Option<BTreeMap<String, MacosModelRuntimePreference>>,
     pub(crate) cleanup_enabled: Option<bool>,
     pub(crate) cleanup_terms: Option<Vec<String>>,
     pub(crate) replacement_rules: Option<Vec<ReplacementRule>>,
@@ -739,11 +777,15 @@ mod tests {
         assert!(settings.selected_source_id.is_none());
         assert!(settings.selected_model_path.is_none());
         assert!(settings.installed_model_paths.is_empty());
+        assert!(settings.macos_model_runtime_preferences.is_empty());
     }
 
     #[test]
     fn settings_serialization_round_trip() {
-        let settings = Settings::default();
+        let mut settings = Settings::default();
+        settings
+            .macos_model_runtime_preferences
+            .insert("parakeet".to_string(), MacosModelRuntimePreference::Coreml);
         let json = serde_json::to_string(&settings).expect("serialize");
         let deserialized: Settings = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(deserialized.hold_shortcut, settings.hold_shortcut);
@@ -756,6 +798,10 @@ mod tests {
         assert_eq!(deserialized.selected_model_id, settings.selected_model_id);
         assert_eq!(deserialized.cleanup_enabled, settings.cleanup_enabled);
         assert_eq!(deserialized.replacement_rules, settings.replacement_rules);
+        assert_eq!(
+            deserialized.macos_model_runtime_preferences,
+            settings.macos_model_runtime_preferences
+        );
     }
 
     #[test]
@@ -790,6 +836,7 @@ mod tests {
     fn inference_provider_serde_round_trip() {
         let providers = [
             (InferenceProvider::Cpu, "\"cpu\""),
+            (InferenceProvider::Coreml, "\"coreml\""),
             (InferenceProvider::Directml, "\"directml\""),
             (InferenceProvider::Webgpu, "\"webgpu\""),
         ];
@@ -804,6 +851,7 @@ mod tests {
     #[test]
     fn inference_provider_is_accelerated() {
         assert!(!InferenceProvider::Cpu.is_accelerated());
+        assert!(InferenceProvider::Coreml.is_accelerated());
         assert!(InferenceProvider::Directml.is_accelerated());
         assert!(InferenceProvider::Webgpu.is_accelerated());
     }
@@ -811,8 +859,17 @@ mod tests {
     #[test]
     fn inference_provider_display() {
         assert_eq!(format!("{}", InferenceProvider::Cpu), "CPU");
+        assert_eq!(format!("{}", InferenceProvider::Coreml), "CoreML");
         assert_eq!(format!("{}", InferenceProvider::Directml), "DirectML");
         assert_eq!(format!("{}", InferenceProvider::Webgpu), "WebGPU");
+    }
+
+    #[test]
+    fn macos_model_runtime_preference_serde_round_trip() {
+        let json = serde_json::to_string(&MacosModelRuntimePreference::Coreml).unwrap();
+        assert_eq!(json, "\"coreml\"");
+        let back: MacosModelRuntimePreference = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, MacosModelRuntimePreference::Coreml);
     }
 
     #[test]
