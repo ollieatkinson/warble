@@ -110,14 +110,14 @@ fn run_macos_ci_fixture(runtime: MacosFixtureRuntime) {
 
     let load_started = Instant::now();
     let mut model = match runtime {
-        MacosFixtureRuntime::Cpu => warble_lib::parakeet::ParakeetTdt::load_with_cpu(&model_root)
+        MacosFixtureRuntime::Cpu => warble_lib::parakeet::ParakeetCtc::load_with_cpu(&model_root)
             .expect("load cpu fixture model"),
         MacosFixtureRuntime::Coreml => {
-            warble_lib::parakeet::ParakeetTdt::load_with_coreml(&model_root)
+            warble_lib::parakeet::ParakeetCtc::load_with_coreml(&model_root)
                 .expect("load coreml fixture model")
         }
         MacosFixtureRuntime::Webgpu => {
-            warble_lib::parakeet::ParakeetTdt::load_with_webgpu(&model_root)
+            warble_lib::parakeet::ParakeetCtc::load_with_webgpu(&model_root)
                 .expect("load webgpu fixture model")
         }
     };
