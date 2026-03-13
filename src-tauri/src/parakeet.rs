@@ -354,13 +354,14 @@ fn load_tdt_runtime(model_dir: &Path, provider: InferenceProvider) -> Result<Lib
     runtime::append_runtime_diagnostic(
         "Parakeet TDT runtime load started",
         format!(
-            "provider={} model_dir={} summary={} intra_threads={} inter_threads={} custom_configure={} note={}",
+            "provider={} model_dir={} summary={} intra_threads={} inter_threads={} custom_configure={} session_overrides={} note={}",
             provider,
             model_dir.display(),
             summarize_tdt_model_dir(model_dir),
             profile.intra_threads,
             profile.inter_threads,
             profile.custom_configure,
+            inference::session_override_summary(provider),
             inference::provider_runtime_note(platform::current_platform(), provider).unwrap_or("none")
         ),
     );
@@ -389,13 +390,14 @@ fn load_ctc_runtime(model_dir: &Path, provider: InferenceProvider) -> Result<Par
     runtime::append_runtime_diagnostic(
         "Parakeet CTC runtime load started",
         format!(
-            "provider={} model_dir={} summary={} intra_threads={} inter_threads={} custom_configure={} note={}",
+            "provider={} model_dir={} summary={} intra_threads={} inter_threads={} custom_configure={} session_overrides={} note={}",
             provider,
             model_dir.display(),
             summarize_ctc_model_dir(model_dir),
             profile.intra_threads,
             profile.inter_threads,
             profile.custom_configure,
+            inference::session_override_summary(provider),
             inference::provider_runtime_note(platform::current_platform(), provider).unwrap_or("none")
         ),
     );

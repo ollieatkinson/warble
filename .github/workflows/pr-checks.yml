@@ -150,6 +150,8 @@ jobs:
           WARBLE_ORT_LOG_PATH: ${{ runner.temp }}/warble-onnxruntime-cpu.log
           WARBLE_ENABLE_ORT_VERBOSE_LOGS: 1
           WARBLE_ECHO_ORT_LOGS: 1
+          WARBLE_ORT_GRAPH_OPT_LEVEL: disable
+          WARBLE_ORT_MEMORY_PATTERN: 0
           RUST_BACKTRACE: 1
         run: |
           set -o pipefail
