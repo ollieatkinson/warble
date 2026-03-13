@@ -208,23 +208,6 @@ impl ParakeetCtc {
         Self::load_from_dir(&model_dir)
     }
 
-    pub fn load_with_cpu(model_root: &Path) -> Result<Self> {
-        let model_dir = model_root.join(CTC_MODEL_ID);
-        Self::load_from_dir_with_exact_provider(&model_dir, InferenceProvider::Cpu)
-    }
-
-    #[cfg(target_os = "macos")]
-    pub fn load_with_coreml(model_root: &Path) -> Result<Self> {
-        let model_dir = model_root.join(CTC_MODEL_ID);
-        Self::load_from_dir_with_exact_provider(&model_dir, InferenceProvider::Coreml)
-    }
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    pub fn load_with_webgpu(model_root: &Path) -> Result<Self> {
-        let model_dir = model_root.join(CTC_MODEL_ID);
-        Self::load_from_dir_with_exact_provider(&model_dir, InferenceProvider::Webgpu)
-    }
-
     pub fn load_from_dir(model_dir: &Path) -> Result<Self> {
         if !ctc_model_ready_in_dir(model_dir) {
             bail!("Parakeet CTC model is missing at {}", model_dir.display());
@@ -303,14 +286,6 @@ impl ParakeetCtc {
 
         Ok(Self { runtime, provider })
     }
-
-    fn load_from_dir_with_exact_provider(
-        model_dir: &Path,
-        provider: InferenceProvider,
-    ) -> Result<Self> {
-        Self::load_from_dir_with_provider_and_observer(model_dir, provider, |_| {})
-    }
-
     pub fn transcribe_audio(&mut self, audio: &[f32]) -> Result<String> {
         if audio.is_empty() {
             return Ok(String::new());
@@ -323,12 +298,6 @@ impl ParakeetCtc {
 
         Ok(normalize_output_text(&result.text))
     }
-
-    pub fn transcribe_wav_path(&mut self, wav_path: &Path) -> Result<String> {
-        let audio = read_wav_mono(wav_path)?;
-        self.transcribe_audio(&audio)
-    }
-
     pub(crate) fn provider(&self) -> InferenceProvider {
         self.provider
     }

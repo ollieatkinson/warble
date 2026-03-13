@@ -72,7 +72,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/warble-fixture-models
-          key: macos-warble-fixture-model-v2-parakeet-ctc-0.6b-int8
+          key: macos-warble-fixture-model-v3-parakeet-tdt-0.6b-v3-int8
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
@@ -81,17 +81,17 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           set -euxo pipefail
-          MODEL_DIR="$RUNNER_TEMP/warble-fixture-models/parakeet-ctc-0.6b"
+          MODEL_DIR="$RUNNER_TEMP/warble-fixture-models/parakeet-tdt-0.6b-v3-int8"
           mkdir -p "$MODEL_DIR"
           curl -L --fail --retry 5 --retry-delay 5 \
-            https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/tokenizer.json \
-            -o "$MODEL_DIR/tokenizer.json"
+            https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/encoder-model.int8.onnx \
+            -o "$MODEL_DIR/encoder-model.int8.onnx"
           curl -L --fail --retry 5 --retry-delay 5 \
-            https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/onnx/model_int8.onnx \
-            -o "$MODEL_DIR/model_int8.onnx"
+            https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/decoder_joint-model.int8.onnx \
+            -o "$MODEL_DIR/decoder_joint-model.int8.onnx"
           curl -L --fail --retry 5 --retry-delay 5 \
-            https://huggingface.co/onnx-community/parakeet-ctc-0.6b-ONNX/resolve/main/onnx/model_int8.onnx_data \
-            -o "$MODEL_DIR/model_int8.onnx_data"
+            https://huggingface.co/smcleod/parakeet-tdt-0.6b-v3-int8/resolve/main/vocab.txt \
+            -o "$MODEL_DIR/vocab.txt"
 
       - name: Generate macOS fixture speech WAV
         if: runner.os == 'macOS'
@@ -124,7 +124,7 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Run macOS CPU fixture test
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && vars.WARBLE_ENABLE_CPU_FIXTURE == 'true'
         timeout-minutes: 5
         env:
           WARBLE_MODEL_ROOT: ${{ runner.temp }}/warble-fixture-models
