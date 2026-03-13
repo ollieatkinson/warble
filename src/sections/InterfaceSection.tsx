@@ -32,6 +32,7 @@ export function InterfaceSection({
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
 }) {
   const dynamicIslandAvailable = supportsDynamicIsland(snapshot);
+  const usesDynamicIslandLayout = draft.overlayPosition === "dynamic-island";
   const overlayOptions = deriveOverlayPositionOptions(snapshot);
   const hudPositionDescription = dynamicIslandAvailable
     ? "Choose a screen edge or the menu-bar-integrated Dynamic Island anchor."
@@ -159,13 +160,18 @@ export function InterfaceSection({
                 <div className="setting-row">
                   <div className="setting-copy">
                     <strong>Transcript width</strong>
-                    <span>Reserve more room for the newest words in the pill.</span>
+                    <span>
+                      {usesDynamicIslandLayout
+                        ? "Dynamic Island mode sizes this to the island automatically."
+                        : "Reserve more room for the newest words in the pill."}
+                    </span>
                   </div>
                   <div className="setting-control">
                     <ChoiceDropdown
                       label="Width"
                       value={draft.liveTranscriptWidth}
                       options={liveTranscriptWidthOptions}
+                      disabled={usesDynamicIslandLayout}
                       onChange={(value) =>
                         void onApplySettings({
                           liveTranscriptWidth: value as typeof draft.liveTranscriptWidth,
@@ -204,7 +210,11 @@ export function InterfaceSection({
             <span>{draft.showLiveTranscription ? "Expanded HUD" : "Compact HUD"}</span>
             {draft.showLiveTranscription ? (
               <>
-                <span>{formatLiveTranscriptWidth(draft.liveTranscriptWidth)}</span>
+                <span>
+                  {usesDynamicIslandLayout
+                    ? "Automatic width"
+                    : formatLiveTranscriptWidth(draft.liveTranscriptWidth)}
+                </span>
                 <span>{formatLiveTranscriptLines(draft.liveTranscriptLines)}</span>
               </>
             ) : null}
@@ -225,6 +235,7 @@ export function InterfaceSection({
             showLiveTranscription={draft.showLiveTranscription}
             liveTranscriptWidth={draft.liveTranscriptWidth}
             liveTranscriptLines={draft.liveTranscriptLines}
+            dynamicIslandMetrics={snapshot.dynamicIslandMetrics}
           />
 
           <div className="interface-preview-grid">

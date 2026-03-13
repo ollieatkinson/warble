@@ -128,6 +128,7 @@ export function createSnapshot(overrides?: Partial<Snapshot>): Snapshot {
     platform: "windows",
     autoPasteSupport: "active-app",
     dynamicIslandAvailable: false,
+    dynamicIslandMetrics: null,
     settings: createSettings(overrides?.settings),
     lastTranscriptAvailable: false,
     sources: [createSourceInfo()],

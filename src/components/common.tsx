@@ -253,7 +253,7 @@ export function ShortcutField({
         }}
         onBlur={onCancel}
       >
-        {armed ? "Press shortcut..." : displayValue || "Set shortcut"}
+        {armed ? "Press shortcut..." : displayValue}
       </button>
     </label>
   );
@@ -266,6 +266,7 @@ export function ChoiceDropdown({
   onChange,
   placeholder = "Select",
   renderPreview,
+  disabled = false,
 }: {
   label: string;
   value: string;
@@ -273,6 +274,7 @@ export function ChoiceDropdown({
   onChange: (value: string) => void;
   placeholder?: string;
   renderPreview?: (value: string, mode: "trigger" | "option") => ReactNode;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -318,10 +320,14 @@ export function ChoiceDropdown({
         <button
           type="button"
           className="choice-trigger"
-          onClick={() => setOpen((current) => !current)}
+          onClick={() => {
+            if (!disabled) {
+              setOpen((current) => !current);
+            }
+          }}
           aria-expanded={open}
           aria-haspopup="listbox"
-          disabled={options.length === 0}
+          disabled={disabled || options.length === 0}
         >
           {selected && renderPreview ? (
             <span className="choice-preview">{renderPreview(selected.id, "trigger")}</span>
