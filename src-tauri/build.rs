@@ -10,8 +10,12 @@ const WINDOWS_RUNTIME_FILES: &[&str] = &[
     "dxil.dll",
 ];
 
+const MACOS_DAWN_BUNDLE_DIR: &str = "target/macos-dawn-bundle";
+const MACOS_DAWN_DYLIB: &str = "libwebgpu_dawn.dylib";
+
 fn main() {
     prepare_windows_ort_runtime_bundle_dir();
+    stage_macos_dawn_dylib();
     tauri_build::build();
     copy_windows_ort_runtime();
 }
@@ -146,4 +150,62 @@ fn runtime_dir_ready(path: &Path) -> bool {
     WINDOWS_RUNTIME_FILES
         .iter()
         .all(|file_name| path.join(file_name).exists())
+}
+
+fn stage_macos_dawn_dylib() {
+    if env::var("CARGO_CFG_TARGET_OS").ok().as_deref() != Some("macos") {
+        return;
+    }
+
+    // Set rpath so the app bundle finds dylibs in Contents/Frameworks/
+    println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../Frameworks");
+
+    let Some(dawn_source) = find_macos_dawn_dylib() else {
+        println!("cargo:warning=libwebgpu_dawn.dylib not found in build artifacts — WebGPU will not be available at runtime");
+        return;
+    };
+
+    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let bundle_dir = manifest_dir.join(MACOS_DAWN_BUNDLE_DIR);
+    let _ = fs::create_dir_all(&bundle_dir);
+
+    let destination = bundle_dir.join(MACOS_DAWN_DYLIB);
+    if let Err(error) = fs::copy(&dawn_source, &destination) {
+        println!(
+            "cargo:warning=failed to copy {} to {}: {}",
+            dawn_source.display(),
+            destination.display(),
+            error
+        );
+    }
+}
+
+fn find_macos_dawn_dylib() -> Option<PathBuf> {
+    // Check explicit override first
+    if let Some(path) = env::var_os("WARBLE_DAWN_DYLIB_PATH") {
+        let path = PathBuf::from(path);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    // Search the ort-sys build output directories
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR")?);
+    let build_dir = out_dir.ancestors().nth(3)?.parent()?; // target/<profile>/build/
+    let build_dir = build_dir.join("build");
+
+    if let Ok(entries) = fs::read_dir(&build_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if !name.to_string_lossy().starts_with("ort-sys-") {
+                continue;
+            }
+            let candidate = entry.path().join("out").join("lib").join(MACOS_DAWN_DYLIB);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    None
 }
