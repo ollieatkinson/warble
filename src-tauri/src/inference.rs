@@ -542,8 +542,9 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
         .with_intra_threads(profile.intra_threads)
         .with_inter_threads(profile.inter_threads);
 
-    if matches!(provider, InferenceProvider::Directml) {
-        return config.with_custom_configure(configure_session_builder);
+    if session_builder_override_requested(provider) {
+        return config
+            .with_custom_configure(move |builder| configure_session_builder(builder, provider));
     }
 
     config
@@ -615,14 +616,117 @@ pub(crate) fn provider_failure_hint(
     }
 }
 
+pub(crate) fn session_override_summary(provider: InferenceProvider) -> String {
+    let mut overrides = Vec::new();
+    if matches!(provider, InferenceProvider::Directml) {
+        overrides.push(
+            "graph_optimization=level1, parallel_execution=false, memory_pattern=false".to_string(),
+        );
+    }
+    if let Some(level) = env_graph_optimization_level() {
+        overrides.push(format!(
+            "graph_optimization={}",
+            graph_optimization_level_label(level)
+        ));
+    }
+    if let Some(enabled) = env_parallel_execution_override() {
+        overrides.push(format!("parallel_execution={enabled}"));
+    }
+    if let Some(enabled) = env_memory_pattern_override() {
+        overrides.push(format!("memory_pattern={enabled}"));
+    }
+
+    if overrides.is_empty() {
+        "none".to_string()
+    } else {
+        overrides.join(", ")
+    }
+}
+
+fn session_builder_override_requested(provider: InferenceProvider) -> bool {
+    matches!(provider, InferenceProvider::Directml)
+        || env_graph_optimization_level().is_some()
+        || env_parallel_execution_override().is_some()
+        || env_memory_pattern_override().is_some()
+}
+
 fn configure_session_builder(
     builder: ort::session::builder::SessionBuilder,
+    provider: InferenceProvider,
 ) -> ort::Result<ort::session::builder::SessionBuilder> {
-    let builder =
-        builder.with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
-    Ok(builder
-        .with_parallel_execution(false)?
-        .with_memory_pattern(false)?)
+    let mut builder = builder;
+    if matches!(provider, InferenceProvider::Directml) {
+        builder = builder
+            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?
+            .with_parallel_execution(false)?
+            .with_memory_pattern(false)?;
+    }
+    if let Some(level) = env_graph_optimization_level() {
+        builder = builder.with_optimization_level(level)?;
+    }
+    if let Some(enabled) = env_parallel_execution_override() {
+        builder = builder.with_parallel_execution(enabled)?;
+    }
+    if let Some(enabled) = env_memory_pattern_override() {
+        builder = builder.with_memory_pattern(enabled)?;
+    }
+
+    Ok(builder)
+}
+
+fn env_graph_optimization_level() -> Option<ort::session::builder::GraphOptimizationLevel> {
+    std::env::var("WARBLE_ORT_GRAPH_OPT_LEVEL")
+        .ok()
+        .and_then(|value| parse_graph_optimization_level(&value))
+}
+
+fn parse_graph_optimization_level(
+    value: &str,
+) -> Option<ort::session::builder::GraphOptimizationLevel> {
+    use ort::session::builder::GraphOptimizationLevel;
+
+    match value.trim().to_ascii_lowercase().as_str() {
+        "disable" | "disabled" | "0" | "off" | "false" => Some(GraphOptimizationLevel::Disable),
+        "level1" | "basic" | "1" => Some(GraphOptimizationLevel::Level1),
+        "level2" | "extended" | "2" => Some(GraphOptimizationLevel::Level2),
+        "level3" | "layout" | "3" => Some(GraphOptimizationLevel::Level3),
+        "all" | "enable_all" | "4" => Some(GraphOptimizationLevel::All),
+        _ => None,
+    }
+}
+
+fn graph_optimization_level_label(
+    level: ort::session::builder::GraphOptimizationLevel,
+) -> &'static str {
+    use ort::session::builder::GraphOptimizationLevel;
+
+    match level {
+        GraphOptimizationLevel::Disable => "disable",
+        GraphOptimizationLevel::Level1 => "level1",
+        GraphOptimizationLevel::Level2 => "level2",
+        GraphOptimizationLevel::Level3 => "level3",
+        GraphOptimizationLevel::All => "all",
+    }
+}
+
+fn env_parallel_execution_override() -> Option<bool> {
+    std::env::var("WARBLE_ORT_PARALLEL_EXECUTION")
+        .ok()
+        .and_then(|value| parse_env_bool_override(&value))
+}
+
+fn env_memory_pattern_override() -> Option<bool> {
+    std::env::var("WARBLE_ORT_MEMORY_PATTERN")
+        .ok()
+        .and_then(|value| parse_env_bool_override(&value))
+}
+
+fn parse_env_bool_override(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

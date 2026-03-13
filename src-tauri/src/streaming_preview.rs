@@ -313,13 +313,14 @@ fn load_nemotron_runtime_with_diagnostics(
     runtime::append_runtime_diagnostic(
         "Nemotron streaming runtime load started",
         format!(
-            "provider={} model_path={} summary={} intra_threads={} inter_threads={} custom_configure={} note={}",
+            "provider={} model_path={} summary={} intra_threads={} inter_threads={} custom_configure={} session_overrides={} note={}",
             provider,
             model_path.display(),
             summarize_streaming_model_dir(StreamingPreviewBackend::Nemotron, model_path),
             profile.intra_threads,
             profile.inter_threads,
             profile.custom_configure,
+            inference::session_override_summary(provider),
             inference::provider_runtime_note(platform::current_platform(), provider).unwrap_or("none")
         ),
     );
@@ -350,13 +351,14 @@ fn load_eou_runtime_with_diagnostics(
     runtime::append_runtime_diagnostic(
         "Parakeet EOU runtime load started",
         format!(
-            "provider={} model_path={} summary={} intra_threads={} inter_threads={} custom_configure={} note={}",
+            "provider={} model_path={} summary={} intra_threads={} inter_threads={} custom_configure={} session_overrides={} note={}",
             provider,
             model_path.display(),
             summarize_streaming_model_dir(StreamingPreviewBackend::Eou, model_path),
             profile.intra_threads,
             profile.inter_threads,
             profile.custom_configure,
+            inference::session_override_summary(provider),
             inference::provider_runtime_note(platform::current_platform(), provider).unwrap_or("none")
         ),
     );
