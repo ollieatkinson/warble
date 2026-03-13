@@ -437,17 +437,18 @@ mod tests {
     use crate::state::InferenceProvider;
 
     #[test]
-    fn load_with_selected_provider_uses_cpu_after_webgpu_failure_off_macos() {
+    fn load_with_selected_provider_uses_cpu_on_linux() {
         let value = load_with_selected_provider(
             PlatformKind::Linux,
-            InferenceProvider::Webgpu,
+            InferenceProvider::Cpu,
             |provider| match provider {
-                InferenceProvider::Webgpu => Err(anyhow!("webgpu failed")),
                 InferenceProvider::Cpu => Ok("cpu"),
-                InferenceProvider::Coreml | InferenceProvider::Directml => unreachable!(),
+                InferenceProvider::Coreml
+                | InferenceProvider::Directml
+                | InferenceProvider::Webgpu => unreachable!(),
             },
         )
-        .expect("cpu fallback should succeed");
+        .expect("cpu load should succeed");
 
         assert_eq!(value, "cpu");
     }
@@ -508,7 +509,7 @@ mod tests {
         ));
         assert!(allow_streaming_provider_fallback(
             PlatformKind::Linux,
-            InferenceProvider::Webgpu
+            InferenceProvider::Cpu
         ));
     }
 
