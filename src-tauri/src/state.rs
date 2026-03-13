@@ -281,8 +281,10 @@ impl Settings {
     }
 
     pub(crate) fn sanitize_overlay_position(&mut self, dynamic_island_available: bool) -> bool {
-        let next_position =
-            Self::normalize_overlay_position(self.overlay_position.clone(), dynamic_island_available);
+        let next_position = Self::normalize_overlay_position(
+            self.overlay_position.clone(),
+            dynamic_island_available,
+        );
         if self.overlay_position == next_position {
             return false;
         }
@@ -572,6 +574,7 @@ pub(crate) struct Snapshot {
     pub(crate) platform: platform::PlatformKind,
     pub(crate) auto_paste_support: platform::AutoPasteSupport,
     pub(crate) dynamic_island_available: bool,
+    pub(crate) dynamic_island_metrics: Option<platform::DynamicIslandMetrics>,
     pub(crate) settings: Settings,
     pub(crate) last_transcript_available: bool,
     pub(crate) sources: Vec<SourceInfo>,

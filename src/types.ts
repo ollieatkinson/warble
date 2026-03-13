@@ -102,6 +102,13 @@ export type SourceInfo = {
   isDefault: boolean;
 };
 
+export type DynamicIslandMetrics = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type HistoryItem = {
   id: string;
   text: string;
@@ -153,6 +160,7 @@ export type Snapshot = {
   platform: PlatformKind;
   autoPasteSupport: AutoPasteSupport;
   dynamicIslandAvailable: boolean;
+  dynamicIslandMetrics: DynamicIslandMetrics | null;
   settings: Settings;
   lastTranscriptAvailable: boolean;
   sources: SourceInfo[];

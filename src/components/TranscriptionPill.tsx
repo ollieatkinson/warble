@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 import { DEMO_LEVELS } from "../constants";
 import {
@@ -8,6 +8,7 @@ import {
 import { formatElapsedClock, resampleLevels, smoothLevels } from "../lib/utils";
 import type {
   AppPhase,
+  DynamicIslandMetrics,
   EditableOverlayPosition,
   LiveTranscriptLines,
   LiveTranscriptWidth,
@@ -33,6 +34,14 @@ const DEMO_ANIMATION = {
   FRAME_INTERVAL_MS: 90,
 } as const;
 
+const DYNAMIC_ISLAND = {
+  DEFAULT_GAP_WIDTH: 118,
+  DEFAULT_GAP_HEIGHT: 32,
+  POD_HORIZONTAL_PADDING: 28,
+  TIMER_CHARACTER_COUNT: 7,
+  TIMER_CHARACTER_WIDTH: 8,
+} as const;
+
 function normalizeIndicatorCopy(value: string): string {
   return value
     .replace(/[_▁Ġ]+/g, " ")
@@ -50,6 +59,49 @@ function isDynamicIslandPosition(
   position: EditableOverlayPosition | OverlayPosition,
 ) {
   return position === "dynamic-island";
+}
+
+function compactSignalWidth(animationStyle: OverlayAnimationStyle) {
+  switch (animationStyle) {
+    case "radial":
+      return 30;
+    case "waveform":
+      return 62;
+    case "spectrum":
+    default:
+      return 60;
+  }
+}
+
+function buildDynamicIslandLayout(
+  animationStyle: OverlayAnimationStyle,
+  showTimer: boolean,
+  metrics?: DynamicIslandMetrics | null,
+) {
+  const gapWidth = Math.max(
+    72,
+    Math.round(metrics?.width ?? DYNAMIC_ISLAND.DEFAULT_GAP_WIDTH),
+  );
+  const gapHeight = Math.max(
+    DYNAMIC_ISLAND.DEFAULT_GAP_HEIGHT,
+    Math.round(metrics?.height ?? DYNAMIC_ISLAND.DEFAULT_GAP_HEIGHT),
+  );
+  const signalWidth = compactSignalWidth(animationStyle);
+  const leftPodWidth =
+    animationStyle === "radial"
+      ? signalWidth + DYNAMIC_ISLAND.POD_HORIZONTAL_PADDING
+      : 18 + 10 + signalWidth + DYNAMIC_ISLAND.POD_HORIZONTAL_PADDING;
+  const rightPodWidth = showTimer
+    ? DYNAMIC_ISLAND.TIMER_CHARACTER_COUNT * DYNAMIC_ISLAND.TIMER_CHARACTER_WIDTH +
+      DYNAMIC_ISLAND.POD_HORIZONTAL_PADDING
+    : 0;
+
+  return {
+    gapWidth,
+    gapHeight,
+    leftPodWidth,
+    rightPodWidth,
+  };
 }
 
 function buildDemoLevels(time: number) {
@@ -380,6 +432,7 @@ export function TranscriptionPill({
   liveTranscriptLines = "one",
   elapsedMs = 0,
   limitMs = null,
+  dynamicIslandMetrics = null,
   animatedDemo = false,
   onCancel,
 }: {
@@ -395,6 +448,7 @@ export function TranscriptionPill({
   liveTranscriptLines?: LiveTranscriptLines;
   elapsedMs?: number;
   limitMs?: number | null;
+  dynamicIslandMetrics?: DynamicIslandMetrics | null;
   animatedDemo?: boolean;
   onCancel?: (() => void) | null;
 }) {
@@ -404,6 +458,11 @@ export function TranscriptionPill({
   const usesRadialCore = animationStyle === "radial";
   const canCancel = phase === "recording" || phase === "transcribing";
   const hasTimer = showRecordingTimer && canCancel;
+  const usesDynamicIslandLayout =
+    isDynamicIslandPosition(overlayPosition) && (animatedDemo || dynamicIslandMetrics !== null);
+  const dynamicIslandLayout = usesDynamicIslandLayout
+    ? buildDynamicIslandLayout(animationStyle, hasTimer, dynamicIslandMetrics)
+    : null;
   const timerText = hasTimer ? formatElapsedClock(elapsedMs) : "";
   const timerTone =
     limitMs && limitMs > 0
@@ -420,6 +479,111 @@ export function TranscriptionPill({
   ]
     .filter(Boolean)
     .join(" ");
+  const shellStyle = dynamicIslandLayout
+    ? ({
+        "--indicator-dynamic-island-gap-width": `${dynamicIslandLayout.gapWidth}px`,
+        "--indicator-dynamic-island-gap-height": `${dynamicIslandLayout.gapHeight}px`,
+        "--indicator-dynamic-island-left-width": `${dynamicIslandLayout.leftPodWidth}px`,
+        "--indicator-dynamic-island-right-width": `${dynamicIslandLayout.rightPodWidth}px`,
+      } as CSSProperties)
+    : undefined;
+
+  const renderStatusButton = (variant: "inline" | "radial") => (
+    <button
+      type="button"
+      className={[
+        "indicator-status-button",
+        variant === "radial"
+          ? "indicator-status-button-radial"
+          : "indicator-status-button-inline",
+        canCancel && onCancel ? "indicator-status-button-cancelable" : "",
+        `indicator-status-button-${phase}`,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onClick={() => onCancel?.()}
+      disabled={!canCancel || !onCancel}
+      aria-label={canCancel ? "Cancel current dictation" : "Dictation status"}
+      title={canCancel ? "Cancel current dictation" : "Dictation status"}
+    >
+      <span className="indicator-dot" />
+    </button>
+  );
+
+  const signalNode = (
+    <div
+      className={[
+        "indicator-signal",
+        usesRadialCore ? "" : "indicator-signal-linear",
+        usesRadialCore ? "indicator-signal-radial" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <SignalBars
+        phase={phase}
+        levels={levels}
+        compact
+        animationStyle={animationStyle}
+        animatedDemo={animatedDemo}
+      />
+      {usesRadialCore ? renderStatusButton("radial") : null}
+    </div>
+  );
+
+  if (usesDynamicIslandLayout && dynamicIslandLayout) {
+    return (
+      <div
+        className={[
+          "indicator-shell",
+          `indicator-shell-${phase}`,
+          "indicator-shell-inline",
+          showLiveTranscription ? "indicator-shell-detail" : "indicator-shell-compact",
+          "indicator-shell-dynamic-island",
+          usesRadialCore ? "indicator-shell-radial" : "",
+        ].join(" ")}
+        style={shellStyle}
+      >
+        <div
+          className={[
+            "indicator-dynamic-island-row",
+            hasTimer ? "" : "indicator-dynamic-island-row-no-timer",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <div className="indicator-dynamic-island-pod indicator-dynamic-island-pod-left">
+            {usesRadialCore ? (
+              signalNode
+            ) : (
+              <>
+                {renderStatusButton("inline")}
+                {signalNode}
+              </>
+            )}
+          </div>
+          <div className="indicator-dynamic-island-gap" aria-hidden="true" />
+          {hasTimer ? (
+            <div className="indicator-dynamic-island-pod indicator-dynamic-island-pod-right">
+              <span
+                className={[
+                  "indicator-timer",
+                  `indicator-timer-${timerTone}`,
+                ].join(" ")}
+              >
+                {timerText}
+              </span>
+            </div>
+          ) : null}
+        </div>
+        {showLiveTranscription ? (
+          <div className="indicator-dynamic-island-tray indicator-copy indicator-copy-live indicator-copy-live-dynamic">
+            <LiveTranscriptText text={copy} lines={liveTranscriptLines} />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -428,8 +592,7 @@ export function TranscriptionPill({
         `indicator-shell-${phase}`,
         "indicator-shell-inline",
         showLiveTranscription ? "indicator-shell-detail" : "indicator-shell-compact",
-        isDynamicIslandPosition(overlayPosition) ? "indicator-shell-dynamic-island" : "",
-        showLiveTranscription
+        showLiveTranscription && !isDynamicIslandPosition(overlayPosition)
           ? `indicator-shell-detail-width-${liveTranscriptWidth}`
           : "",
         showLiveTranscription
@@ -444,61 +607,8 @@ export function TranscriptionPill({
         </div>
       ) : null}
       <div className={rowClassName}>
-        {usesRadialCore ? null : (
-          <button
-            type="button"
-            className={[
-              "indicator-status-button",
-              "indicator-status-button-inline",
-              canCancel && onCancel ? "indicator-status-button-cancelable" : "",
-              `indicator-status-button-${phase}`,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            onClick={() => onCancel?.()}
-            disabled={!canCancel || !onCancel}
-            aria-label={canCancel ? "Cancel current dictation" : "Dictation status"}
-            title={canCancel ? "Cancel current dictation" : "Dictation status"}
-          >
-            <span className="indicator-dot" />
-          </button>
-        )}
-        <div
-          className={[
-            "indicator-signal",
-            usesRadialCore ? "" : "indicator-signal-linear",
-            usesRadialCore ? "indicator-signal-radial" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-        >
-          <SignalBars
-            phase={phase}
-            levels={levels}
-            compact
-            animationStyle={animationStyle}
-            animatedDemo={animatedDemo}
-          />
-          {usesRadialCore ? (
-            <button
-              type="button"
-              className={[
-                "indicator-status-button",
-                "indicator-status-button-radial",
-                canCancel && onCancel ? "indicator-status-button-cancelable" : "",
-                `indicator-status-button-${phase}`,
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              onClick={() => onCancel?.()}
-              disabled={!canCancel || !onCancel}
-              aria-label={canCancel ? "Cancel current dictation" : "Dictation status"}
-              title={canCancel ? "Cancel current dictation" : "Dictation status"}
-            >
-              <span className="indicator-dot" />
-            </button>
-          ) : null}
-        </div>
+        {usesRadialCore ? null : renderStatusButton("inline")}
+        {signalNode}
         {hasTimer ? (
           <span
             className={[
@@ -600,32 +710,19 @@ export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
     snapshot?.settings.liveTranscriptWidth,
     snapshot?.settings.liveTranscriptLines,
     snapshot?.settings.showRecordingTimer,
+    snapshot?.dynamicIslandMetrics?.x,
+    snapshot?.dynamicIslandMetrics?.y,
+    snapshot?.dynamicIslandMetrics?.width,
+    snapshot?.dynamicIslandMetrics?.height,
   ]);
 
   if (!snapshot || !snapshot.overlay.visible) {
     return <div className="indicator-root indicator-root-hidden" />;
   }
 
-  const dynamicIsland = isDynamicIslandPosition(snapshot.settings.overlayPosition);
-
   return (
-    <main
-      className={[
-        "indicator-root",
-        dynamicIsland ? "indicator-root-dynamic-island" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <div
-        ref={measureRef}
-        className={[
-          "indicator-measure",
-          dynamicIsland ? "indicator-measure-dynamic-island" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      >
+    <main className="indicator-root">
+      <div ref={measureRef} className="indicator-measure">
         <TranscriptionPill
           phase={snapshot.phase}
           title={snapshot.overlay.title}
@@ -639,6 +736,7 @@ export function IndicatorApp({ snapshot }: { snapshot: Snapshot | null }) {
           liveTranscriptLines={snapshot.settings.liveTranscriptLines}
           elapsedMs={snapshot.overlay.elapsedMs}
           limitMs={snapshot.overlay.limitMs}
+          dynamicIslandMetrics={snapshot.dynamicIslandMetrics}
           onCancel={cancelFromOverlay}
         />
       </div>
@@ -708,6 +806,7 @@ export function InterfacePreviewCard({
   showLiveTranscription,
   liveTranscriptWidth,
   liveTranscriptLines,
+  dynamicIslandMetrics = null,
 }: {
   overlayPosition: EditableOverlayPosition;
   animationStyle: OverlayAnimationStyle;
@@ -715,8 +814,9 @@ export function InterfacePreviewCard({
   showLiveTranscription: boolean;
   liveTranscriptWidth: LiveTranscriptWidth;
   liveTranscriptLines: LiveTranscriptLines;
+  dynamicIslandMetrics?: DynamicIslandMetrics | null;
 }) {
-  const dynamicIsland = isDynamicIslandPosition(overlayPosition);
+  const usesDynamicIslandLayout = isDynamicIslandPosition(overlayPosition);
 
   return (
     <div className="interface-demo-frame">
@@ -724,17 +824,12 @@ export function InterfacePreviewCard({
         className={[
           "interface-demo-screen",
           `interface-demo-screen-${overlayPosition}`,
-          `interface-demo-screen-width-${liveTranscriptWidth}`,
-        ].join(" ")}
+          usesDynamicIslandLayout ? "" : `interface-demo-screen-width-${liveTranscriptWidth}`,
+        ]
+          .filter(Boolean)
+          .join(" ")}
       >
-        <div
-          className={[
-            "interface-demo-pill",
-            dynamicIsland ? "interface-demo-pill-dynamic-island" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-        >
+        <div className="interface-demo-pill">
           <TranscriptionPill
             phase="recording"
             title="Listening"
@@ -746,6 +841,7 @@ export function InterfacePreviewCard({
             showLiveTranscription={showLiveTranscription}
             liveTranscriptWidth={liveTranscriptWidth}
             liveTranscriptLines={liveTranscriptLines}
+            dynamicIslandMetrics={dynamicIslandMetrics}
             elapsedMs={134_000}
             limitMs={300_000}
             animatedDemo

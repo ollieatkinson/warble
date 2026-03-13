@@ -43,6 +43,13 @@ const COMPACT_INDICATOR_HEIGHT: i32 = 58;
 const PILL_PADDING_WITH_TRANSCRIPT: i32 = 34;
 const PILL_PADDING_WITHOUT_TRANSCRIPT: i32 = 30;
 const DYNAMIC_ISLAND_MARGIN_TOP: i32 = 0;
+const DEFAULT_DYNAMIC_ISLAND_GAP_WIDTH: i32 = 118;
+const DEFAULT_DYNAMIC_ISLAND_GAP_HEIGHT: i32 = 32;
+const DYNAMIC_ISLAND_POD_HORIZONTAL_PADDING: i32 = 28;
+const DYNAMIC_ISLAND_TIMER_CHARACTER_COUNT: i32 = 7;
+const DYNAMIC_ISLAND_TIMER_CHARACTER_WIDTH: i32 = 8;
+const DYNAMIC_ISLAND_TRAY_GAP_HEIGHT: i32 = 8;
+const DYNAMIC_ISLAND_TRAY_PADDING_HEIGHT: i32 = 24;
 
 pub(crate) fn default_overlay_levels() -> Vec<f32> {
     vec![0.0; LIVE_METER_BAR_COUNT]
@@ -178,7 +185,86 @@ fn live_transcript_line_count(lines: &LiveTranscriptLines) -> i32 {
     }
 }
 
-pub(crate) fn fallback_indicator_window_size(settings: &Settings) -> (i32, i32) {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DynamicIslandLayout {
+    left_pod_width: i32,
+    right_pod_width: i32,
+    gap_width: i32,
+    row_height: i32,
+    tray_height: i32,
+}
+
+impl DynamicIslandLayout {
+    fn total_width(self) -> i32 {
+        self.left_pod_width + self.gap_width + self.right_pod_width
+    }
+
+    fn total_height(self, show_live_transcription: bool) -> i32 {
+        self.row_height
+            + if show_live_transcription {
+                DYNAMIC_ISLAND_TRAY_GAP_HEIGHT + self.tray_height
+            } else {
+                0
+            }
+    }
+}
+
+fn dynamic_island_layout(
+    settings: &Settings,
+    metrics: Option<crate::platform::DynamicIslandMetrics>,
+) -> DynamicIslandLayout {
+    let gap_width = metrics
+        .map(|metrics| metrics.width)
+        .unwrap_or(DEFAULT_DYNAMIC_ISLAND_GAP_WIDTH)
+        .max(72);
+    let row_height = metrics
+        .map(|metrics| metrics.height)
+        .unwrap_or(DEFAULT_DYNAMIC_ISLAND_GAP_HEIGHT)
+        .max(DEFAULT_DYNAMIC_ISLAND_GAP_HEIGHT);
+    let signal_width = match settings.overlay_animation_style {
+        OverlayAnimationStyle::Radial => RADIAL_SIGNAL_WIDTH,
+        OverlayAnimationStyle::Spectrum => SPECTRUM_SIGNAL_WIDTH,
+        OverlayAnimationStyle::Waveform => WAVEFORM_SIGNAL_WIDTH,
+    };
+    let left_pod_width = if matches!(
+        settings.overlay_animation_style,
+        OverlayAnimationStyle::Radial
+    ) {
+        signal_width + DYNAMIC_ISLAND_POD_HORIZONTAL_PADDING
+    } else {
+        STATUS_WIDTH + GAP_WIDTH + signal_width + DYNAMIC_ISLAND_POD_HORIZONTAL_PADDING
+    };
+    let right_pod_width = if settings.show_recording_timer {
+        DYNAMIC_ISLAND_TIMER_CHARACTER_COUNT * DYNAMIC_ISLAND_TIMER_CHARACTER_WIDTH
+            + DYNAMIC_ISLAND_POD_HORIZONTAL_PADDING
+    } else {
+        0
+    };
+    let tray_height = live_transcript_line_count(&settings.live_transcript_lines)
+        * TRANSCRIPT_LINE_HEIGHT
+        + DYNAMIC_ISLAND_TRAY_PADDING_HEIGHT;
+
+    DynamicIslandLayout {
+        left_pod_width,
+        right_pod_width,
+        gap_width,
+        row_height,
+        tray_height,
+    }
+}
+
+fn fallback_indicator_window_size_with_dynamic_island(
+    settings: &Settings,
+    metrics: Option<crate::platform::DynamicIslandMetrics>,
+) -> (i32, i32) {
+    if matches!(settings.overlay_position, OverlayPosition::DynamicIsland) {
+        let layout = dynamic_island_layout(settings, metrics);
+        return (
+            layout.total_width() + INDICATOR_WINDOW_PADDING * 2,
+            layout.total_height(settings.show_live_transcription) + INDICATOR_WINDOW_PADDING * 2,
+        );
+    }
+
     let content_height = if settings.show_live_transcription {
         let copy_height =
             live_transcript_line_count(&settings.live_transcript_lines) * TRANSCRIPT_LINE_HEIGHT;
@@ -220,6 +306,21 @@ pub(crate) fn fallback_indicator_window_size(settings: &Settings) -> (i32, i32) 
     )
 }
 
+fn dynamic_island_indicator_origin(
+    settings: &Settings,
+    metrics: crate::platform::DynamicIslandMetrics,
+) -> PhysicalPosition<i32> {
+    let layout = dynamic_island_layout(settings, Some(metrics));
+    PhysicalPosition::new(
+        metrics.x - layout.left_pod_width,
+        metrics.y + DYNAMIC_ISLAND_MARGIN_TOP,
+    )
+}
+
+pub(crate) fn fallback_indicator_window_size(settings: &Settings) -> (i32, i32) {
+    fallback_indicator_window_size_with_dynamic_island(settings, None)
+}
+
 pub(crate) fn update_overlay_elapsed(core: &mut AppCore) {
     if let Some(started_at) = core.recording_started_at {
         core.overlay.elapsed_ms = started_at.elapsed().as_millis() as u64;
@@ -240,9 +341,10 @@ pub(crate) fn clear_overlay_session_state(core: &mut AppCore) {
 fn indicator_origin(
     app: &AppHandle,
     overlay: &OverlaySnapshot,
-    position: OverlayPosition,
+    settings: &Settings,
     indicator_width: i32,
     indicator_height: i32,
+    dynamic_island_metrics: Option<crate::platform::DynamicIslandMetrics>,
 ) -> Option<PhysicalPosition<i32>> {
     let window = app.get_webview_window("indicator")?;
     let monitor = window
@@ -262,6 +364,9 @@ fn indicator_origin(
     let monitor_width = monitor_size.width as i32;
     let work_max_x = left + width - indicator_width;
     let monitor_max_x = monitor_left + monitor_width - indicator_width;
+    let position = settings.overlay_position;
+    let dynamic_island_origin =
+        dynamic_island_metrics.map(|metrics| dynamic_island_indicator_origin(settings, metrics));
 
     if matches!(position, OverlayPosition::Caret) {
         if let Some(anchor) = overlay.anchor {
@@ -278,7 +383,10 @@ fn indicator_origin(
     }
 
     let x = match position {
-        OverlayPosition::DynamicIsland => monitor_left + (monitor_width - indicator_width) / 2,
+        OverlayPosition::DynamicIsland => dynamic_island_origin
+            .as_ref()
+            .map(|origin| origin.x)
+            .unwrap_or_else(|| left + (width - indicator_width) / 2),
         OverlayPosition::TopLeft | OverlayPosition::BottomLeft => left + INDICATOR_MARGIN,
         OverlayPosition::TopRight | OverlayPosition::BottomRight => {
             left + width - indicator_width - INDICATOR_MARGIN
@@ -288,40 +396,30 @@ fn indicator_origin(
         }
     };
     let y = match position {
-        OverlayPosition::DynamicIsland => {
-            if cfg!(target_os = "macos") {
-                monitor_top + DYNAMIC_ISLAND_MARGIN_TOP
-            } else {
-                top + INDICATOR_MARGIN
-            }
-        }
+        OverlayPosition::DynamicIsland => dynamic_island_origin
+            .as_ref()
+            .map(|origin| origin.y)
+            .unwrap_or(top + INDICATOR_MARGIN),
         OverlayPosition::TopLeft | OverlayPosition::TopCenter | OverlayPosition::TopRight => {
             top + INDICATOR_MARGIN
         }
         OverlayPosition::BottomLeft
         | OverlayPosition::BottomRight
         | OverlayPosition::BottomCenter
-        | OverlayPosition::Caret => {
-            top + height - indicator_height - INDICATOR_MARGIN
-        }
+        | OverlayPosition::Caret => top + height - indicator_height - INDICATOR_MARGIN,
     };
     let (min_x, max_x, min_y) = match position {
         OverlayPosition::DynamicIsland => (
             monitor_left,
             monitor_max_x.max(monitor_left),
-            if cfg!(target_os = "macos") {
-                monitor_top
-            } else {
-                top
-            },
+            dynamic_island_metrics
+                .map(|metrics| metrics.y)
+                .unwrap_or(monitor_top),
         ),
         _ => (left, work_max_x.max(left), top),
     };
 
-    Some(PhysicalPosition::new(
-        x.clamp(min_x, max_x),
-        y.max(min_y),
-    ))
+    Some(PhysicalPosition::new(x.clamp(min_x, max_x), y.max(min_y)))
 }
 
 pub(crate) fn update_indicator_window(app: &AppHandle, shared: &SharedState) {
@@ -338,8 +436,15 @@ pub(crate) fn update_indicator_window(app: &AppHandle, shared: &SharedState) {
         return;
     };
 
-    let (indicator_width, indicator_height) =
-        measured_size.unwrap_or_else(|| fallback_indicator_window_size(&settings));
+    let dynamic_island_metrics =
+        if matches!(settings.overlay_position, OverlayPosition::DynamicIsland) {
+            crate::platform::dynamic_island_metrics(app)
+        } else {
+            None
+        };
+    let (indicator_width, indicator_height) = measured_size.unwrap_or_else(|| {
+        fallback_indicator_window_size_with_dynamic_island(&settings, dynamic_island_metrics)
+    });
     let _ = window.set_size(Size::Physical(PhysicalSize::new(
         indicator_width.max(1) as u32,
         indicator_height.max(1) as u32,
@@ -349,9 +454,10 @@ pub(crate) fn update_indicator_window(app: &AppHandle, shared: &SharedState) {
         if let Some(position) = indicator_origin(
             app,
             &overlay,
-            settings.overlay_position,
+            &settings,
             indicator_width,
             indicator_height,
+            dynamic_island_metrics,
         ) {
             let _ = window.set_position(Position::Physical(position));
         }
@@ -363,7 +469,12 @@ pub(crate) fn update_indicator_window(app: &AppHandle, shared: &SharedState) {
 
 #[cfg(test)]
 mod tests {
-    use super::measure_overlay_levels;
+    use super::{
+        dynamic_island_indicator_origin, fallback_indicator_window_size,
+        fallback_indicator_window_size_with_dynamic_island, measure_overlay_levels,
+    };
+    use crate::platform::DynamicIslandMetrics;
+    use crate::state::{OverlayAnimationStyle, OverlayPosition, Settings};
 
     #[test]
     fn measure_overlay_levels_stays_still_for_silence() {
@@ -415,7 +526,10 @@ mod tests {
             .collect::<Vec<_>>();
         let levels = measure_overlay_levels(&loud_sine, 16_000);
         for level in &levels {
-            assert!(*level >= 0.0 && *level <= 1.0, "level out of range: {level}");
+            assert!(
+                *level >= 0.0 && *level <= 1.0,
+                "level out of range: {level}"
+            );
         }
     }
 
@@ -455,5 +569,65 @@ mod tests {
         let levels = super::default_overlay_levels();
         assert_eq!(levels.len(), LIVE_METER_BAR_COUNT);
         assert!(levels.iter().all(|l| *l == 0.0));
+    }
+
+    #[test]
+    fn dynamic_island_width_ignores_transcript_width_presets() {
+        let mut compact = Settings::default();
+        compact.overlay_position = OverlayPosition::DynamicIsland;
+        compact.overlay_animation_style = OverlayAnimationStyle::Spectrum;
+        compact.show_recording_timer = true;
+        compact.show_live_transcription = true;
+
+        let mut wide = compact.clone();
+        compact.live_transcript_width = crate::state::LiveTranscriptWidth::Compact;
+        wide.live_transcript_width = crate::state::LiveTranscriptWidth::Wide;
+
+        let metrics = Some(DynamicIslandMetrics {
+            x: 600,
+            y: 0,
+            width: 118,
+            height: 32,
+        });
+        assert_eq!(
+            fallback_indicator_window_size_with_dynamic_island(&compact, metrics),
+            fallback_indicator_window_size_with_dynamic_island(&wide, metrics)
+        );
+    }
+
+    #[test]
+    fn dynamic_island_origin_aligns_left_pod_to_detected_gap() {
+        let mut settings = Settings::default();
+        settings.overlay_position = OverlayPosition::DynamicIsland;
+        settings.overlay_animation_style = OverlayAnimationStyle::Spectrum;
+        settings.show_recording_timer = true;
+
+        let metrics = DynamicIslandMetrics {
+            x: 640,
+            y: 4,
+            width: 118,
+            height: 32,
+        };
+
+        let origin = dynamic_island_indicator_origin(&settings, metrics);
+
+        assert_eq!(origin.x, 524);
+        assert_eq!(origin.y, 4);
+    }
+
+    #[test]
+    fn non_dynamic_island_preserves_transcript_width_presets() {
+        let mut compact = Settings::default();
+        compact.overlay_position = OverlayPosition::TopCenter;
+        compact.show_live_transcription = true;
+
+        let mut wide = compact.clone();
+        compact.live_transcript_width = crate::state::LiveTranscriptWidth::Compact;
+        wide.live_transcript_width = crate::state::LiveTranscriptWidth::Wide;
+
+        assert_ne!(
+            fallback_indicator_window_size(&compact),
+            fallback_indicator_window_size(&wide)
+        );
     }
 }

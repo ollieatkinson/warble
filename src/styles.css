@@ -1874,8 +1874,10 @@ input::placeholder {
 }
 
 .interface-demo-screen-dynamic-island {
+  --indicator-dynamic-island-gap-width: 118px;
+  --indicator-dynamic-island-gap-height: 32px;
   justify-content: center;
-  padding-top: 0.15rem;
+  padding-top: 0.55rem;
 }
 
 .interface-demo-screen-dynamic-island::after {
@@ -1883,10 +1885,10 @@ input::placeholder {
   position: absolute;
   top: 0;
   left: 50%;
-  width: 86px;
-  height: 20px;
+  width: var(--indicator-dynamic-island-gap-width);
+  height: var(--indicator-dynamic-island-gap-height);
   transform: translateX(-50%);
-  border-radius: 0 0 14px 14px;
+  border-radius: 0 0 16px 16px;
   background: rgba(4, 5, 7, 0.98);
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
   z-index: 1;
@@ -2390,14 +2392,23 @@ input::placeholder {
 }
 
 .indicator-shell-dynamic-island {
-  position: relative;
-  z-index: 1;
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  background: linear-gradient(180deg, rgba(3, 4, 6, 0.98), rgba(8, 11, 18, 0.97));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 16px 34px rgba(0, 0, 0, 0.34);
+  --indicator-dynamic-island-gap-width: 118px;
+  --indicator-dynamic-island-gap-height: 32px;
+  --indicator-dynamic-island-left-width: 116px;
+  --indicator-dynamic-island-right-width: 84px;
+  display: grid;
+  gap: 0.5rem;
+  align-items: start;
+  justify-items: start;
+  padding: 0;
+  min-width: 0;
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+  isolation: isolate;
+  box-shadow: none;
 }
 
 .indicator-shell-compact {
@@ -2406,7 +2417,7 @@ input::placeholder {
 }
 
 .indicator-shell-dynamic-island.indicator-shell-compact {
-  padding: 0.72rem 1.06rem 0.8rem;
+  padding: 0;
 }
 
 .indicator-shell-radial.indicator-shell-compact {
@@ -2427,7 +2438,8 @@ input::placeholder {
 }
 
 .indicator-shell-dynamic-island.indicator-shell-detail {
-  padding: 0.9rem 1.18rem 0.98rem;
+  padding: 0;
+  min-width: 0;
 }
 
 .indicator-shell-detail-width-compact {
@@ -2455,6 +2467,67 @@ input::placeholder {
 
 .indicator-row-detail {
   width: max-content;
+}
+
+.indicator-dynamic-island-row {
+  display: grid;
+  grid-template-columns:
+    var(--indicator-dynamic-island-left-width)
+    var(--indicator-dynamic-island-gap-width)
+    var(--indicator-dynamic-island-right-width);
+  align-items: start;
+  width: max-content;
+  min-width: 0;
+}
+
+.indicator-dynamic-island-row-no-timer {
+  grid-template-columns:
+    var(--indicator-dynamic-island-left-width)
+    var(--indicator-dynamic-island-gap-width);
+}
+
+.indicator-dynamic-island-pod {
+  min-height: var(--indicator-dynamic-island-gap-height);
+  border-radius: 999px;
+  background: rgba(2, 2, 3, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 28px rgba(0, 0, 0, 0.32);
+}
+
+.indicator-dynamic-island-pod-left {
+  width: var(--indicator-dynamic-island-left-width);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.62rem;
+  padding: 0.42rem 0.82rem;
+}
+
+.indicator-dynamic-island-pod-right {
+  width: var(--indicator-dynamic-island-right-width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.42rem 0.72rem;
+}
+
+.indicator-dynamic-island-gap {
+  width: var(--indicator-dynamic-island-gap-width);
+  min-height: var(--indicator-dynamic-island-gap-height);
+}
+
+.indicator-dynamic-island-tray {
+  width: 100%;
+  min-width: 0;
+  padding: 0.62rem 0.9rem 0.68rem;
+  border-radius: 18px;
+  background: rgba(2, 2, 3, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 28px rgba(0, 0, 0, 0.32);
 }
 
 .indicator-signal {
@@ -2558,6 +2631,12 @@ input::placeholder {
   justify-content: flex-start;
   overflow: hidden;
   align-items: flex-start;
+}
+
+.indicator-copy-live-dynamic {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
 }
 
 .indicator-timer {
@@ -3123,10 +3202,10 @@ input::placeholder {
   border: 1px solid var(--border);
 }
 
-[data-theme="light"] .indicator-shell-dynamic-island,
-[data-theme="light"] .indicator-shell-dynamic-island.indicator-shell-detail {
-  background: linear-gradient(180deg, rgba(3, 4, 6, 0.98), rgba(8, 11, 18, 0.97));
-  border-color: rgba(255, 255, 255, 0.04);
+[data-theme="light"] .indicator-dynamic-island-pod,
+[data-theme="light"] .indicator-dynamic-island-tray {
+  background: rgba(2, 2, 3, 0.98);
+  border-color: rgba(255, 255, 255, 0.05);
 }
 
 [data-theme="light"] .toggle-row-card {
