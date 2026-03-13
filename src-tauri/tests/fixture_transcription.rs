@@ -141,7 +141,7 @@ fn run_macos_ci_fixture(runtime: MacosFixtureRuntime) {
         PathBuf::from(std::env::var("WARBLE_MODEL_ROOT").expect("set WARBLE_MODEL_ROOT"));
 
     eprintln!(
-        "fixture start: runtime={} model_root={} wav_path={} expected_words={expected_words:?} ort_log_path={} ort_verbose={} ort_echo={} webgpu_timeout_ms={} ort_graph_opt={} ort_parallel_execution={} ort_memory_pattern={}",
+        "fixture start: runtime={} model_root={} wav_path={} expected_words={expected_words:?} ort_log_path={} ort_verbose={} ort_echo={} webgpu_timeout_ms={} ort_intra_threads={} ort_inter_threads={} ort_graph_opt={} ort_parallel_execution={} ort_memory_pattern={}",
         runtime.label(),
         model_root.display(),
         wav_path.display(),
@@ -152,6 +152,8 @@ fn run_macos_ci_fixture(runtime: MacosFixtureRuntime) {
         std::env::var("WARBLE_ECHO_ORT_LOGS").unwrap_or_else(|_| "unset".to_string()),
         std::env::var("WARBLE_MACOS_WEBGPU_LOAD_TIMEOUT_MS")
             .unwrap_or_else(|_| "unset".to_string()),
+        std::env::var("WARBLE_ORT_INTRA_THREADS").unwrap_or_else(|_| "unset".to_string()),
+        std::env::var("WARBLE_ORT_INTER_THREADS").unwrap_or_else(|_| "unset".to_string()),
         std::env::var("WARBLE_ORT_GRAPH_OPT_LEVEL").unwrap_or_else(|_| "unset".to_string()),
         std::env::var("WARBLE_ORT_PARALLEL_EXECUTION")
             .unwrap_or_else(|_| "unset".to_string()),

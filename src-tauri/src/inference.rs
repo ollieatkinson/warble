@@ -274,29 +274,7 @@ where
     F: FnOnce() -> Result<T> + Send + 'static,
 {
     let Some(timeout) = timeout else {
-        let started_at = Instant::now();
-        runtime::append_runtime_diagnostic(
-            "Inference provider load started",
-            format!(
-                "provider={} timeout_ms=none thread={:?}",
-                provider,
-                thread::current().id()
-            ),
-        );
-        let result = loader();
-        runtime::append_runtime_diagnostic(
-            "Inference provider load finished",
-            format!(
-                "provider={} timeout_ms=none elapsed_ms={} result={}",
-                provider,
-                started_at.elapsed().as_millis(),
-                match &result {
-                    Ok(_) => "ok".to_string(),
-                    Err(error) => format!("error={error}"),
-                }
-            ),
-        );
-        return result;
+        return load_provider_with_heartbeat(provider, loader);
     };
 
     #[cfg(target_os = "macos")]
@@ -502,6 +480,68 @@ where
     result
 }
 
+fn load_provider_with_heartbeat<T, F>(provider: InferenceProvider, loader: F) -> Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T> + Send + 'static,
+{
+    let (stop_sender, stop_receiver) = mpsc::channel::<()>();
+    let provider_name = provider.to_string();
+    let provider_name_for_watchdog = provider_name.clone();
+    let started_at = Instant::now();
+
+    runtime::append_runtime_diagnostic(
+        "Inference provider load heartbeat armed",
+        format!(
+            "provider={} timeout_ms=none heartbeat_ms={} caller_thread={:?}",
+            provider,
+            PROVIDER_LOAD_HEARTBEAT_INTERVAL.as_millis(),
+            thread::current().id()
+        ),
+    );
+
+    let watchdog = thread::spawn(move || loop {
+        match stop_receiver.recv_timeout(PROVIDER_LOAD_HEARTBEAT_INTERVAL) {
+            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => runtime::append_runtime_diagnostic(
+                "Inference provider load heartbeat",
+                format!(
+                    "provider={} elapsed_ms={} timeout_ms=none waiting_for_inline_loader=true interruptible=false",
+                    provider_name_for_watchdog,
+                    started_at.elapsed().as_millis()
+                ),
+            ),
+        }
+    });
+
+    runtime::append_runtime_diagnostic(
+        "Inference provider load started",
+        format!(
+            "provider={} timeout_ms=none thread={:?} mode=heartbeat-watchdog",
+            provider,
+            thread::current().id()
+        ),
+    );
+    let result = loader();
+    let elapsed = started_at.elapsed();
+    let _ = stop_sender.send(());
+    let _ = watchdog.join();
+    runtime::append_runtime_diagnostic(
+        "Inference provider load finished",
+        format!(
+            "provider={} timeout_ms=none elapsed_ms={} mode=heartbeat-watchdog result={}",
+            provider_name,
+            elapsed.as_millis(),
+            match &result {
+                Ok(_) => "ok".to_string(),
+                Err(error) => format!("error={error}"),
+            }
+        ),
+    );
+
+    result
+}
+
 pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
     let profile = execution_config_profile(provider);
     let execution_provider = match provider {
@@ -551,7 +591,7 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
 }
 
 pub(crate) fn execution_config_profile(provider: InferenceProvider) -> ExecutionConfigProfile {
-    match provider {
+    let mut profile = match provider {
         InferenceProvider::Directml => ExecutionConfigProfile {
             intra_threads: 4,
             inter_threads: 1,
@@ -565,7 +605,16 @@ pub(crate) fn execution_config_profile(provider: InferenceProvider) -> Execution
                 custom_configure: "none",
             }
         }
+    };
+
+    if let Some(threads) = env_intra_threads_override() {
+        profile.intra_threads = threads;
     }
+    if let Some(threads) = env_inter_threads_override() {
+        profile.inter_threads = threads;
+    }
+
+    profile
 }
 
 pub(crate) fn format_provider_list(providers: &[InferenceProvider]) -> String {
@@ -623,6 +672,12 @@ pub(crate) fn session_override_summary(provider: InferenceProvider) -> String {
             "graph_optimization=level1, parallel_execution=false, memory_pattern=false".to_string(),
         );
     }
+    if let Some(threads) = env_intra_threads_override() {
+        overrides.push(format!("intra_threads={threads}"));
+    }
+    if let Some(threads) = env_inter_threads_override() {
+        overrides.push(format!("inter_threads={threads}"));
+    }
     if let Some(level) = env_graph_optimization_level() {
         overrides.push(format!(
             "graph_optimization={}",
@@ -645,6 +700,8 @@ pub(crate) fn session_override_summary(provider: InferenceProvider) -> String {
 
 fn session_builder_override_requested(provider: InferenceProvider) -> bool {
     matches!(provider, InferenceProvider::Directml)
+        || env_intra_threads_override().is_some()
+        || env_inter_threads_override().is_some()
         || env_graph_optimization_level().is_some()
         || env_parallel_execution_override().is_some()
         || env_memory_pattern_override().is_some()
@@ -709,6 +766,18 @@ fn graph_optimization_level_label(
     }
 }
 
+fn env_intra_threads_override() -> Option<usize> {
+    std::env::var("WARBLE_ORT_INTRA_THREADS")
+        .ok()
+        .and_then(|value| parse_positive_usize_override(&value))
+}
+
+fn env_inter_threads_override() -> Option<usize> {
+    std::env::var("WARBLE_ORT_INTER_THREADS")
+        .ok()
+        .and_then(|value| parse_positive_usize_override(&value))
+}
+
 fn env_parallel_execution_override() -> Option<bool> {
     std::env::var("WARBLE_ORT_PARALLEL_EXECUTION")
         .ok()
@@ -727,6 +796,14 @@ fn parse_env_bool_override(value: &str) -> Option<bool> {
         "0" | "false" | "no" | "off" => Some(false),
         _ => None,
     }
+}
+
+fn parse_positive_usize_override(value: &str) -> Option<usize> {
+    value
+        .trim()
+        .parse::<usize>()
+        .ok()
+        .filter(|value| *value > 0)
 }
 
 #[cfg(test)]
@@ -993,6 +1070,15 @@ mod tests {
             ]),
             "CoreML, WebGPU, CPU"
         );
+    }
+
+    #[test]
+    fn parse_positive_usize_override_accepts_positive_numbers_only() {
+        assert_eq!(super::parse_positive_usize_override("1"), Some(1));
+        assert_eq!(super::parse_positive_usize_override(" 4 "), Some(4));
+        assert_eq!(super::parse_positive_usize_override("0"), None);
+        assert_eq!(super::parse_positive_usize_override("-1"), None);
+        assert_eq!(super::parse_positive_usize_override("abc"), None);
     }
 
     #[cfg(target_os = "macos")]

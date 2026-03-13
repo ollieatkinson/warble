@@ -47,7 +47,7 @@ pub(crate) fn configure_ort_diagnostics(app: &AppHandle) {
     append_runtime_diagnostic(
         "ONNX Runtime diagnostics configured",
         format!(
-            "log_path={} log_level={} log_verbosity={} echo_to_stderr={} env_ort_log={} env_verbose={} env_timeout_ms={} env_graph_opt={} env_parallel_execution={} env_memory_pattern={}",
+            "log_path={} log_level={} log_verbosity={} echo_to_stderr={} env_ort_log={} env_verbose={} env_timeout_ms={} env_intra_threads={} env_inter_threads={} env_graph_opt={} env_parallel_execution={} env_memory_pattern={}",
             ort_diagnostics_log_path()
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| "none".to_string()),
@@ -57,6 +57,10 @@ pub(crate) fn configure_ort_diagnostics(app: &AppHandle) {
             std::env::var("ORT_LOG").unwrap_or_else(|_| "unset".to_string()),
             env_flag("WARBLE_ENABLE_ORT_VERBOSE_LOGS"),
             std::env::var("WARBLE_MACOS_WEBGPU_LOAD_TIMEOUT_MS")
+                .unwrap_or_else(|_| "unset".to_string()),
+            std::env::var("WARBLE_ORT_INTRA_THREADS")
+                .unwrap_or_else(|_| "unset".to_string()),
+            std::env::var("WARBLE_ORT_INTER_THREADS")
                 .unwrap_or_else(|_| "unset".to_string()),
             std::env::var("WARBLE_ORT_GRAPH_OPT_LEVEL")
                 .unwrap_or_else(|_| "unset".to_string()),
