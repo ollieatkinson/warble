@@ -130,6 +130,9 @@ jobs:
           WARBLE_MODEL_ROOT: ${{ runner.temp }}/warble-fixture-models
           WARBLE_FIXTURE_WAV: ${{ runner.temp }}/warble-ci-fixture.wav
           WARBLE_EXPECTED_WORDS: hello from warble fixture
+          WARBLE_ORT_LOG_PATH: ${{ runner.temp }}/warble-onnxruntime-cpu.log
+          WARBLE_ENABLE_ORT_VERBOSE_LOGS: 1
+          WARBLE_ECHO_ORT_LOGS: 1
           RUST_BACKTRACE: 1
         run: |
           set -o pipefail
@@ -142,7 +145,9 @@ jobs:
           WARBLE_MODEL_ROOT: ${{ runner.temp }}/warble-fixture-models
           WARBLE_FIXTURE_WAV: ${{ runner.temp }}/warble-ci-fixture.wav
           WARBLE_EXPECTED_WORDS: hello from warble fixture
-          WARBLE_MACOS_WEBGPU_LOAD_TIMEOUT_MS: 120000
+          WARBLE_ORT_LOG_PATH: ${{ runner.temp }}/warble-onnxruntime-webgpu.log
+          WARBLE_ENABLE_ORT_VERBOSE_LOGS: 1
+          WARBLE_ECHO_ORT_LOGS: 1
           RUST_BACKTRACE: 1
         run: |
           set -o pipefail
@@ -157,6 +162,9 @@ jobs:
           WARBLE_FIXTURE_WAV: ${{ runner.temp }}/warble-ci-fixture.wav
           WARBLE_EXPECTED_WORDS: hello from warble fixture
           WARBLE_ENABLE_COREML_FIXTURE: 1
+          WARBLE_ORT_LOG_PATH: ${{ runner.temp }}/warble-onnxruntime-coreml.log
+          WARBLE_ENABLE_ORT_VERBOSE_LOGS: 1
+          WARBLE_ECHO_ORT_LOGS: 1
           RUST_BACKTRACE: 1
         run: |
           set -o pipefail
@@ -174,6 +182,9 @@ jobs:
             ${{ runner.temp }}/warble-macos-fixture-cpu.log
             ${{ runner.temp }}/warble-macos-fixture-webgpu.log
             ${{ runner.temp }}/warble-macos-fixture-coreml.log
+            ${{ runner.temp }}/warble-onnxruntime-cpu.log
+            ${{ runner.temp }}/warble-onnxruntime-webgpu.log
+            ${{ runner.temp }}/warble-onnxruntime-coreml.log
 
       - name: Run Tauri smoke build
         env:

@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use parakeet_rs::{Nemotron, ParakeetEOU};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use crate::inference;
 use crate::platform;
@@ -237,10 +238,7 @@ fn load_nemotron_runtime(
     load_with_selected_provider(
         platform::current_platform(),
         selected_provider,
-        move |provider| {
-            Nemotron::from_pretrained(&model_path, Some(inference::execution_config(provider)))
-                .map_err(|error| anyhow!("failed to load Nemotron streaming runtime: {error}"))
-        },
+        move |provider| load_nemotron_runtime_with_diagnostics(&model_path, provider),
     )
 }
 
@@ -253,10 +251,7 @@ fn load_eou_runtime(
     load_with_selected_provider(
         platform::current_platform(),
         selected_provider,
-        move |provider| {
-            ParakeetEOU::from_pretrained(&model_path, Some(inference::execution_config(provider)))
-                .map_err(|error| anyhow!("failed to load Parakeet EOU runtime: {error}"))
-        },
+        move |provider| load_eou_runtime_with_diagnostics(&model_path, provider),
     )
 }
 
@@ -308,6 +303,81 @@ fn summarize_streaming_model_dir(backend: StreamingPreviewBackend, model_path: &
         entries.len(),
         entry_preview
     )
+}
+
+fn load_nemotron_runtime_with_diagnostics(
+    model_path: &Path,
+    provider: crate::state::InferenceProvider,
+) -> Result<Nemotron> {
+    let profile = inference::execution_config_profile(provider);
+    runtime::append_runtime_diagnostic(
+        "Nemotron streaming runtime load started",
+        format!(
+            "provider={} model_path={} summary={} intra_threads={} inter_threads={} custom_configure={} note={}",
+            provider,
+            model_path.display(),
+            summarize_streaming_model_dir(StreamingPreviewBackend::Nemotron, model_path),
+            profile.intra_threads,
+            profile.inter_threads,
+            profile.custom_configure,
+            inference::provider_runtime_note(platform::current_platform(), provider).unwrap_or("none")
+        ),
+    );
+    let started_at = Instant::now();
+    let result = Nemotron::from_pretrained(model_path, Some(inference::execution_config(provider)))
+        .map_err(|error| anyhow!("failed to load Nemotron streaming runtime: {error}"));
+    runtime::append_runtime_diagnostic(
+        "Nemotron streaming runtime load finished",
+        format!(
+            "provider={} model_path={} elapsed_ms={} result={}",
+            provider,
+            model_path.display(),
+            started_at.elapsed().as_millis(),
+            match &result {
+                Ok(_) => "ok".to_string(),
+                Err(error) => format!("error={error}"),
+            }
+        ),
+    );
+    result
+}
+
+fn load_eou_runtime_with_diagnostics(
+    model_path: &Path,
+    provider: crate::state::InferenceProvider,
+) -> Result<ParakeetEOU> {
+    let profile = inference::execution_config_profile(provider);
+    runtime::append_runtime_diagnostic(
+        "Parakeet EOU runtime load started",
+        format!(
+            "provider={} model_path={} summary={} intra_threads={} inter_threads={} custom_configure={} note={}",
+            provider,
+            model_path.display(),
+            summarize_streaming_model_dir(StreamingPreviewBackend::Eou, model_path),
+            profile.intra_threads,
+            profile.inter_threads,
+            profile.custom_configure,
+            inference::provider_runtime_note(platform::current_platform(), provider).unwrap_or("none")
+        ),
+    );
+    let started_at = Instant::now();
+    let result =
+        ParakeetEOU::from_pretrained(model_path, Some(inference::execution_config(provider)))
+            .map_err(|error| anyhow!("failed to load Parakeet EOU runtime: {error}"));
+    runtime::append_runtime_diagnostic(
+        "Parakeet EOU runtime load finished",
+        format!(
+            "provider={} model_path={} elapsed_ms={} result={}",
+            provider,
+            model_path.display(),
+            started_at.elapsed().as_millis(),
+            match &result {
+                Ok(_) => "ok".to_string(),
+                Err(error) => format!("error={error}"),
+            }
+        ),
+    );
+    result
 }
 
 fn load_with_selected_provider<T>(

@@ -85,6 +85,7 @@ pub fn run() {
             }
         })
         .setup(move |app| {
+            runtime::configure_ort_diagnostics(app.handle());
             let runtime_error = runtime::ensure_ort_initialized().err();
             let persisted = load_persisted_state(app.handle());
             {
