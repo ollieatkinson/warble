@@ -10,8 +10,12 @@ const WINDOWS_RUNTIME_FILES: &[&str] = &[
     "dxil.dll",
 ];
 
+const MACOS_DAWN_BUNDLE_DIR: &str = "target/macos-dawn-bundle";
+const MACOS_DAWN_DYLIB: &str = "libwebgpu_dawn.dylib";
+
 fn main() {
     prepare_windows_ort_runtime_bundle_dir();
+    stage_macos_dawn_dylib();
     tauri_build::build();
     copy_windows_ort_runtime();
 }
@@ -146,5 +150,60 @@ fn runtime_dir_ready(path: &Path) -> bool {
     WINDOWS_RUNTIME_FILES
         .iter()
         .all(|file_name| path.join(file_name).exists())
+}
+
+fn stage_macos_dawn_dylib() {
+    if env::var("CARGO_CFG_TARGET_OS").ok().as_deref() != Some("macos") {
+        return;
+    }
+
+    let bundle_dir =
+        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap()).join(MACOS_DAWN_BUNDLE_DIR);
+    let _ = fs::create_dir_all(&bundle_dir);
+
+    // Tell the linker to add @executable_path/../Frameworks as an rpath so
+    // the app bundle can find libwebgpu_dawn.dylib at runtime.
+    println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../Frameworks");
+
+    if let Some(source) = find_macos_dawn_dylib() {
+        let destination = bundle_dir.join(MACOS_DAWN_DYLIB);
+        if let Err(error) = fs::copy(&source, &destination) {
+            println!(
+                "cargo:warning={} copy failed: {}",
+                MACOS_DAWN_DYLIB, error
+            );
+        }
+    } else {
+        println!(
+            "cargo:warning={} not found in build artifacts — WebGPU will not be available at runtime",
+            MACOS_DAWN_DYLIB
+        );
+    }
+}
+
+fn find_macos_dawn_dylib() -> Option<PathBuf> {
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR")?);
+    // Walk up from OUT_DIR to the target profile dir (e.g. target/debug)
+    let target_dir = out_dir.ancestors().nth(3)?;
+    let build_dir = target_dir.join("build");
+    let entries = fs::read_dir(&build_dir).ok()?;
+
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("ort-sys-") {
+            continue;
+        }
+
+        // Search common output locations within the ort-sys build dir
+        for sub in &["out/lib", "out", "lib"] {
+            let candidate = entry.path().join(sub).join(MACOS_DAWN_DYLIB);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    None
 }
 
