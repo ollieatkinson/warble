@@ -1,8 +1,10 @@
 use anyhow::{anyhow, bail, Context, Result};
 use parakeet_rs::{Parakeet, ParakeetTDT as LibraryParakeetTdt, TimestampMode, Transcriber};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use crate::inference;
+use crate::platform;
 use crate::runtime;
 use crate::state::InferenceProvider;
 
@@ -83,11 +85,7 @@ impl ParakeetTdt {
         let model_dir = model_dir.to_path_buf();
 
         let (provider, runtime) = inference::load_with_provider_fallback(move |provider| {
-            LibraryParakeetTdt::from_pretrained(
-                &model_dir,
-                Some(inference::execution_config(provider)),
-            )
-            .map_err(|error| anyhow!("failed to load Parakeet TDT runtime: {error}"))
+            load_tdt_runtime(&model_dir, provider)
         })?;
 
         Ok(Self { runtime, provider })
@@ -122,13 +120,7 @@ impl ParakeetTdt {
         let model_dir = model_dir.to_path_buf();
 
         let (provider, runtime) = inference::load_with_provider_fallback_and_observer(
-            move |provider| {
-                LibraryParakeetTdt::from_pretrained(
-                    &model_dir,
-                    Some(inference::execution_config(provider)),
-                )
-                .map_err(|error| anyhow!("failed to load Parakeet TDT runtime: {error}"))
-            },
+            move |provider| load_tdt_runtime(&model_dir, provider),
             observer,
         )?;
 
@@ -149,13 +141,7 @@ impl ParakeetTdt {
 
         let (provider, runtime) = inference::load_with_exact_provider_and_observer(
             provider,
-            move |provider| {
-                LibraryParakeetTdt::from_pretrained(
-                    &model_dir,
-                    Some(inference::execution_config(provider)),
-                )
-                .map_err(|error| anyhow!("failed to load Parakeet TDT runtime: {error}"))
-            },
+            move |provider| load_tdt_runtime(&model_dir, provider),
             observer,
         )?;
 
@@ -217,8 +203,7 @@ impl ParakeetCtc {
         let model_dir = model_dir.to_path_buf();
 
         let (provider, runtime) = inference::load_with_provider_fallback(move |provider| {
-            Parakeet::from_pretrained(&model_dir, Some(inference::execution_config(provider)))
-                .map_err(|error| anyhow!("failed to load Parakeet CTC runtime: {error}"))
+            load_ctc_runtime(&model_dir, provider)
         })?;
 
         Ok(Self { runtime, provider })
@@ -253,10 +238,7 @@ impl ParakeetCtc {
         let model_dir = model_dir.to_path_buf();
 
         let (provider, runtime) = inference::load_with_provider_fallback_and_observer(
-            move |provider| {
-                Parakeet::from_pretrained(&model_dir, Some(inference::execution_config(provider)))
-                    .map_err(|error| anyhow!("failed to load Parakeet CTC runtime: {error}"))
-            },
+            move |provider| load_ctc_runtime(&model_dir, provider),
             observer,
         )?;
 
@@ -277,10 +259,7 @@ impl ParakeetCtc {
 
         let (provider, runtime) = inference::load_with_exact_provider_and_observer(
             provider,
-            move |provider| {
-                Parakeet::from_pretrained(&model_dir, Some(inference::execution_config(provider)))
-                    .map_err(|error| anyhow!("failed to load Parakeet CTC runtime: {error}"))
-            },
+            move |provider| load_ctc_runtime(&model_dir, provider),
             observer,
         )?;
 
@@ -368,6 +347,75 @@ pub(crate) fn summarize_ctc_model_dir(model_dir: &Path) -> String {
             ("model_data", None, CTC_MODEL_DATA_CANDIDATES, true),
         ],
     )
+}
+
+fn load_tdt_runtime(model_dir: &Path, provider: InferenceProvider) -> Result<LibraryParakeetTdt> {
+    let profile = inference::execution_config_profile(provider);
+    runtime::append_runtime_diagnostic(
+        "Parakeet TDT runtime load started",
+        format!(
+            "provider={} model_dir={} summary={} intra_threads={} inter_threads={} custom_configure={} note={}",
+            provider,
+            model_dir.display(),
+            summarize_tdt_model_dir(model_dir),
+            profile.intra_threads,
+            profile.inter_threads,
+            profile.custom_configure,
+            inference::provider_runtime_note(platform::current_platform(), provider).unwrap_or("none")
+        ),
+    );
+    let started_at = Instant::now();
+    let result =
+        LibraryParakeetTdt::from_pretrained(model_dir, Some(inference::execution_config(provider)))
+            .map_err(|error| anyhow!("failed to load Parakeet TDT runtime: {error}"));
+    runtime::append_runtime_diagnostic(
+        "Parakeet TDT runtime load finished",
+        format!(
+            "provider={} model_dir={} elapsed_ms={} result={}",
+            provider,
+            model_dir.display(),
+            started_at.elapsed().as_millis(),
+            match &result {
+                Ok(_) => "ok".to_string(),
+                Err(error) => format!("error={error}"),
+            }
+        ),
+    );
+    result
+}
+
+fn load_ctc_runtime(model_dir: &Path, provider: InferenceProvider) -> Result<Parakeet> {
+    let profile = inference::execution_config_profile(provider);
+    runtime::append_runtime_diagnostic(
+        "Parakeet CTC runtime load started",
+        format!(
+            "provider={} model_dir={} summary={} intra_threads={} inter_threads={} custom_configure={} note={}",
+            provider,
+            model_dir.display(),
+            summarize_ctc_model_dir(model_dir),
+            profile.intra_threads,
+            profile.inter_threads,
+            profile.custom_configure,
+            inference::provider_runtime_note(platform::current_platform(), provider).unwrap_or("none")
+        ),
+    );
+    let started_at = Instant::now();
+    let result = Parakeet::from_pretrained(model_dir, Some(inference::execution_config(provider)))
+        .map_err(|error| anyhow!("failed to load Parakeet CTC runtime: {error}"));
+    runtime::append_runtime_diagnostic(
+        "Parakeet CTC runtime load finished",
+        format!(
+            "provider={} model_dir={} elapsed_ms={} result={}",
+            provider,
+            model_dir.display(),
+            started_at.elapsed().as_millis(),
+            match &result {
+                Ok(_) => "ok".to_string(),
+                Err(error) => format!("error={error}"),
+            }
+        ),
+    );
+    result
 }
 
 fn has_any_file(dir: &Path, candidates: &[&str]) -> bool {

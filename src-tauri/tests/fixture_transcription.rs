@@ -90,6 +90,45 @@ fn coreml_fixture_enabled() -> bool {
 }
 
 #[cfg(target_os = "macos")]
+fn ort_log_path() -> Option<PathBuf> {
+    std::env::var("WARBLE_ORT_LOG_PATH").ok().map(PathBuf::from)
+}
+
+#[cfg(target_os = "macos")]
+fn print_ort_log_tail(context: &str) {
+    let Some(path) = ort_log_path() else {
+        eprintln!(
+            "fixture ort log unavailable: context={context} reason=WARBLE_ORT_LOG_PATH unset"
+        );
+        return;
+    };
+
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        eprintln!(
+            "fixture ort log unavailable: context={context} path={} reason=read-failed",
+            path.display()
+        );
+        return;
+    };
+
+    let tail = contents
+        .lines()
+        .rev()
+        .take(80)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    eprintln!(
+        "fixture ort log tail start: context={context} path={}\n{}\nfixture ort log tail end",
+        path.display(),
+        tail
+    );
+}
+
+#[cfg(target_os = "macos")]
 fn run_macos_ci_fixture(runtime: MacosFixtureRuntime) {
     let wav_path = PathBuf::from(
         std::env::var("WARBLE_FIXTURE_WAV")
@@ -102,23 +141,47 @@ fn run_macos_ci_fixture(runtime: MacosFixtureRuntime) {
         PathBuf::from(std::env::var("WARBLE_MODEL_ROOT").expect("set WARBLE_MODEL_ROOT"));
 
     eprintln!(
-        "fixture start: runtime={} model_root={} wav_path={} expected_words={expected_words:?}",
+        "fixture start: runtime={} model_root={} wav_path={} expected_words={expected_words:?} ort_log_path={} ort_verbose={} ort_echo={} webgpu_timeout_ms={}",
         runtime.label(),
         model_root.display(),
-        wav_path.display()
+        wav_path.display(),
+        ort_log_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "unset".to_string()),
+        std::env::var("WARBLE_ENABLE_ORT_VERBOSE_LOGS").unwrap_or_else(|_| "unset".to_string()),
+        std::env::var("WARBLE_ECHO_ORT_LOGS").unwrap_or_else(|_| "unset".to_string()),
+        std::env::var("WARBLE_MACOS_WEBGPU_LOAD_TIMEOUT_MS")
+            .unwrap_or_else(|_| "unset".to_string())
     );
 
     let load_started = Instant::now();
     let mut model = match runtime {
-        MacosFixtureRuntime::Cpu => warble_lib::parakeet::ParakeetTdt::load_with_cpu(&model_root)
-            .expect("load cpu fixture model"),
+        MacosFixtureRuntime::Cpu => {
+            match warble_lib::parakeet::ParakeetTdt::load_with_cpu(&model_root) {
+                Ok(model) => model,
+                Err(error) => {
+                    print_ort_log_tail("load-cpu-failed");
+                    panic!("load cpu fixture model: {error}");
+                }
+            }
+        }
         MacosFixtureRuntime::Coreml => {
-            warble_lib::parakeet::ParakeetTdt::load_with_coreml(&model_root)
-                .expect("load coreml fixture model")
+            match warble_lib::parakeet::ParakeetTdt::load_with_coreml(&model_root) {
+                Ok(model) => model,
+                Err(error) => {
+                    print_ort_log_tail("load-coreml-failed");
+                    panic!("load coreml fixture model: {error}");
+                }
+            }
         }
         MacosFixtureRuntime::Webgpu => {
-            warble_lib::parakeet::ParakeetTdt::load_with_webgpu(&model_root)
-                .expect("load webgpu fixture model")
+            match warble_lib::parakeet::ParakeetTdt::load_with_webgpu(&model_root) {
+                Ok(model) => model,
+                Err(error) => {
+                    print_ort_log_tail("load-webgpu-failed");
+                    panic!("load webgpu fixture model: {error}");
+                }
+            }
         }
     };
     eprintln!(
@@ -128,9 +191,13 @@ fn run_macos_ci_fixture(runtime: MacosFixtureRuntime) {
     );
 
     let transcription_started = Instant::now();
-    let result = model
-        .transcribe_wav_path(&wav_path)
-        .expect("transcribe macOS CI fixture");
+    let result = match model.transcribe_wav_path(&wav_path) {
+        Ok(result) => result,
+        Err(error) => {
+            print_ort_log_tail("transcribe-failed");
+            panic!("transcribe macOS CI fixture: {error}");
+        }
+    };
     let score = word_match_score(&expected, &result);
 
     eprintln!(

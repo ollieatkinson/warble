@@ -5,12 +5,12 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::platform::PlatformKind;
-#[cfg(target_os = "windows")]
 use crate::runtime;
 use crate::state::{InferenceProvider, Settings};
 
 #[cfg(target_os = "macos")]
-const MACOS_WEBGPU_LOAD_TIMEOUT: Duration = Duration::from_secs(90);
+const MACOS_WEBGPU_LOAD_TIMEOUT: Duration = Duration::from_secs(20);
+const PROVIDER_LOAD_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 
 pub(crate) const MACOS_RUNTIME_MODEL_IDS: &[&str] = &[
     "parakeet",
@@ -274,24 +274,132 @@ where
     F: FnOnce() -> Result<T> + Send + 'static,
 {
     let Some(timeout) = timeout else {
-        return loader();
+        let started_at = Instant::now();
+        runtime::append_runtime_diagnostic(
+            "Inference provider load started",
+            format!(
+                "provider={} timeout_ms=none thread={:?}",
+                provider,
+                thread::current().id()
+            ),
+        );
+        let result = loader();
+        runtime::append_runtime_diagnostic(
+            "Inference provider load finished",
+            format!(
+                "provider={} timeout_ms=none elapsed_ms={} result={}",
+                provider,
+                started_at.elapsed().as_millis(),
+                match &result {
+                    Ok(_) => "ok".to_string(),
+                    Err(error) => format!("error={error}"),
+                }
+            ),
+        );
+        return result;
     };
 
     let (sender, receiver) = mpsc::channel();
     let provider_name = provider.to_string();
+    let provider_name_for_thread = provider_name.clone();
+    runtime::append_runtime_diagnostic(
+        "Inference provider load guard armed",
+        format!(
+            "provider={} timeout_ms={} heartbeat_ms={} caller_thread={:?}",
+            provider,
+            timeout.as_millis(),
+            PROVIDER_LOAD_HEARTBEAT_INTERVAL.as_millis(),
+            thread::current().id()
+        ),
+    );
     thread::spawn(move || {
-        let _ = sender.send(loader());
+        let started_at = Instant::now();
+        runtime::append_runtime_diagnostic(
+            "Inference provider background load started",
+            format!(
+                "provider={} worker_thread={:?}",
+                provider_name_for_thread,
+                thread::current().id()
+            ),
+        );
+        let result = loader();
+        let elapsed = started_at.elapsed();
+        let outcome = match &result {
+            Ok(_) => "ok".to_string(),
+            Err(error) => format!("error={error}"),
+        };
+        let delivered = sender.send(result).is_ok();
+        runtime::append_runtime_diagnostic(
+            "Inference provider background load finished",
+            format!(
+                "provider={} elapsed_ms={} delivered_to_waiter={} {}",
+                provider_name_for_thread,
+                elapsed.as_millis(),
+                delivered,
+                outcome
+            ),
+        );
     });
 
-    match receiver.recv_timeout(timeout) {
-        Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => Err(anyhow!(
-            "{provider_name} model load timed out after {}s",
-            timeout.as_secs()
-        )),
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(anyhow!(
-            "{provider_name} model load thread exited unexpectedly"
-        )),
+    let started_at = Instant::now();
+    loop {
+        let elapsed = started_at.elapsed();
+        let Some(remaining) = timeout.checked_sub(elapsed) else {
+            runtime::append_runtime_diagnostic(
+                "Inference provider load timed out",
+                format!(
+                    "provider={} elapsed_ms={} timeout_ms={}",
+                    provider_name,
+                    elapsed.as_millis(),
+                    timeout.as_millis()
+                ),
+            );
+            return Err(anyhow!(
+                "{provider_name} model load timed out after {}s",
+                timeout.as_secs()
+            ));
+        };
+        let wait_for = remaining.min(PROVIDER_LOAD_HEARTBEAT_INTERVAL);
+
+        match receiver.recv_timeout(wait_for) {
+            Ok(result) => return result,
+            Err(mpsc::RecvTimeoutError::Timeout) if started_at.elapsed() >= timeout => {
+                let elapsed = started_at.elapsed();
+                runtime::append_runtime_diagnostic(
+                    "Inference provider load timed out",
+                    format!(
+                        "provider={} elapsed_ms={} timeout_ms={}",
+                        provider_name,
+                        elapsed.as_millis(),
+                        timeout.as_millis()
+                    ),
+                );
+                return Err(anyhow!(
+                    "{provider_name} model load timed out after {}s",
+                    timeout.as_secs()
+                ));
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                runtime::append_runtime_diagnostic(
+                    "Inference provider load heartbeat",
+                    format!(
+                        "provider={} elapsed_ms={} timeout_ms={} waiting_for_background_loader=true",
+                        provider_name,
+                        started_at.elapsed().as_millis(),
+                        timeout.as_millis()
+                    ),
+                );
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                runtime::append_runtime_diagnostic(
+                    "Inference provider load thread disconnected",
+                    format!("provider={} before_result=true", provider_name),
+                );
+                return Err(anyhow!(
+                    "{provider_name} model load thread exited unexpectedly"
+                ));
+            }
+        }
     }
 }
 
@@ -330,23 +438,12 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
             }
         }
     };
-    let needs_directml_tuning = matches!(provider, InferenceProvider::Directml);
     let config = ExecutionConfig::new()
         .with_execution_provider(execution_provider)
         .with_intra_threads(profile.intra_threads)
         .with_inter_threads(profile.inter_threads);
 
-    if needs_directml_tuning {
-        config.with_custom_configure(move |builder| {
-            let builder = builder
-                .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
-            Ok(builder
-                .with_parallel_execution(false)?
-                .with_memory_pattern(false)?)
-        })
-    } else {
-        config
-    }
+    config.with_custom_configure(move |builder| configure_session_builder(builder, provider))
 }
 
 pub(crate) fn execution_config_profile(provider: InferenceProvider) -> ExecutionConfigProfile {
@@ -355,13 +452,13 @@ pub(crate) fn execution_config_profile(provider: InferenceProvider) -> Execution
             intra_threads: 4,
             inter_threads: 1,
             custom_configure:
-                "graph_optimization=level1, parallel_execution=false, memory_pattern=false",
+                "session_logging + graph_optimization=level1, parallel_execution=false, memory_pattern=false",
         },
         InferenceProvider::Cpu | InferenceProvider::Coreml | InferenceProvider::Webgpu => {
             ExecutionConfigProfile {
                 intra_threads: 4,
                 inter_threads: 1,
-                custom_configure: "none",
+                custom_configure: "session_logging",
             }
         }
     }
@@ -388,7 +485,7 @@ pub(crate) fn provider_runtime_note(
             "parakeet-rs 0.3.4 does not include the issue #51 CoreML `.with_subgraphs(true)` patch and does not expose the MLProgram knob discussed in the ym2132 write-up, so Warble can only request the stock CoreML EP path.",
         ),
         (PlatformKind::Macos, InferenceProvider::Webgpu) => Some(
-            "Warble keeps macOS WebGPU aligned with parakeet-rs defaults: WebGPU EP, intra_threads=4, inter_threads=1, no extra SessionBuilder override. The app adds a configurable load timeout guard because ONNX Runtime can stall during adapter/session startup.",
+            "Warble keeps macOS WebGPU aligned with parakeet-rs defaults for execution settings: WebGPU EP, intra_threads=4, inter_threads=1. The only extra SessionBuilder hooks are diagnostic logging and the app-side load-timeout guard so hangs produce useful bug reports.",
         ),
         _ if provider.is_accelerated() => Some(
             "parakeet-rs registers CPU after the requested accelerator, so unsupported nodes may still execute on CPU inside ONNX Runtime.",
@@ -413,6 +510,26 @@ pub(crate) fn provider_failure_hint(
         ),
         _ => None,
     }
+}
+
+fn configure_session_builder(
+    builder: ort::session::builder::SessionBuilder,
+    provider: InferenceProvider,
+) -> ort::Result<ort::session::builder::SessionBuilder> {
+    let builder = builder
+        .with_logger(runtime::ort_logger())?
+        .with_log_level(runtime::ort_log_level())?
+        .with_log_verbosity(runtime::ort_log_verbosity())?;
+
+    if matches!(provider, InferenceProvider::Directml) {
+        let builder = builder
+            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
+        return Ok(builder
+            .with_parallel_execution(false)?
+            .with_memory_pattern(false)?);
+    }
+
+    Ok(builder)
 }
 
 #[cfg(test)]
