@@ -53,8 +53,8 @@ windows = { version = "0.61", features = [
 ] }
 
 [target."cfg(target_os = \"macos\")".dependencies]
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["coreml", "webgpu"] }
-parakeet-rs = { version = "0.3.4", default-features = false, features = ["coreml", "webgpu"] }
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["coreml"] }
+parakeet-rs = { version = "0.3.4", default-features = false, features = ["coreml"] }
 block2 = "0.6.2"
 core-graphics = "0.24"
 libc = "0.2"
@@ -63,8 +63,6 @@ objc2-av-foundation = { version = "0.3.2", features = ["AVCaptureDevice", "AVMed
 objc2-core-graphics = { version = "0.3.2", features = ["CGEvent"] }
 
 [target."cfg(target_os = \"linux\")".dependencies]
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic"] }
-parakeet-rs = { version = "0.3.4", default-features = false, features = ["load-dynamic"] }
 x11 = { version = "2.21", features = ["xlib", "xtest"] }
 
 [dev-dependencies]
