@@ -10,7 +10,7 @@ use crate::runtime;
 use crate::state::{InferenceProvider, Settings};
 
 #[cfg(target_os = "macos")]
-const MACOS_WEBGPU_LOAD_TIMEOUT: Duration = Duration::from_secs(20);
+const MACOS_WEBGPU_LOAD_TIMEOUT: Duration = Duration::from_secs(90);
 
 pub(crate) const MACOS_RUNTIME_MODEL_IDS: &[&str] = &[
     "parakeet",
@@ -247,11 +247,21 @@ where
 fn provider_load_timeout(provider: InferenceProvider) -> Option<Duration> {
     #[cfg(target_os = "macos")]
     if matches!(provider, InferenceProvider::Webgpu) {
-        return Some(MACOS_WEBGPU_LOAD_TIMEOUT);
+        return Some(macos_webgpu_load_timeout());
     }
 
     let _ = provider;
     None
+}
+
+#[cfg(target_os = "macos")]
+fn macos_webgpu_load_timeout() -> Duration {
+    std::env::var("WARBLE_MACOS_WEBGPU_LOAD_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|millis| *millis > 0)
+        .map(Duration::from_millis)
+        .unwrap_or(MACOS_WEBGPU_LOAD_TIMEOUT)
 }
 
 fn load_provider_with_optional_timeout<T, F>(
@@ -378,7 +388,7 @@ pub(crate) fn provider_runtime_note(
             "parakeet-rs 0.3.4 does not include the issue #51 CoreML `.with_subgraphs(true)` patch and does not expose the MLProgram knob discussed in the ym2132 write-up, so Warble can only request the stock CoreML EP path.",
         ),
         (PlatformKind::Macos, InferenceProvider::Webgpu) => Some(
-            "Warble keeps macOS WebGPU aligned with parakeet-rs defaults: WebGPU EP, intra_threads=4, inter_threads=1, no extra SessionBuilder override.",
+            "Warble keeps macOS WebGPU aligned with parakeet-rs defaults: WebGPU EP, intra_threads=4, inter_threads=1, no extra SessionBuilder override. The app adds a configurable load timeout guard because ONNX Runtime can stall during adapter/session startup.",
         ),
         _ if provider.is_accelerated() => Some(
             "parakeet-rs registers CPU after the requested accelerator, so unsupported nodes may still execute on CPU inside ONNX Runtime.",

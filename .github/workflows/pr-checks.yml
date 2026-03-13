@@ -142,6 +142,7 @@ jobs:
           WARBLE_MODEL_ROOT: ${{ runner.temp }}/warble-fixture-models
           WARBLE_FIXTURE_WAV: ${{ runner.temp }}/warble-ci-fixture.wav
           WARBLE_EXPECTED_WORDS: hello from warble fixture
+          WARBLE_MACOS_WEBGPU_LOAD_TIMEOUT_MS: 120000
           RUST_BACKTRACE: 1
         run: |
           set -o pipefail
