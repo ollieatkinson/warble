@@ -36,7 +36,10 @@ collect_diagnostics() {
     top -l 1 -stats pid,command,state,cpu,mem,time -o cpu >"$top_file" 2>&1 || true
   fi
 
-  mapfile -t pids < <(
+  local pids=()
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] && pids+=("$pid")
+  done < <(
     {
       echo "$root_pid"
       pgrep -P "$root_pid" || true
