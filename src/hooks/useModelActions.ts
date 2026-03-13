@@ -5,6 +5,7 @@ import {
   downloadCatalogModel as downloadCatalogModelCommand,
   removeCatalogModel as removeCatalogModelCommand,
 } from "../lib/tauriApi";
+import type { MacosModelRuntimePreference } from "../types";
 import type {
   DraftRef,
   SettingsUpdateSender,
@@ -122,10 +123,36 @@ export function useModelActions({
     }
   }
 
+  async function chooseMacosModelRuntime(
+    modelId: string,
+    runtime: MacosModelRuntimePreference,
+  ) {
+    if (!snapshot) {
+      return;
+    }
+
+    const nextPreferences = { ...snapshot.settings.macosModelRuntimePreferences };
+    if (runtime === "cpu") {
+      delete nextPreferences[modelId];
+    } else {
+      nextPreferences[modelId] = runtime;
+    }
+
+    clearMessage();
+    try {
+      await sendSettingsUpdate({
+        macosModelRuntimePreferences: nextPreferences,
+      });
+    } catch (error) {
+      showError(error);
+    }
+  }
+
   return {
     activateModel,
     downloadCatalogModel,
     removeCatalogModel,
     openModelReference,
+    chooseMacosModelRuntime,
   };
 }

@@ -142,6 +142,7 @@ export function useControlApp({
     downloadCatalogModel,
     removeCatalogModel,
     openModelReference,
+    chooseMacosModelRuntime,
   } = useModelActions({
     ...actionContext,
     draftRef,
@@ -248,6 +249,7 @@ export function useControlApp({
     chooseDefaultModel: activateModel,
     chooseLivePreviewModel: (value: SettingsDraft["livePreviewModel"]) =>
       applySettings({ livePreviewModel: value }),
+    chooseMacosModelRuntime,
     activateModel,
     downloadCatalogModel,
     removeCatalogModel,

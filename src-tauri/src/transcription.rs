@@ -224,6 +224,17 @@ fn load_transcriber_engine(
         MODEL_LOAD_HEARTBEAT_INTERVAL,
     );
 
+    let selected_provider = crate::inference::selected_provider_for_model(
+        platform::current_platform(),
+        settings,
+        &crate::inference::supported_acceleration_providers(),
+        settings.selected_model_id.as_str(),
+    );
+    let explicit_provider_selection = crate::inference::uses_explicit_provider_selection(
+        platform::current_platform(),
+        settings.selected_model_id.as_str(),
+    );
+
     match settings.selected_model_kind {
         TranscriptionModelKind::Parakeet => {
             let model = if let Some(path) = resolved_selected_model_path(settings) {
@@ -239,14 +250,34 @@ fn load_transcriber_engine(
                             path.display()
                         ),
                     );
-                    parakeet::ParakeetTdt::load_from_dir_with_observer(&path, {
-                        let app = app.clone();
-                        let model_name = model_name.to_string();
-                        let model_kind = model_kind.to_string();
-                        move |event| {
-                            append_provider_load_event(&app, &model_name, &model_kind, event)
-                        }
-                    })?
+                    if explicit_provider_selection {
+                        parakeet::ParakeetTdt::load_from_dir_with_provider_and_observer(
+                            &path,
+                            selected_provider,
+                            {
+                                let app = app.clone();
+                                let model_name = model_name.to_string();
+                                let model_kind = model_kind.to_string();
+                                move |event| {
+                                    append_provider_load_event(
+                                        &app,
+                                        &model_name,
+                                        &model_kind,
+                                        event,
+                                    )
+                                }
+                            },
+                        )?
+                    } else {
+                        parakeet::ParakeetTdt::load_from_dir_with_observer(&path, {
+                            let app = app.clone();
+                            let model_name = model_name.to_string();
+                            let model_kind = model_kind.to_string();
+                            move |event| {
+                                append_provider_load_event(&app, &model_name, &model_kind, event)
+                            }
+                        })?
+                    }
                 } else {
                     let model_dir = path.join(parakeet::MODEL_ID);
                     append_transcription_log(
@@ -260,14 +291,34 @@ fn load_transcriber_engine(
                             model_dir.display()
                         ),
                     );
-                    parakeet::ParakeetTdt::load_with_observer(&path, {
-                        let app = app.clone();
-                        let model_name = model_name.to_string();
-                        let model_kind = model_kind.to_string();
-                        move |event| {
-                            append_provider_load_event(&app, &model_name, &model_kind, event)
-                        }
-                    })?
+                    if explicit_provider_selection {
+                        parakeet::ParakeetTdt::load_with_provider_and_observer(
+                            &path,
+                            selected_provider,
+                            {
+                                let app = app.clone();
+                                let model_name = model_name.to_string();
+                                let model_kind = model_kind.to_string();
+                                move |event| {
+                                    append_provider_load_event(
+                                        &app,
+                                        &model_name,
+                                        &model_kind,
+                                        event,
+                                    )
+                                }
+                            },
+                        )?
+                    } else {
+                        parakeet::ParakeetTdt::load_with_observer(&path, {
+                            let app = app.clone();
+                            let model_name = model_name.to_string();
+                            let model_kind = model_kind.to_string();
+                            move |event| {
+                                append_provider_load_event(&app, &model_name, &model_kind, event)
+                            }
+                        })?
+                    }
                 }
             } else {
                 let model_root = model_root_dir(app)?;
@@ -283,12 +334,29 @@ fn load_transcriber_engine(
                         model_dir.display()
                     ),
                 );
-                parakeet::ParakeetTdt::load_with_observer(&model_root, {
-                    let app = app.clone();
-                    let model_name = model_name.to_string();
-                    let model_kind = model_kind.to_string();
-                    move |event| append_provider_load_event(&app, &model_name, &model_kind, event)
-                })?
+                if explicit_provider_selection {
+                    parakeet::ParakeetTdt::load_with_provider_and_observer(
+                        &model_root,
+                        selected_provider,
+                        {
+                            let app = app.clone();
+                            let model_name = model_name.to_string();
+                            let model_kind = model_kind.to_string();
+                            move |event| {
+                                append_provider_load_event(&app, &model_name, &model_kind, event)
+                            }
+                        },
+                    )?
+                } else {
+                    parakeet::ParakeetTdt::load_with_observer(&model_root, {
+                        let app = app.clone();
+                        let model_name = model_name.to_string();
+                        let model_kind = model_kind.to_string();
+                        move |event| {
+                            append_provider_load_event(&app, &model_name, &model_kind, event)
+                        }
+                    })?
+                }
             };
             Ok(TranscriberEngine::Parakeet(model))
         }
@@ -307,12 +375,29 @@ fn load_transcriber_engine(
                         model_path.display()
                     ),
                 );
-                parakeet::ParakeetCtc::load_from_dir_with_observer(&model_path, {
-                    let app = app.clone();
-                    let model_name = model_name.to_string();
-                    let model_kind = model_kind.to_string();
-                    move |event| append_provider_load_event(&app, &model_name, &model_kind, event)
-                })?
+                if explicit_provider_selection {
+                    parakeet::ParakeetCtc::load_from_dir_with_provider_and_observer(
+                        &model_path,
+                        selected_provider,
+                        {
+                            let app = app.clone();
+                            let model_name = model_name.to_string();
+                            let model_kind = model_kind.to_string();
+                            move |event| {
+                                append_provider_load_event(&app, &model_name, &model_kind, event)
+                            }
+                        },
+                    )?
+                } else {
+                    parakeet::ParakeetCtc::load_from_dir_with_observer(&model_path, {
+                        let app = app.clone();
+                        let model_name = model_name.to_string();
+                        let model_kind = model_kind.to_string();
+                        move |event| {
+                            append_provider_load_event(&app, &model_name, &model_kind, event)
+                        }
+                    })?
+                }
             } else {
                 let model_dir = model_path.join(parakeet::CTC_MODEL_ID);
                 append_transcription_log(
@@ -326,12 +411,29 @@ fn load_transcriber_engine(
                         model_dir.display()
                     ),
                 );
-                parakeet::ParakeetCtc::load_with_observer(&model_path, {
-                    let app = app.clone();
-                    let model_name = model_name.to_string();
-                    let model_kind = model_kind.to_string();
-                    move |event| append_provider_load_event(&app, &model_name, &model_kind, event)
-                })?
+                if explicit_provider_selection {
+                    parakeet::ParakeetCtc::load_with_provider_and_observer(
+                        &model_path,
+                        selected_provider,
+                        {
+                            let app = app.clone();
+                            let model_name = model_name.to_string();
+                            let model_kind = model_kind.to_string();
+                            move |event| {
+                                append_provider_load_event(&app, &model_name, &model_kind, event)
+                            }
+                        },
+                    )?
+                } else {
+                    parakeet::ParakeetCtc::load_with_observer(&model_path, {
+                        let app = app.clone();
+                        let model_name = model_name.to_string();
+                        let model_kind = model_kind.to_string();
+                        move |event| {
+                            append_provider_load_event(&app, &model_name, &model_kind, event)
+                        }
+                    })?
+                }
             };
             Ok(TranscriberEngine::ParakeetCtc(model))
         }

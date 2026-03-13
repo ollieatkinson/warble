@@ -163,6 +163,7 @@ export function ControlApp({
     clearHistory,
     chooseDefaultModel,
     chooseLivePreviewModel,
+    chooseMacosModelRuntime,
     activateModel,
     downloadCatalogModel,
     removeCatalogModel,
@@ -307,6 +308,9 @@ export function ControlApp({
               onChooseDefaultModel={chooseDefaultModel}
               onChooseLivePreviewModel={(value) => {
                 void chooseLivePreviewModel(value);
+              }}
+              onChooseModelRuntime={(modelId, runtime) => {
+                void chooseMacosModelRuntime(modelId, runtime);
               }}
               onActivateModel={(row) => activateModel(row.id)}
               onDownloadCatalogModel={(row) => downloadCatalogModel(row.id)}

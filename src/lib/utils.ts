@@ -198,6 +198,8 @@ export function formatSystemProfile(profile: SystemProfile) {
 
 export function formatAccelerationProvider(provider: AccelerationProvider) {
   switch (provider) {
+    case "coreml":
+      return "CoreML";
     case "directml":
       return "DirectML";
     case "webgpu":
@@ -220,6 +222,8 @@ export function formatAccelerationProviders(
 
 export function formatInferenceProvider(provider: InferenceProvider) {
   switch (provider) {
+    case "coreml":
+      return "CoreML";
     case "directml":
       return "DirectML";
     case "webgpu":

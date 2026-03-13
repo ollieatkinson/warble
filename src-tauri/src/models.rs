@@ -7,8 +7,10 @@ use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 use crate::constants::{PARAKEET_CTC_AUDIO_LIMIT_MS, PARAKEET_TDT_AUDIO_LIMIT_MS};
+use crate::inference;
 use crate::model_catalog::{catalog_download_spec, CatalogDownloadFile, CatalogDownloadSpec};
 use crate::parakeet;
+use crate::platform;
 use crate::state::{
     LivePreviewModelPreference, ModelDownloadProgress, ModelPathInspection, ModelStatus, Settings,
     SharedState, TranscriptionModelKind,
@@ -133,16 +135,25 @@ pub(crate) fn choose_fallback_model_selection(app: &AppHandle, settings: &mut Se
 }
 
 pub(crate) fn selected_model_cache_key(settings: &Settings) -> String {
+    let provider = inference::selected_provider_for_model(
+        platform::current_platform(),
+        settings,
+        &inference::supported_acceleration_providers(),
+        settings.selected_model_id.as_str(),
+    )
+    .to_string()
+    .to_ascii_lowercase();
+
     match settings.selected_model_kind {
         TranscriptionModelKind::Parakeet => format!(
-            "parakeet:{}",
+            "parakeet:{}:{provider}",
             resolved_selected_model_path(settings)
                 .as_deref()
                 .unwrap_or("builtin")
                 .to_ascii_lowercase()
         ),
         TranscriptionModelKind::ParakeetCtc => format!(
-            "parakeet-ctc:{}",
+            "parakeet-ctc:{}:{provider}",
             resolved_selected_model_path(settings)
                 .as_deref()
                 .unwrap_or("missing")
@@ -637,7 +648,15 @@ mod tests {
     fn selected_model_cache_key_parakeet_builtin() {
         let settings = Settings::default();
         let key = selected_model_cache_key(&settings);
-        assert_eq!(key, "parakeet:builtin");
+        let provider = inference::selected_provider_for_model(
+            platform::current_platform(),
+            &settings,
+            &inference::supported_acceleration_providers(),
+            settings.selected_model_id.as_str(),
+        )
+        .to_string()
+        .to_ascii_lowercase();
+        assert_eq!(key, format!("parakeet:builtin:{provider}"));
     }
 
     #[test]
@@ -651,16 +670,40 @@ mod tests {
         let mut settings = Settings::default();
         settings.selected_model_path = Some(path_str.clone());
         let key = selected_model_cache_key(&settings);
-        assert!(key.starts_with("parakeet:"), "key should start with parakeet: got {key}");
-        assert!(!key.ends_with("builtin"), "key should not be builtin when path is set: {key}");
+        let provider = inference::selected_provider_for_model(
+            platform::current_platform(),
+            &settings,
+            &inference::supported_acceleration_providers(),
+            settings.selected_model_id.as_str(),
+        )
+        .to_string()
+        .to_ascii_lowercase();
+        assert!(
+            key.starts_with("parakeet:"),
+            "key should start with parakeet: got {key}"
+        );
+        assert!(
+            !key.starts_with(&format!("parakeet:builtin:{provider}")),
+            "key should not be builtin when path is set: {key}"
+        );
+        assert!(key.ends_with(&format!(":{provider}")));
     }
 
     #[test]
     fn selected_model_cache_key_ctc_without_path() {
         let mut settings = Settings::default();
+        settings.selected_model_id = "parakeet-ctc".to_string();
         settings.selected_model_kind = TranscriptionModelKind::ParakeetCtc;
         let key = selected_model_cache_key(&settings);
-        assert_eq!(key, "parakeet-ctc:missing");
+        let provider = inference::selected_provider_for_model(
+            platform::current_platform(),
+            &settings,
+            &inference::supported_acceleration_providers(),
+            settings.selected_model_id.as_str(),
+        )
+        .to_string()
+        .to_ascii_lowercase();
+        assert_eq!(key, format!("parakeet-ctc:missing:{provider}"));
     }
 
     #[test]

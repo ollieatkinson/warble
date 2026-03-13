@@ -2,8 +2,12 @@ export type RecordingMode = "hold" | "toggle";
 export type AppPhase = "idle" | "recording" | "transcribing" | "error";
 export type ModelStatus = "ready" | "missing";
 export type TranscriptionModelKind = "parakeet" | "parakeet-ctc";
-export type InferenceProvider = "cpu" | "directml" | "webgpu";
+export type InferenceProvider = "cpu" | "coreml" | "directml" | "webgpu";
 export type AccelerationProvider = Exclude<InferenceProvider, "cpu">;
+export type MacosModelRuntimePreference = Extract<
+  InferenceProvider,
+  "cpu" | "coreml"
+>;
 export type CaptureSourceKind = "microphone" | "file";
 export type PlatformKind = "windows" | "macos" | "linux";
 export type AutoPasteSupport = "active-app" | "clipboard-only";
@@ -75,6 +79,7 @@ export type Settings = {
   selectedModelKind: TranscriptionModelKind;
   selectedModelPath: string | null;
   installedModelPaths: Record<string, string>;
+  macosModelRuntimePreferences: Record<string, MacosModelRuntimePreference>;
   cleanupEnabled: boolean;
   cleanupTerms: string[];
   replacementRules: ReplacementRule[];

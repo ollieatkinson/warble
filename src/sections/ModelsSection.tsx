@@ -33,10 +33,31 @@ import type {
   ButtonFeedbackState,
   ChoiceOption,
   LivePreviewModel,
+  MacosModelRuntimePreference,
   ModelDownloadProgress,
   ModelRow,
   Snapshot,
 } from "../types";
+
+const MACOS_RUNTIME_MODEL_IDS = new Set([
+  "parakeet",
+  "parakeet-ctc",
+  "parakeet-eou",
+  "nemotron-streaming",
+]);
+
+const MACOS_RUNTIME_OPTIONS: ChoiceOption[] = [
+  {
+    id: "cpu",
+    label: "CPU",
+    description: "Default on macOS and the most stable path today.",
+  },
+  {
+    id: "coreml",
+    label: "CoreML (Experimental)",
+    description: "Uses Apple’s runtime path for this model only.",
+  },
+];
 
 function featureIcon(icon: "spark" | "cpu" | "bolt" | "users" | "clock") {
   switch (icon) {
@@ -139,6 +160,42 @@ function ModelDownloadProgressMeta({
   );
 }
 
+function ModelRuntimeControl({
+  row,
+  snapshot,
+  onChooseModelRuntime,
+}: {
+  row: ModelRow;
+  snapshot: Snapshot;
+  onChooseModelRuntime: (
+    modelId: string,
+    runtime: MacosModelRuntimePreference,
+  ) => void | Promise<void>;
+}) {
+  if (
+    snapshot.platform !== "macos" ||
+    !MACOS_RUNTIME_MODEL_IDS.has(row.id)
+  ) {
+    return null;
+  }
+
+  const selectedRuntime =
+    snapshot.settings.macosModelRuntimePreferences[row.id] ?? "cpu";
+
+  return (
+    <div className="model-runtime-field">
+      <ChoiceDropdown
+        label="Runtime"
+        value={selectedRuntime}
+        options={MACOS_RUNTIME_OPTIONS}
+        onChange={(value) => {
+          void onChooseModelRuntime(row.id, value as MacosModelRuntimePreference);
+        }}
+      />
+    </div>
+  );
+}
+
 function BatchModelRow({
   row,
   snapshot,
@@ -147,6 +204,7 @@ function BatchModelRow({
   onDownloadCatalogModel,
   onRemoveCatalogModel,
   onOpenModelReference,
+  onChooseModelRuntime,
 }: {
   row: ModelRow;
   snapshot: Snapshot;
@@ -155,6 +213,10 @@ function BatchModelRow({
   onDownloadCatalogModel: (row: ModelRow) => void | Promise<void>;
   onRemoveCatalogModel: (row: ModelRow) => void | Promise<void>;
   onOpenModelReference: (row: ModelRow) => void | Promise<void>;
+  onChooseModelRuntime: (
+    modelId: string,
+    runtime: MacosModelRuntimePreference,
+  ) => void | Promise<void>;
 }) {
   const fit = describeHardwareFit(row, snapshot.systemProfile);
   const downloadProgress = snapshot.modelDownloads[row.id];
@@ -195,6 +257,11 @@ function BatchModelRow({
 
       <div className="model-list-side">
         <span className="model-list-stat">{fit.label}</span>
+        <ModelRuntimeControl
+          row={row}
+          snapshot={snapshot}
+          onChooseModelRuntime={onChooseModelRuntime}
+        />
         <div className="model-row-actions">
           {row.active ? null : row.selectable ? (
             <button className="secondary small" onClick={() => void onActivateModel(row)}>
@@ -246,6 +313,7 @@ function StreamingModelRow({
   onDownloadCatalogModel,
   onRemoveCatalogModel,
   onOpenModelReference,
+  onChooseModelRuntime,
 }: {
   row: ModelRow;
   snapshot: Snapshot;
@@ -255,6 +323,10 @@ function StreamingModelRow({
   onDownloadCatalogModel: (row: ModelRow) => void | Promise<void>;
   onRemoveCatalogModel: (row: ModelRow) => void | Promise<void>;
   onOpenModelReference: (row: ModelRow) => void | Promise<void>;
+  onChooseModelRuntime: (
+    modelId: string,
+    runtime: MacosModelRuntimePreference,
+  ) => void | Promise<void>;
 }) {
   const fit = describeHardwareFit(row, snapshot.systemProfile);
   const isEffective = effectiveLivePreviewModelId === row.id;
@@ -298,6 +370,11 @@ function StreamingModelRow({
 
       <div className="model-list-side">
         <span className="model-list-stat">{fit.label}</span>
+        <ModelRuntimeControl
+          row={row}
+          snapshot={snapshot}
+          onChooseModelRuntime={onChooseModelRuntime}
+        />
         <div className="model-row-actions">
           <ModelDownloadAction
             row={row}
@@ -348,6 +425,7 @@ export function ModelsSection({
   buttonFeedback,
   onChooseDefaultModel,
   onChooseLivePreviewModel,
+  onChooseModelRuntime,
   onActivateModel,
   onDownloadCatalogModel,
   onRemoveCatalogModel,
@@ -365,6 +443,10 @@ export function ModelsSection({
   buttonFeedback: Record<string, ButtonFeedbackState>;
   onChooseDefaultModel: (value: string) => void | Promise<void>;
   onChooseLivePreviewModel: (value: LivePreviewModel) => void | Promise<void>;
+  onChooseModelRuntime: (
+    modelId: string,
+    runtime: MacosModelRuntimePreference,
+  ) => void | Promise<void>;
   onActivateModel: (row: ModelRow) => void | Promise<void>;
   onDownloadCatalogModel: (row: ModelRow) => void | Promise<void>;
   onRemoveCatalogModel: (row: ModelRow) => void | Promise<void>;
@@ -449,7 +531,9 @@ export function ModelsSection({
               }}
             />
             <p className="model-decision-note">
-              TDT v3 is the long-form batch option here at about 24 minutes per pass; CTC stays on a shorter 10 minute soft pass.
+              {snapshot.platform === "macos"
+                ? "TDT v3 is the long-form batch option here at about 24 minutes per pass; CTC stays on a shorter 10 minute soft pass. On macOS, each Parakeet-backed model defaults to CPU and can be opted into experimental CoreML below."
+                : "TDT v3 is the long-form batch option here at about 24 minutes per pass; CTC stays on a shorter 10 minute soft pass."}
             </p>
           </div>
 
@@ -467,7 +551,9 @@ export function ModelsSection({
               }}
             />
             <p className="model-decision-note">
-              Auto prefers Nemotron when it is installed, otherwise Realtime EOU.
+              {snapshot.platform === "macos"
+                ? "Auto prefers Nemotron when it is installed, otherwise Realtime EOU. Runtime is configured per model below, not globally."
+                : "Auto prefers Nemotron when it is installed, otherwise Realtime EOU."}
             </p>
 
             <div className="feature-unlock-list">
@@ -527,6 +613,7 @@ export function ModelsSection({
                 onDownloadCatalogModel={onDownloadCatalogModel}
                 onRemoveCatalogModel={onRemoveCatalogModel}
                 onOpenModelReference={onOpenModelReference}
+                onChooseModelRuntime={onChooseModelRuntime}
               />
             ))}
           </div>
@@ -555,6 +642,7 @@ export function ModelsSection({
                 onDownloadCatalogModel={onDownloadCatalogModel}
                 onRemoveCatalogModel={onRemoveCatalogModel}
                 onOpenModelReference={onOpenModelReference}
+                onChooseModelRuntime={onChooseModelRuntime}
               />
             ))}
           </div>

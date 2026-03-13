@@ -240,6 +240,7 @@ describe("formatSystemProfile", () => {
 
 describe("formatAccelerationProvider", () => {
   it("maps known providers", () => {
+    expect(formatAccelerationProvider("coreml")).toBe("CoreML");
     expect(formatAccelerationProvider("directml")).toBe("DirectML");
     expect(formatAccelerationProvider("webgpu")).toBe("WebGPU");
   });
@@ -256,14 +257,15 @@ describe("formatAccelerationProviders", () => {
   });
 
   it("joins multiple providers", () => {
-    expect(formatAccelerationProviders(["directml", "webgpu"])).toBe(
-      "DirectML + WebGPU",
+    expect(formatAccelerationProviders(["directml", "coreml", "webgpu"])).toBe(
+      "DirectML + CoreML + WebGPU",
     );
   });
 });
 
 describe("formatInferenceProvider", () => {
   it.each([
+    ["coreml", "CoreML"],
     ["directml", "DirectML"],
     ["webgpu", "WebGPU"],
     ["cpu", "CPU"],
