@@ -507,7 +507,8 @@ mod tests {
             PlatformKind::Windows,
             InferenceProvider::Directml
         ));
-        assert!(allow_streaming_provider_fallback(
+        // Linux defaults to CPU — no fallback needed from CPU itself.
+        assert!(!allow_streaming_provider_fallback(
             PlatformKind::Linux,
             InferenceProvider::Cpu
         ));

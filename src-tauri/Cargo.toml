@@ -63,6 +63,10 @@ objc2-av-foundation = { version = "0.3.2", features = ["AVCaptureDevice", "AVMed
 objc2-core-graphics = { version = "0.3.2", features = ["CGEvent"] }
 
 [target."cfg(target_os = \"linux\")".dependencies]
+# load-dynamic avoids statically linking ort-sys, which requires glibc 2.38+
+# (the bundled ORT references __isoc23_strtoll). Linux defaults to CPU at runtime.
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic"] }
+parakeet-rs = { version = "0.3.4", default-features = false, features = ["load-dynamic"] }
 x11 = { version = "2.21", features = ["xlib", "xtest"] }
 
 [dev-dependencies]
