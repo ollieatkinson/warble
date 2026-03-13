@@ -34,7 +34,7 @@ const MODEL_CATALOG: Array<
     summary:
       "Multilingual long-form offline dictation model for final microphone and file transcription.",
     note:
-      "Warble uses parakeet-rs for this model. Windows prefers DirectML, Linux prefers WebGPU, and macOS defaults to CPU with optional experimental CoreML per model. In-app chunking treats TDT v3 as the long-form batch option.",
+      "Warble uses parakeet-rs for this model. Windows prefers DirectML, Linux prefers WebGPU, and macOS defaults to CPU with optional experimental CoreML or WebGPU per model. The upstream parakeet-rs guidance still treats CoreML as unstable for Parakeet on Apple. In-app chunking treats TDT v3 as the long-form batch option.",
     bestFor: "Long-form multilingual dictation",
     capabilities: ["TDT decoder", "Auto language detection", "Token timestamps"],
     featureBadges: [
@@ -80,7 +80,7 @@ const MODEL_CATALOG: Array<
     summary:
       "English-first Parakeet variant aimed at fast offline transcription with punctuation and capitalization.",
     note:
-      "Uses the same parakeet-rs runtime path as TDT, but with a CTC decoder and English-focused ONNX export. Windows can use DirectML, Linux can use WebGPU, and macOS stays on CPU unless you opt this model into experimental CoreML.",
+      "Uses the same parakeet-rs runtime path as TDT, but with a CTC decoder and English-focused ONNX export. Windows can use DirectML, Linux can use WebGPU, and macOS stays on CPU unless you opt this model into experimental CoreML or WebGPU.",
     bestFor: "English punctuation-heavy offline transcription",
     capabilities: ["CTC decoding", "Punctuation and caps", "Word timestamps"],
     featureBadges: [
@@ -129,7 +129,7 @@ const MODEL_CATALOG: Array<
     summary:
       "Lightweight streaming ASR model with end-of-utterance detection for low-latency voice UX.",
     note:
-      "The best candidate for a low-latency live transcript path, with DirectML on Windows, WebGPU on Linux, and CPU by default on macOS unless you opt this model into experimental CoreML.",
+      "The best candidate for a low-latency live transcript path, with DirectML on Windows, WebGPU on Linux, and CPU by default on macOS unless you opt this model into experimental CoreML or WebGPU.",
     bestFor: "Low-latency live dictation",
     capabilities: ["EOU detection", "160 ms chunking", "Stateful streaming"],
     unlockedFeatures: ["Live transcript", "Low-latency preview", "Long-form guidance"],
@@ -177,7 +177,7 @@ const MODEL_CATALOG: Array<
     summary:
       "English streaming model with punctuation-oriented decoding and a cache-aware inference path.",
     note:
-      "A stronger live transcript candidate than the batch models when you want cleaner punctuation, with DirectML on Windows, WebGPU on Linux, and CPU by default on macOS unless you opt this model into experimental CoreML.",
+      "A stronger live transcript candidate than the batch models when you want cleaner punctuation, with DirectML on Windows, WebGPU on Linux, and CPU by default on macOS unless you opt this model into experimental CoreML or WebGPU.",
     bestFor: "Streaming English transcription with punctuation",
     capabilities: ["Cache-aware streaming", "Punctuation-friendly", "Batch + stream capable"],
     unlockedFeatures: ["Live transcript", "Punctuated live transcript", "Long-form guidance"],
@@ -224,7 +224,7 @@ function macosRuntimeHelperText(platform: Snapshot["platform"], modelId: string)
     return null;
   }
 
-  return "On macOS, this model stays on CPU by default. You can switch it to experimental CoreML below.";
+  return "On macOS, this model stays on CPU by default. You can switch it to experimental CoreML or WebGPU below.";
 }
 
 function withMacosRuntimeHelper(

@@ -98,11 +98,11 @@ describe("buildModelRows", () => {
     expect(ctc.state).toBe("downloadable");
   });
 
-  it("adds the macOS CPU/CoreML helper note to Parakeet-backed rows", () => {
+  it("adds the macOS CPU/CoreML/WebGPU helper note to Parakeet-backed rows", () => {
     const snapshot = createSnapshot({
       platform: "macos",
       systemProfile: createSystemProfile({
-        supportedAccelerationProviders: ["coreml"],
+        supportedAccelerationProviders: ["coreml", "webgpu"],
       }),
     });
 
@@ -111,6 +111,7 @@ describe("buildModelRows", () => {
 
     expect(parakeet.note).toContain("CPU by default");
     expect(parakeet.note).toContain("experimental CoreML");
+    expect(parakeet.note).toContain("WebGPU");
   });
 });
 

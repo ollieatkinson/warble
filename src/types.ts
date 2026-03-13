@@ -6,7 +6,7 @@ export type InferenceProvider = "cpu" | "coreml" | "directml" | "webgpu";
 export type AccelerationProvider = Exclude<InferenceProvider, "cpu">;
 export type MacosModelRuntimePreference = Extract<
   InferenceProvider,
-  "cpu" | "coreml"
+  "cpu" | "coreml" | "webgpu"
 >;
 export type CaptureSourceKind = "microphone" | "file";
 export type PlatformKind = "windows" | "macos" | "linux";

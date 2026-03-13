@@ -292,6 +292,16 @@ describe("formatCaptureInput", () => {
 describe("buildSupportReport", () => {
   it("includes source selection and diagnostic events", () => {
     const snapshot = createSnapshot({
+      platform: "macos",
+      systemProfile: createSystemProfile({
+        supportedAccelerationProviders: ["coreml", "webgpu"],
+      }),
+      settings: createSettings({
+        macosModelRuntimePreferences: {
+          parakeet: "webgpu",
+          "nemotron-streaming": "coreml",
+        },
+      }),
       phase: "transcribing",
       statusMessage: "Working",
       errorMessage: "Disk busy",
@@ -317,12 +327,16 @@ describe("buildSupportReport", () => {
     const report = buildSupportReport(snapshot);
 
     expect(report).toContain("Warble support report");
-    expect(report).toContain("Platform: windows");
+    expect(report).toContain("Platform: macos");
     expect(report).toContain("Phase: transcribing");
     expect(report).toContain("Status: Working");
     expect(report).toContain("Error: Disk busy");
     expect(report).toContain("Source: Built-in Microphone (48 kHz \u00B7 2 ch)");
     expect(report).toContain("Model: parakeet (parakeet)");
+    expect(report).toContain("Supported acceleration providers: CoreML + WebGPU");
+    expect(report).toContain("Selected batch runtime: WebGPU");
+    expect(report).toContain("Configured macOS runtimes: parakeet=WebGPU");
+    expect(report).toContain("nemotron-streaming=CoreML");
     expect(report).toContain("Buffered samples: 2048");
     expect(report).toContain("Backend: nemotron");
     expect(report).toContain("- Mic selected");
@@ -357,6 +371,9 @@ describe("buildSupportReport", () => {
 
     expect(report).toContain("Error: None");
     expect(report).toContain("Source: None");
+    expect(report).toContain("Supported acceleration providers: DirectML");
+    expect(report).toContain("Selected batch runtime: Platform default");
+    expect(report).toContain("Configured macOS runtimes: Not applicable");
     expect(report).toContain("Detail: None");
     expect(report).toContain("Input: Unknown input");
     expect(report).toContain("Source: Unknown");

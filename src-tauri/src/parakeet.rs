@@ -16,6 +16,11 @@ const TDT_ENCODER_CANDIDATES: &[&str] = &[
     "encoder-model.int8.onnx",
     "encoder.onnx",
 ];
+const TDT_ENCODER_DATA_CANDIDATES: &[&str] = &[
+    "encoder-model.onnx.data",
+    "encoder-model.int8.onnx.data",
+    "encoder.onnx.data",
+];
 const TDT_DECODER_CANDIDATES: &[&str] = &[
     "decoder_joint-model.onnx",
     "decoder_joint-model.int8.onnx",
@@ -27,6 +32,12 @@ const CTC_MODEL_CANDIDATES: &[&str] = &[
     "model_fp16.onnx",
     "model_int8.onnx",
     "model_q4.onnx",
+];
+const CTC_MODEL_DATA_CANDIDATES: &[&str] = &[
+    "model.onnx_data",
+    "model_fp16.onnx_data",
+    "model_int8.onnx_data",
+    "model_q4.onnx_data",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +55,23 @@ impl ParakeetTdt {
     pub fn load(model_root: &Path) -> Result<Self> {
         let model_dir = model_root.join(MODEL_ID);
         Self::load_from_dir(&model_dir)
+    }
+
+    pub fn load_with_cpu(model_root: &Path) -> Result<Self> {
+        let model_dir = model_root.join(MODEL_ID);
+        Self::load_from_dir_with_exact_provider(&model_dir, InferenceProvider::Cpu)
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn load_with_coreml(model_root: &Path) -> Result<Self> {
+        let model_dir = model_root.join(MODEL_ID);
+        Self::load_from_dir_with_exact_provider(&model_dir, InferenceProvider::Coreml)
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    pub fn load_with_webgpu(model_root: &Path) -> Result<Self> {
+        let model_dir = model_root.join(MODEL_ID);
+        Self::load_from_dir_with_exact_provider(&model_dir, InferenceProvider::Webgpu)
     }
 
     pub fn load_from_dir(model_dir: &Path) -> Result<Self> {
@@ -132,6 +160,13 @@ impl ParakeetTdt {
         )?;
 
         Ok(Self { runtime, provider })
+    }
+
+    fn load_from_dir_with_exact_provider(
+        model_dir: &Path,
+        provider: InferenceProvider,
+    ) -> Result<Self> {
+        Self::load_from_dir_with_provider_and_observer(model_dir, provider, |_| {})
     }
 
     pub fn transcribe_audio(&mut self, audio: &[f32]) -> Result<String> {
@@ -312,10 +347,117 @@ pub fn detect_model_dir(root: &Path) -> Option<(TranscriptionFamily, PathBuf)> {
     None
 }
 
+pub(crate) fn summarize_tdt_model_dir(model_dir: &Path) -> String {
+    summarize_model_dir(
+        model_dir,
+        model_ready_in_dir(model_dir),
+        &[
+            ("vocab", Some("vocab.txt"), &[][..], false),
+            ("encoder", None, TDT_ENCODER_CANDIDATES, false),
+            ("encoder_data", None, TDT_ENCODER_DATA_CANDIDATES, true),
+            ("decoder", None, TDT_DECODER_CANDIDATES, false),
+        ],
+    )
+}
+
+pub(crate) fn summarize_ctc_model_dir(model_dir: &Path) -> String {
+    summarize_model_dir(
+        model_dir,
+        ctc_model_ready_in_dir(model_dir),
+        &[
+            ("tokenizer", Some("tokenizer.json"), &[][..], false),
+            ("model", None, CTC_MODEL_CANDIDATES, false),
+            ("model_data", None, CTC_MODEL_DATA_CANDIDATES, true),
+        ],
+    )
+}
+
 fn has_any_file(dir: &Path, candidates: &[&str]) -> bool {
     candidates
         .iter()
         .any(|filename| dir.join(filename).exists())
+}
+
+fn summarize_model_dir(
+    model_dir: &Path,
+    ready: bool,
+    probes: &[(&str, Option<&str>, &[&str], bool)],
+) -> String {
+    let entries = std::fs::read_dir(model_dir)
+        .ok()
+        .map(|iter| {
+            let mut names = iter
+                .filter_map(|entry| entry.ok())
+                .filter_map(|entry| entry.file_name().into_string().ok())
+                .collect::<Vec<_>>();
+            names.sort();
+            names
+        })
+        .unwrap_or_default();
+
+    let entry_preview = if entries.is_empty() {
+        "none".to_string()
+    } else {
+        entries
+            .iter()
+            .take(8)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    let probe_summary = probes
+        .iter()
+        .map(|(label, exact, candidates, optional)| {
+            let matched = exact
+                .and_then(|name| model_dir.join(name).exists().then_some(name.to_string()))
+                .or_else(|| {
+                    candidates.iter().find_map(|name| {
+                        model_dir.join(name).exists().then_some((*name).to_string())
+                    })
+                });
+
+            match matched {
+                Some(name) => {
+                    let size = std::fs::metadata(model_dir.join(&name))
+                        .ok()
+                        .map(|metadata| format_byte_count(metadata.len()))
+                        .unwrap_or_else(|| "size-unknown".to_string());
+                    format!("{label}={name}({size})")
+                }
+                None if *optional => format!("{label}=none"),
+                None => format!("{label}=missing"),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    format!(
+        "exists={} ready={} entry_count={} entries=[{}] {}",
+        model_dir.exists(),
+        ready,
+        entries.len(),
+        entry_preview,
+        probe_summary
+    )
+}
+
+fn format_byte_count(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+
+    let bytes_f64 = bytes as f64;
+    if bytes_f64 >= GB {
+        return format!("{:.1}GB", bytes_f64 / GB);
+    }
+    if bytes_f64 >= MB {
+        return format!("{:.1}MB", bytes_f64 / MB);
+    }
+    if bytes_f64 >= KB {
+        return format!("{:.1}KB", bytes_f64 / KB);
+    }
+    format!("{bytes}B")
 }
 
 fn normalize_output_text(text: &str) -> String {

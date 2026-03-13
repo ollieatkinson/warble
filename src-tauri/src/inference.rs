@@ -36,6 +36,13 @@ pub(crate) enum ProviderLoadEvent {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ExecutionConfigProfile {
+    pub(crate) intra_threads: usize,
+    pub(crate) inter_threads: usize,
+    pub(crate) custom_configure: &'static str,
+}
+
 pub(crate) fn supported_acceleration_providers() -> Vec<InferenceProvider> {
     #[cfg(target_os = "windows")]
     let platform = PlatformKind::Windows;
@@ -155,7 +162,7 @@ fn supported_acceleration_providers_for_platform(
     match platform {
         PlatformKind::Windows if directml_available => vec![InferenceProvider::Directml],
         PlatformKind::Windows => Vec::new(),
-        PlatformKind::Macos => vec![InferenceProvider::Coreml],
+        PlatformKind::Macos => vec![InferenceProvider::Coreml, InferenceProvider::Webgpu],
         PlatformKind::Linux => vec![InferenceProvider::Webgpu],
     }
 }
@@ -279,6 +286,7 @@ where
 }
 
 pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
+    let profile = execution_config_profile(provider);
     let execution_provider = match provider {
         InferenceProvider::Cpu => LibraryExecutionProvider::Cpu,
         InferenceProvider::Coreml => {
@@ -313,17 +321,10 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
         }
     };
     let needs_directml_tuning = matches!(provider, InferenceProvider::Directml);
-    #[cfg(target_os = "macos")]
-    let needs_webgpu_serialization = matches!(provider, InferenceProvider::Webgpu);
-    #[cfg(not(target_os = "macos"))]
-    let needs_webgpu_serialization = false;
-
-    let intra_threads = if needs_webgpu_serialization { 1 } else { 4 };
-
     let config = ExecutionConfig::new()
         .with_execution_provider(execution_provider)
-        .with_intra_threads(intra_threads)
-        .with_inter_threads(1);
+        .with_intra_threads(profile.intra_threads)
+        .with_inter_threads(profile.inter_threads);
 
     if needs_directml_tuning {
         config.with_custom_configure(move |builder| {
@@ -333,18 +334,74 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
                 .with_parallel_execution(false)?
                 .with_memory_pattern(false)?)
         })
-    } else if needs_webgpu_serialization {
-        config.with_custom_configure(move |builder| {
-            // macOS WebGPU currently has upstream Dawn/Metal concurrency bugs.
-            // Keep the GPU path, but avoid expensive session-planning paths on Apple.
-            let builder = builder
-                .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
-            Ok(builder
-                .with_parallel_execution(false)?
-                .with_memory_pattern(false)?)
-        })
     } else {
         config
+    }
+}
+
+pub(crate) fn execution_config_profile(provider: InferenceProvider) -> ExecutionConfigProfile {
+    match provider {
+        InferenceProvider::Directml => ExecutionConfigProfile {
+            intra_threads: 4,
+            inter_threads: 1,
+            custom_configure:
+                "graph_optimization=level1, parallel_execution=false, memory_pattern=false",
+        },
+        InferenceProvider::Cpu | InferenceProvider::Coreml | InferenceProvider::Webgpu => {
+            ExecutionConfigProfile {
+                intra_threads: 4,
+                inter_threads: 1,
+                custom_configure: "none",
+            }
+        }
+    }
+}
+
+pub(crate) fn format_provider_list(providers: &[InferenceProvider]) -> String {
+    if providers.is_empty() {
+        return "none".to_string();
+    }
+
+    providers
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+pub(crate) fn provider_runtime_note(
+    platform: PlatformKind,
+    provider: InferenceProvider,
+) -> Option<&'static str> {
+    match (platform, provider) {
+        (PlatformKind::Macos, InferenceProvider::Coreml) => Some(
+            "parakeet-rs 0.3.4 does not include the issue #51 CoreML `.with_subgraphs(true)` patch and does not expose the MLProgram knob discussed in the ym2132 write-up, so Warble can only request the stock CoreML EP path.",
+        ),
+        (PlatformKind::Macos, InferenceProvider::Webgpu) => Some(
+            "Warble keeps macOS WebGPU aligned with parakeet-rs defaults: WebGPU EP, intra_threads=4, inter_threads=1, no extra SessionBuilder override.",
+        ),
+        _ if provider.is_accelerated() => Some(
+            "parakeet-rs registers CPU after the requested accelerator, so unsupported nodes may still execute on CPU inside ONNX Runtime.",
+        ),
+        _ => None,
+    }
+}
+
+pub(crate) fn provider_failure_hint(
+    platform: PlatformKind,
+    provider: InferenceProvider,
+) -> Option<&'static str> {
+    match (platform, provider) {
+        (PlatformKind::Macos, InferenceProvider::Coreml) => Some(
+            "CoreML is still unstable for Parakeet on Apple. parakeet-rs issue #51 reports excessive graph partitioning, high unsupported-node counts, and repeated 'Context leak detected, CoreAnalytics returned false' warnings. The linked ym2132 write-up also calls out MLProgram as relevant, but parakeet-rs 0.3.4 neither exposes that setting nor includes the unmerged `.with_subgraphs(true)` patch from PR #51.",
+        ),
+        (PlatformKind::Macos, InferenceProvider::Webgpu) => Some(
+            "WebGPU on Apple goes through ONNX Runtime's Dawn/Metal path. If this times out or hangs, capture the timeout, GPU model, and whether any provider-finished event appeared.",
+        ),
+        (PlatformKind::Linux, InferenceProvider::Webgpu) => Some(
+            "WebGPU is still experimental for Parakeet. Capture the adapter/runtime error and whether CPU fallback succeeded.",
+        ),
+        _ => None,
     }
 }
 
@@ -390,7 +447,7 @@ mod tests {
     fn supported_acceleration_providers_match_platform_policy() {
         assert_eq!(
             super::supported_acceleration_providers_for_platform(PlatformKind::Macos, false),
-            vec![InferenceProvider::Coreml]
+            vec![InferenceProvider::Coreml, InferenceProvider::Webgpu]
         );
         assert_eq!(
             super::supported_acceleration_providers_for_platform(PlatformKind::Linux, false),
@@ -420,6 +477,18 @@ mod tests {
     }
 
     #[test]
+    fn preferred_order_keeps_acceleration_before_cpu_on_windows() {
+        let order = super::preferred_inference_providers_for_platform(
+            PlatformKind::Windows,
+            &[InferenceProvider::Directml],
+        );
+        assert_eq!(
+            order,
+            vec![InferenceProvider::Directml, InferenceProvider::Cpu]
+        );
+    }
+
+    #[test]
     fn load_with_provider_order_first_success_skips_rest() {
         let order = [InferenceProvider::Directml, InferenceProvider::Cpu];
         let (provider, value) = load_with_provider_order(&order, |provider| match provider {
@@ -439,6 +508,22 @@ mod tests {
         let order = [InferenceProvider::Webgpu, InferenceProvider::Cpu];
         let result = load_with_provider_order(&order, |_| Err::<(), _>(anyhow::anyhow!("fail")));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn load_with_preferred_provider_then_cpu_retries_cpu_after_directml_failure() {
+        let (provider, value) =
+            super::load_with_preferred_provider_then_cpu(InferenceProvider::Directml, |provider| {
+                match provider {
+                    InferenceProvider::Directml => Err(anyhow::anyhow!("directml failed")),
+                    InferenceProvider::Cpu => Ok("cpu-ok"),
+                    InferenceProvider::Coreml | InferenceProvider::Webgpu => unreachable!(),
+                }
+            })
+            .expect("cpu fallback should succeed");
+
+        assert_eq!(provider, InferenceProvider::Cpu);
+        assert_eq!(value, "cpu-ok");
     }
 
     #[test]
@@ -520,22 +605,22 @@ mod tests {
         let mut settings = Settings::default();
         settings
             .macos_model_runtime_preferences
-            .insert("parakeet".to_string(), MacosModelRuntimePreference::Coreml);
+            .insert("parakeet".to_string(), MacosModelRuntimePreference::Webgpu);
 
         assert_eq!(
             super::selected_provider_for_model(
                 PlatformKind::Macos,
                 &settings,
-                &[InferenceProvider::Coreml],
+                &[InferenceProvider::Coreml, InferenceProvider::Webgpu],
                 "parakeet",
             ),
-            InferenceProvider::Coreml
+            InferenceProvider::Webgpu
         );
         assert_eq!(
             super::selected_provider_for_model(
                 PlatformKind::Macos,
                 &settings,
-                &[InferenceProvider::Coreml],
+                &[InferenceProvider::Coreml, InferenceProvider::Webgpu],
                 "parakeet-ctc",
             ),
             InferenceProvider::Cpu
@@ -557,12 +642,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn format_provider_list_formats_empty_and_multiple_lists() {
+        assert_eq!(super::format_provider_list(&[]), "none");
+        assert_eq!(
+            super::format_provider_list(&[
+                InferenceProvider::Coreml,
+                InferenceProvider::Webgpu,
+                InferenceProvider::Cpu,
+            ]),
+            "CoreML, WebGPU, CPU"
+        );
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
-    fn macos_webgpu_config_uses_serial_execution() {
+    fn macos_webgpu_config_matches_upstream_defaults() {
         let config = super::execution_config(InferenceProvider::Webgpu);
-        assert_eq!(config.intra_threads, 1);
+        assert_eq!(config.intra_threads, 4);
         assert_eq!(config.inter_threads, 1);
-        assert!(config.configure.is_some());
+        assert!(config.configure.is_none());
     }
 }

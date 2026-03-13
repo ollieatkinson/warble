@@ -137,7 +137,7 @@ describe("ModelsSection", () => {
       createSnapshot({
         platform: "macos",
         systemProfile: createSystemProfile({
-          supportedAccelerationProviders: ["coreml"],
+          supportedAccelerationProviders: ["coreml", "webgpu"],
         }),
       }),
     );
@@ -164,7 +164,7 @@ describe("ModelsSection", () => {
       createSnapshot({
         platform: "macos",
         systemProfile: createSystemProfile({
-          supportedAccelerationProviders: ["coreml"],
+          supportedAccelerationProviders: ["coreml", "webgpu"],
         }),
         settings: {
           macosModelRuntimePreferences: {
@@ -188,12 +188,12 @@ describe("ModelsSection", () => {
     await user.click(within(parakeetRow!).getByRole("button", { name: "CPU" }));
     await user.click(
       within(parakeetRow!).getByRole("button", {
-        name: /CoreML \(Experimental\)/,
+        name: /WebGPU \(Experimental\)/,
       }),
     );
 
     expect(onChooseModelRuntime).toHaveBeenCalledTimes(1);
-    expect(onChooseModelRuntime).toHaveBeenCalledWith("parakeet", "coreml");
+    expect(onChooseModelRuntime).toHaveBeenCalledWith("parakeet", "webgpu");
     expect(
       within(nemotronRow!).getByRole("button", {
         name: "CoreML (Experimental)",

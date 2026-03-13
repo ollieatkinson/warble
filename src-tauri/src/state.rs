@@ -76,6 +76,7 @@ pub(crate) enum MacosModelRuntimePreference {
     #[default]
     Cpu,
     Coreml,
+    Webgpu,
 }
 
 impl From<MacosModelRuntimePreference> for InferenceProvider {
@@ -83,6 +84,7 @@ impl From<MacosModelRuntimePreference> for InferenceProvider {
         match value {
             MacosModelRuntimePreference::Cpu => Self::Cpu,
             MacosModelRuntimePreference::Coreml => Self::Coreml,
+            MacosModelRuntimePreference::Webgpu => Self::Webgpu,
         }
     }
 }
@@ -786,6 +788,10 @@ mod tests {
         settings
             .macos_model_runtime_preferences
             .insert("parakeet".to_string(), MacosModelRuntimePreference::Coreml);
+        settings.macos_model_runtime_preferences.insert(
+            "nemotron-streaming".to_string(),
+            MacosModelRuntimePreference::Webgpu,
+        );
         let json = serde_json::to_string(&settings).expect("serialize");
         let deserialized: Settings = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(deserialized.hold_shortcut, settings.hold_shortcut);
@@ -866,10 +872,16 @@ mod tests {
 
     #[test]
     fn macos_model_runtime_preference_serde_round_trip() {
-        let json = serde_json::to_string(&MacosModelRuntimePreference::Coreml).unwrap();
-        assert_eq!(json, "\"coreml\"");
-        let back: MacosModelRuntimePreference = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, MacosModelRuntimePreference::Coreml);
+        for (value, expected_json) in [
+            (MacosModelRuntimePreference::Cpu, "\"cpu\""),
+            (MacosModelRuntimePreference::Coreml, "\"coreml\""),
+            (MacosModelRuntimePreference::Webgpu, "\"webgpu\""),
+        ] {
+            let json = serde_json::to_string(&value).unwrap();
+            assert_eq!(json, expected_json);
+            let back: MacosModelRuntimePreference = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, value);
+        }
     }
 
     #[test]
