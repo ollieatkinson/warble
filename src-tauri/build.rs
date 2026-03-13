@@ -173,10 +173,11 @@ fn stage_macos_dawn_dylib() {
                 MACOS_DAWN_DYLIB, error
             );
         } else {
-            // Re-sign with ad-hoc identity so the dylib's signature doesn't
-            // clash with the app's team ID at launch.
+            // Strip any existing signature so it doesn't clash with the app's
+            // team ID. The Tauri bundler re-signs all frameworks with the real
+            // APPLE_CERTIFICATE identity during `tauri build`.
             let _ = std::process::Command::new("codesign")
-                .args(["--force", "--sign", "-", destination.to_str().unwrap_or("")])
+                .args(["--remove-signature", destination.to_str().unwrap_or("")])
                 .status();
         }
     } else {
