@@ -185,21 +185,31 @@ fn find_macos_dawn_dylib() -> Option<PathBuf> {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR")?);
     // Walk up from OUT_DIR to the target profile dir (e.g. target/debug)
     let target_dir = out_dir.ancestors().nth(3)?;
-    let build_dir = target_dir.join("build");
-    let entries = fs::read_dir(&build_dir).ok()?;
 
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if !name.starts_with("ort-sys-") {
-            continue;
+    // 1. Check the target profile dir itself — copy-dylibs symlinks/copies here
+    for sub in &["", "deps"] {
+        let candidate = target_dir.join(sub).join(MACOS_DAWN_DYLIB);
+        // Resolve symlinks so we copy the real file, not a dangling link
+        if candidate.exists() {
+            return Some(candidate.canonicalize().unwrap_or(candidate));
         }
+    }
 
-        // Search common output locations within the ort-sys build dir
-        for sub in &["out/lib", "out", "lib"] {
-            let candidate = entry.path().join(sub).join(MACOS_DAWN_DYLIB);
-            if candidate.exists() {
-                return Some(candidate);
+    // 2. Search inside ort-sys build output directories
+    let build_dir = target_dir.join("build");
+    if let Ok(entries) = fs::read_dir(&build_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if !name.starts_with("ort-sys-") {
+                continue;
+            }
+
+            for sub in &["out/lib", "out", "lib"] {
+                let candidate = entry.path().join(sub).join(MACOS_DAWN_DYLIB);
+                if candidate.exists() {
+                    return Some(candidate);
+                }
             }
         }
     }
