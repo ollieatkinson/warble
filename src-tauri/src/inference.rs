@@ -54,7 +54,7 @@ pub(crate) fn supported_acceleration_providers() -> Vec<InferenceProvider> {
     let platform = PlatformKind::Linux;
 
     #[cfg(target_os = "windows")]
-    let directml_available = runtime::directml_runtime_available();
+    let directml_available = true;
     #[cfg(not(target_os = "windows"))]
     let directml_available = false;
 

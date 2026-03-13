@@ -28,8 +28,8 @@ arboard = "3"
 chrono = { version = "0.4", features = ["serde", "clock"] }
 cpal = "0.15"
 hound = "3"
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "api-24", "load-dynamic", "coreml", "directml", "webgpu"] }
-parakeet-rs = { version = "0.3.4", default-features = false, features = ["cpu", "ort-defaults", "load-dynamic", "coreml", "directml", "webgpu"] }
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "api-24", "webgpu"] }
+parakeet-rs = { version = "0.3.4", default-features = false, features = ["cpu", "ort-defaults", "webgpu"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 regex = "1"
 serde = { version = "1", features = ["derive"] }
@@ -41,6 +41,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 tauri-plugin-global-shortcut = "2"
 
 [target."cfg(target_os = \"windows\")".dependencies]
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["directml"] }
+parakeet-rs = { version = "0.3.4", default-features = false, features = ["directml"] }
 windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Graphics_Dxgi",
@@ -51,6 +53,8 @@ windows = { version = "0.61", features = [
 ] }
 
 [target."cfg(target_os = \"macos\")".dependencies]
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["coreml"] }
+parakeet-rs = { version = "0.3.4", default-features = false, features = ["coreml"] }
 block2 = "0.6.2"
 core-graphics = "0.24"
 libc = "0.2"

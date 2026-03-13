@@ -1,13 +1,8 @@
-#[cfg(target_os = "windows")]
-use anyhow::Context;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use ort::logging::{LogLevel, LoggerFunction};
 use std::fs::OpenOptions;
 use std::io::Write;
-#[cfg(not(target_os = "windows"))]
-use std::path::PathBuf;
-#[cfg(target_os = "windows")]
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::thread;
@@ -135,77 +130,11 @@ pub(crate) fn append_runtime_diagnostic(stage: &str, detail: impl Into<String>) 
     }
 }
 
-#[cfg(target_os = "windows")]
-pub(crate) fn directml_runtime_available() -> bool {
-    let Some(runtime_dir) = ort_runtime_dir() else {
-        return false;
-    };
-
-    [
-        "onnxruntime.dll",
-        "DirectML.dll",
-        "dxcompiler.dll",
-        "dxil.dll",
-    ]
-    .iter()
-    .all(|file_name| runtime_dir.join(file_name).exists())
-}
-
-#[cfg(target_os = "windows")]
-fn initialize_ort_runtime() -> Result<()> {
-    let dylib_path = ort_dylib_path()
-        .ok_or_else(|| anyhow!("onnxruntime.dll was not found next to the application"))?;
-    append_runtime_diagnostic(
-        "ONNX Runtime initialization started",
-        format!(
-            "mode=dynamic log_level={} log_verbosity={} dylib_path={} thread={:?}",
-            format_log_level(ort_log_level()),
-            ort_log_verbosity(),
-            dylib_path.display(),
-            thread::current().id()
-        ),
-    );
-    let result = ort::init_from(&dylib_path)
-        .with_context(|| {
-            format!(
-                "failed to prepare ONNX Runtime from {}",
-                dylib_path.display()
-            )
-        })
-        .map(|builder| builder.with_logger(ort_logger()));
-    match result {
-        Ok(builder) => {
-            builder.commit();
-            append_runtime_diagnostic(
-                "ONNX Runtime initialization finished",
-                format!(
-                    "mode=dynamic log_level={} log_verbosity={} dylib_path={}",
-                    format_log_level(ort_log_level()),
-                    ort_log_verbosity(),
-                    dylib_path.display()
-                ),
-            );
-            Ok(())
-        }
-        Err(error) => {
-            append_runtime_diagnostic(
-                "ONNX Runtime initialization failed",
-                format!(
-                    "mode=dynamic dylib_path={} error={error}",
-                    dylib_path.display()
-                ),
-            );
-            Err(error)
-        }
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
 fn initialize_ort_runtime() -> Result<()> {
     append_runtime_diagnostic(
         "ONNX Runtime initialization started",
         format!(
-            "mode=default log_level={} log_verbosity={} thread={:?}",
+            "mode=bundled log_level={} log_verbosity={} thread={:?}",
             format_log_level(ort_log_level()),
             ort_log_verbosity(),
             thread::current().id()
@@ -215,31 +144,12 @@ fn initialize_ort_runtime() -> Result<()> {
     append_runtime_diagnostic(
         "ONNX Runtime initialization finished",
         format!(
-            "mode=default log_level={} log_verbosity={}",
+            "mode=bundled log_level={} log_verbosity={}",
             format_log_level(ort_log_level()),
             ort_log_verbosity()
         ),
     );
     Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn ort_dylib_path() -> Option<PathBuf> {
-    std::env::var_os("ORT_DYLIB_PATH")
-        .map(PathBuf::from)
-        .filter(|path| path.exists())
-        .or_else(|| {
-            ort_runtime_dir()
-                .map(|dir| dir.join("onnxruntime.dll"))
-                .filter(|path| path.exists())
-        })
-}
-
-#[cfg(target_os = "windows")]
-fn ort_runtime_dir() -> Option<PathBuf> {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
 }
 
 fn ort_diagnostics_config() -> &'static OrtDiagnosticsConfig {
