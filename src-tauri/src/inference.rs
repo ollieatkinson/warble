@@ -163,7 +163,7 @@ fn supported_acceleration_providers_for_platform(
         PlatformKind::Windows if directml_available => vec![InferenceProvider::Directml],
         PlatformKind::Windows => Vec::new(),
         PlatformKind::Macos => vec![InferenceProvider::Coreml, InferenceProvider::Webgpu],
-        PlatformKind::Linux => vec![InferenceProvider::Webgpu],
+        PlatformKind::Linux => Vec::new(),
     }
 }
 
@@ -567,11 +567,11 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
             }
         }
         InferenceProvider::Webgpu => {
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(target_os = "macos")]
             {
                 LibraryExecutionProvider::WebGPU
             }
-            #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+            #[cfg(not(target_os = "macos"))]
             {
                 LibraryExecutionProvider::Cpu
             }
@@ -658,9 +658,7 @@ pub(crate) fn provider_failure_hint(
         (PlatformKind::Macos, InferenceProvider::Webgpu) => Some(
             "WebGPU on Apple goes through ONNX Runtime's Dawn/Metal path. Capture the GPU model, whether the advisory timeout was exceeded, and whether any provider-finished event appeared. GitHub-hosted macOS runners currently expose an Apple Virtual Machine GPU, so accelerator fixture results there are not representative of bare-metal Macs.",
         ),
-        (PlatformKind::Linux, InferenceProvider::Webgpu) => Some(
-            "WebGPU is still experimental for Parakeet. Capture the adapter/runtime error and whether CPU fallback succeeded.",
-        ),
+        (PlatformKind::Linux, _) => None,
         _ => None,
     }
 }
@@ -852,7 +850,7 @@ mod tests {
         );
         assert_eq!(
             super::supported_acceleration_providers_for_platform(PlatformKind::Linux, false),
-            vec![InferenceProvider::Webgpu]
+            Vec::<InferenceProvider>::new()
         );
     }
 
@@ -866,15 +864,12 @@ mod tests {
     }
 
     #[test]
-    fn preferred_order_keeps_acceleration_before_cpu_on_linux() {
+    fn preferred_order_is_cpu_only_on_linux() {
         let order = super::preferred_inference_providers_for_platform(
             PlatformKind::Linux,
-            &[InferenceProvider::Webgpu],
+            &[],
         );
-        assert_eq!(
-            order,
-            vec![InferenceProvider::Webgpu, InferenceProvider::Cpu]
-        );
+        assert_eq!(order, vec![InferenceProvider::Cpu]);
     }
 
     #[test]

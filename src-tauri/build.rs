@@ -172,6 +172,12 @@ fn stage_macos_dawn_dylib() {
                 "cargo:warning={} copy failed: {}",
                 MACOS_DAWN_DYLIB, error
             );
+        } else {
+            // Re-sign with ad-hoc identity so the dylib's signature doesn't
+            // clash with the app's team ID at launch.
+            let _ = std::process::Command::new("codesign")
+                .args(["--force", "--sign", "-", destination.to_str().unwrap_or("")])
+                .status();
         }
     } else {
         println!(

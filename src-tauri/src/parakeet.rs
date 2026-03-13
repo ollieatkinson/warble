@@ -70,7 +70,7 @@ impl ParakeetTdt {
         Self::load_from_dir_with_exact_provider(&model_dir, InferenceProvider::Coreml)
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     pub fn load_with_webgpu(model_root: &Path) -> Result<Self> {
         let model_dir = model_root.join(MODEL_ID);
         Self::load_from_dir_with_exact_provider(&model_dir, InferenceProvider::Webgpu)
