@@ -669,7 +669,7 @@ mod tests {
             InferenceProvider::Webgpu,
             Some(Duration::from_millis(10)),
             || {
-                std::thread::sleep(Duration::from_millis(30));
+                std::thread::sleep(Duration::from_millis(250));
                 Ok::<_, anyhow::Error>("late")
             },
         );
@@ -786,8 +786,10 @@ mod tests {
     #[test]
     fn macos_webgpu_config_matches_upstream_defaults() {
         let config = super::execution_config(InferenceProvider::Webgpu);
+        let profile = super::execution_config_profile(InferenceProvider::Webgpu);
         assert_eq!(config.intra_threads, 4);
         assert_eq!(config.inter_threads, 1);
-        assert!(config.configure.is_none());
+        assert_eq!(profile.custom_configure, "session_logging");
+        assert!(config.configure.is_some());
     }
 }
