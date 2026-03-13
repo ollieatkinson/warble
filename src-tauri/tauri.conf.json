@@ -36,7 +36,8 @@
     },
     "macOS": {
       "entitlements": "./Entitlements.plist",
-      "infoPlist": "Info.plist"
+      "infoPlist": "Info.plist",
+      "frameworks": ["target/macos-dawn-bundle/libwebgpu_dawn.dylib"]
     },
     "icon": [
       "icons/32x32.png",
