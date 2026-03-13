@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use chrono::Utc;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{mpsc, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -102,19 +102,26 @@ fn append_provider_load_event(
     model_kind: &str,
     event: crate::inference::ProviderLoadEvent,
 ) {
+    let current_platform = platform::current_platform();
     match event {
         crate::inference::ProviderLoadEvent::AttemptStarted { provider, timeout } => {
+            let profile = crate::inference::execution_config_profile(provider);
             append_transcription_log(
                 app,
                 "Transcription model provider started",
                 format!(
-                    "model={} kind={} provider={} timeout_ms={}",
+                    "model={} kind={} provider={} timeout_ms={} intra_threads={} inter_threads={} custom_configure={} note={}",
                     model_name,
                     model_kind,
                     provider,
                     timeout
                         .map(|value| value.as_millis().to_string())
-                        .unwrap_or_else(|| "none".to_string())
+                        .unwrap_or_else(|| "none".to_string()),
+                    profile.intra_threads,
+                    profile.inter_threads,
+                    profile.custom_configure,
+                    crate::inference::provider_runtime_note(current_platform, provider)
+                        .unwrap_or("none")
                 ),
             );
         }
@@ -140,16 +147,95 @@ fn append_provider_load_event(
                 app,
                 "Transcription model provider failed",
                 format!(
-                    "model={} kind={} provider={} elapsed_ms={} error={}",
+                    "model={} kind={} provider={} elapsed_ms={} error={} hint={}",
                     model_name,
                     model_kind,
                     provider,
                     elapsed.as_millis(),
-                    error
+                    error,
+                    crate::inference::provider_failure_hint(current_platform, provider)
+                        .unwrap_or("none")
                 ),
             );
         }
     }
+}
+
+fn platform_label(platform: platform::PlatformKind) -> &'static str {
+    match platform {
+        platform::PlatformKind::Windows => "windows",
+        platform::PlatformKind::Macos => "macos",
+        platform::PlatformKind::Linux => "linux",
+    }
+}
+
+fn append_runtime_selection_log(
+    app: &AppHandle,
+    settings: &Settings,
+    selected_provider: InferenceProvider,
+    explicit_provider_selection: bool,
+    supported_providers: &[InferenceProvider],
+) {
+    let platform = platform::current_platform();
+    let profile = crate::inference::execution_config_profile(selected_provider);
+    let runtime_preference =
+        if crate::inference::is_macos_runtime_model(&settings.selected_model_id) {
+            InferenceProvider::from(
+                settings.macos_runtime_preference_for_model(&settings.selected_model_id),
+            )
+            .to_string()
+        } else {
+            "platform-default".to_string()
+        };
+
+    append_transcription_log(
+        app,
+        "Transcription runtime selection",
+        format!(
+            "platform={} model_id={} kind={:?} selected_provider={} runtime_preference={} selection_mode={} supported_acceleration_providers={} intra_threads={} inter_threads={} custom_configure={} note={}",
+            platform_label(platform),
+            settings.selected_model_id,
+            settings.selected_model_kind,
+            selected_provider,
+            runtime_preference,
+            if explicit_provider_selection {
+                "exact-provider"
+            } else {
+                "accelerator-then-cpu-fallback"
+            },
+            crate::inference::format_provider_list(supported_providers),
+            profile.intra_threads,
+            profile.inter_threads,
+            profile.custom_configure,
+            crate::inference::provider_runtime_note(platform, selected_provider)
+                .unwrap_or("none")
+        ),
+    );
+}
+
+fn append_transcription_model_dir_summary(
+    app: &AppHandle,
+    model_name: &str,
+    model_kind: &str,
+    family: parakeet::TranscriptionFamily,
+    model_dir: &Path,
+) {
+    let summary = match family {
+        parakeet::TranscriptionFamily::Tdt => parakeet::summarize_tdt_model_dir(model_dir),
+        parakeet::TranscriptionFamily::Ctc => parakeet::summarize_ctc_model_dir(model_dir),
+    };
+
+    append_transcription_log(
+        app,
+        "Transcription model directory inspection",
+        format!(
+            "model={} kind={} path={} {}",
+            model_name,
+            model_kind,
+            model_dir.display(),
+            summary
+        ),
+    );
 }
 
 fn transcriber_cache_hit(guard: &TranscriberCache, selected_key: &str) -> bool {
@@ -224,15 +310,24 @@ fn load_transcriber_engine(
         MODEL_LOAD_HEARTBEAT_INTERVAL,
     );
 
+    let current_platform = platform::current_platform();
+    let supported_providers = crate::inference::supported_acceleration_providers();
     let selected_provider = crate::inference::selected_provider_for_model(
-        platform::current_platform(),
+        current_platform,
         settings,
-        &crate::inference::supported_acceleration_providers(),
+        &supported_providers,
         settings.selected_model_id.as_str(),
     );
     let explicit_provider_selection = crate::inference::uses_explicit_provider_selection(
-        platform::current_platform(),
+        current_platform,
         settings.selected_model_id.as_str(),
+    );
+    append_runtime_selection_log(
+        app,
+        settings,
+        selected_provider,
+        explicit_provider_selection,
+        &supported_providers,
     );
 
     match settings.selected_model_kind {
@@ -240,6 +335,13 @@ fn load_transcriber_engine(
             let model = if let Some(path) = resolved_selected_model_path(settings) {
                 let path = PathBuf::from(path);
                 if parakeet::model_ready_in_dir(&path) {
+                    append_transcription_model_dir_summary(
+                        app,
+                        model_name,
+                        model_kind,
+                        parakeet::TranscriptionFamily::Tdt,
+                        &path,
+                    );
                     append_transcription_log(
                         app,
                         "Transcription model directory selected",
@@ -280,6 +382,13 @@ fn load_transcriber_engine(
                     }
                 } else {
                     let model_dir = path.join(parakeet::MODEL_ID);
+                    append_transcription_model_dir_summary(
+                        app,
+                        model_name,
+                        model_kind,
+                        parakeet::TranscriptionFamily::Tdt,
+                        &model_dir,
+                    );
                     append_transcription_log(
                         app,
                         "Transcription model directory selected",
@@ -323,6 +432,13 @@ fn load_transcriber_engine(
             } else {
                 let model_root = model_root_dir(app)?;
                 let model_dir = model_root.join(parakeet::MODEL_ID);
+                append_transcription_model_dir_summary(
+                    app,
+                    model_name,
+                    model_kind,
+                    parakeet::TranscriptionFamily::Tdt,
+                    &model_dir,
+                );
                 append_transcription_log(
                     app,
                     "Transcription model directory selected",
@@ -365,6 +481,13 @@ fn load_transcriber_engine(
                 .map(PathBuf::from)
                 .ok_or_else(|| anyhow!("Parakeet CTC model path is not configured"))?;
             let model = if parakeet::ctc_model_ready_in_dir(&model_path) {
+                append_transcription_model_dir_summary(
+                    app,
+                    model_name,
+                    model_kind,
+                    parakeet::TranscriptionFamily::Ctc,
+                    &model_path,
+                );
                 append_transcription_log(
                     app,
                     "Transcription model directory selected",
@@ -400,6 +523,13 @@ fn load_transcriber_engine(
                 }
             } else {
                 let model_dir = model_path.join(parakeet::CTC_MODEL_ID);
+                append_transcription_model_dir_summary(
+                    app,
+                    model_name,
+                    model_kind,
+                    parakeet::TranscriptionFamily::Ctc,
+                    &model_dir,
+                );
                 append_transcription_log(
                     app,
                     "Transcription model directory selected",

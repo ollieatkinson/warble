@@ -55,7 +55,12 @@ const MACOS_RUNTIME_OPTIONS: ChoiceOption[] = [
   {
     id: "coreml",
     label: "CoreML (Experimental)",
-    description: "Uses Apple’s runtime path for this model only.",
+    description: "Uses Apple’s runtime path for this model only. Parakeet-rs still treats this as unstable on Apple.",
+  },
+  {
+    id: "webgpu",
+    label: "WebGPU (Experimental)",
+    description: "Uses ONNX Runtime’s Dawn/Metal path for this model only.",
   },
 ];
 

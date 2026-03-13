@@ -67,8 +67,24 @@ impl StreamingPreviewConfig {
         self.backend.diagnostic_backend()
     }
 
-    pub(crate) fn trying_detail(&self) -> &'static str {
-        self.backend.trying_detail()
+    pub(crate) fn trying_detail(&self) -> String {
+        format!(
+            "{} provider={} fallback_policy={} model_path={} {} note={}",
+            self.backend.trying_detail(),
+            self.selected_provider,
+            if allow_streaming_provider_fallback(
+                platform::current_platform(),
+                self.selected_provider
+            ) {
+                "preferred-then-cpu"
+            } else {
+                "exact-provider"
+            },
+            self.model_path.display(),
+            summarize_streaming_model_dir(self.backend, &self.model_path),
+            inference::provider_runtime_note(platform::current_platform(), self.selected_provider)
+                .unwrap_or("none")
+        )
     }
 }
 
@@ -124,6 +140,7 @@ fn ready_streaming_preview_config(
 
 pub(crate) struct StreamingPreviewEngine {
     backend: StreamingPreviewBackend,
+    selected_provider: crate::state::InferenceProvider,
     runtime: StreamingPreviewRuntime,
     pending_audio: Vec<f32>,
     transcript: String,
@@ -148,6 +165,7 @@ impl StreamingPreviewEngine {
 
         Ok(Self {
             backend: config.backend,
+            selected_provider: config.selected_provider,
             runtime,
             pending_audio: Vec::new(),
             transcript: String::new(),
@@ -158,8 +176,12 @@ impl StreamingPreviewEngine {
         self.backend.diagnostic_backend()
     }
 
-    pub(crate) fn active_detail(&self) -> &'static str {
-        self.backend.active_detail()
+    pub(crate) fn active_detail(&self) -> String {
+        format!(
+            "{} provider={}",
+            self.backend.active_detail(),
+            self.selected_provider
+        )
     }
 
     pub(crate) fn push_audio(&mut self, audio_16khz: &[f32]) -> Result<Option<String>> {
@@ -246,6 +268,48 @@ fn allow_streaming_provider_fallback(
         && provider != crate::state::InferenceProvider::Cpu
 }
 
+fn summarize_streaming_model_dir(backend: StreamingPreviewBackend, model_path: &Path) -> String {
+    let required_files = match backend {
+        StreamingPreviewBackend::Nemotron => NEMOTRON_REQUIRED_FILES,
+        StreamingPreviewBackend::Eou => EOU_REQUIRED_FILES,
+    };
+    let missing_files = required_files
+        .iter()
+        .filter(|name| !model_path.join(name).exists())
+        .copied()
+        .collect::<Vec<_>>();
+    let mut entries = std::fs::read_dir(model_path)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect::<Vec<_>>();
+    entries.sort();
+    let entry_preview = if entries.is_empty() {
+        "none".to_string()
+    } else {
+        entries
+            .iter()
+            .take(8)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    format!(
+        "exists={} missing_files={} entry_count={} entries=[{}]",
+        model_path.exists(),
+        if missing_files.is_empty() {
+            "none".to_string()
+        } else {
+            missing_files.join(", ")
+        },
+        entries.len(),
+        entry_preview
+    )
+}
+
 fn load_with_selected_provider<T>(
     platform: platform::PlatformKind,
     selected_provider: crate::state::InferenceProvider,
@@ -255,11 +319,25 @@ where
     T: Send + 'static,
 {
     let (_, runtime) = if allow_streaming_provider_fallback(platform, selected_provider) {
-        inference::load_with_preferred_provider_then_cpu(selected_provider, loader)
-            .map_err(|error| anyhow!("{error}"))?
+        inference::load_with_preferred_provider_then_cpu(selected_provider, loader).map_err(
+            |error| {
+                anyhow!(
+                    "selected_provider={} strategy=preferred-then-cpu error={} hint={}",
+                    selected_provider,
+                    error,
+                    inference::provider_failure_hint(platform, selected_provider).unwrap_or("none")
+                )
+            },
+        )?
     } else {
-        inference::load_with_exact_provider(selected_provider, loader)
-            .map_err(|error| anyhow!("{error}"))?
+        inference::load_with_exact_provider(selected_provider, loader).map_err(|error| {
+            anyhow!(
+                "selected_provider={} strategy=exact-provider error={} hint={}",
+                selected_provider,
+                error,
+                inference::provider_failure_hint(platform, selected_provider).unwrap_or("none")
+            )
+        })?
     };
 
     Ok(runtime)
@@ -303,6 +381,22 @@ mod tests {
     }
 
     #[test]
+    fn load_with_selected_provider_uses_cpu_after_directml_failure_on_windows() {
+        let value = load_with_selected_provider(
+            PlatformKind::Windows,
+            InferenceProvider::Directml,
+            |provider| match provider {
+                InferenceProvider::Directml => Err(anyhow!("directml failed")),
+                InferenceProvider::Cpu => Ok("cpu"),
+                InferenceProvider::Coreml | InferenceProvider::Webgpu => unreachable!(),
+            },
+        )
+        .expect("cpu fallback should succeed");
+
+        assert_eq!(value, "cpu");
+    }
+
+    #[test]
     fn load_with_selected_provider_returns_cpu_error_without_retry() {
         let error =
             load_with_selected_provider(PlatformKind::Linux, InferenceProvider::Cpu, |_| {
@@ -335,6 +429,10 @@ mod tests {
         assert!(!allow_streaming_provider_fallback(
             PlatformKind::Macos,
             InferenceProvider::Coreml
+        ));
+        assert!(allow_streaming_provider_fallback(
+            PlatformKind::Windows,
+            InferenceProvider::Directml
         ));
         assert!(allow_streaming_provider_fallback(
             PlatformKind::Linux,

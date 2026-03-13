@@ -3,7 +3,9 @@
 // The helper utilities (WAV generation, scoring) are tested directly.
 // Tests that require a loaded model are gated with `#[ignore]`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
+use std::time::Instant;
 
 /// Generate a sine wave at the given frequency.
 fn generate_sine(freq: f32, duration_secs: f32, sample_rate: u32) -> Vec<f32> {
@@ -53,6 +55,97 @@ fn word_match_score(expected: &[&str], actual: &str) -> f64 {
     matched as f64 / expected.len() as f64
 }
 
+fn repo_fixture_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("vosk-test.wav")
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug)]
+enum MacosFixtureRuntime {
+    Cpu,
+    Coreml,
+    Webgpu,
+}
+
+#[cfg(target_os = "macos")]
+impl MacosFixtureRuntime {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Cpu => "cpu",
+            Self::Coreml => "coreml",
+            Self::Webgpu => "webgpu",
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn coreml_fixture_enabled() -> bool {
+    matches!(
+        std::env::var("WARBLE_ENABLE_COREML_FIXTURE"),
+        Ok(value) if matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn run_macos_ci_fixture(runtime: MacosFixtureRuntime) {
+    let wav_path = PathBuf::from(
+        std::env::var("WARBLE_FIXTURE_WAV")
+            .expect("set WARBLE_FIXTURE_WAV to a deterministic CI speech fixture"),
+    );
+    let expected_words = std::env::var("WARBLE_EXPECTED_WORDS")
+        .expect("set WARBLE_EXPECTED_WORDS to the expected phrase");
+    let expected = expected_words.split_whitespace().collect::<Vec<_>>();
+    let model_root =
+        PathBuf::from(std::env::var("WARBLE_MODEL_ROOT").expect("set WARBLE_MODEL_ROOT"));
+
+    eprintln!(
+        "fixture start: runtime={} model_root={} wav_path={} expected_words={expected_words:?}",
+        runtime.label(),
+        model_root.display(),
+        wav_path.display()
+    );
+
+    let load_started = Instant::now();
+    let mut model = match runtime {
+        MacosFixtureRuntime::Cpu => warble_lib::parakeet::ParakeetTdt::load_with_cpu(&model_root)
+            .expect("load cpu fixture model"),
+        MacosFixtureRuntime::Coreml => {
+            warble_lib::parakeet::ParakeetTdt::load_with_coreml(&model_root)
+                .expect("load coreml fixture model")
+        }
+        MacosFixtureRuntime::Webgpu => {
+            warble_lib::parakeet::ParakeetTdt::load_with_webgpu(&model_root)
+                .expect("load webgpu fixture model")
+        }
+    };
+    eprintln!(
+        "fixture load finished: runtime={} elapsed_ms={}",
+        runtime.label(),
+        load_started.elapsed().as_millis()
+    );
+
+    let transcription_started = Instant::now();
+    let result = model
+        .transcribe_wav_path(&wav_path)
+        .expect("transcribe macOS CI fixture");
+    let score = word_match_score(&expected, &result);
+
+    eprintln!(
+        "fixture transcription finished: runtime={} elapsed_ms={} score={score:.2} actual={result:?}",
+        runtime.label(),
+        transcription_started.elapsed().as_millis()
+    );
+
+    assert!(
+        score >= 0.75,
+        "Fixture transcript mismatch: runtime={} score={score:.2} expected={expected_words:?} actual={result:?}",
+        runtime.label()
+    );
+}
+
 // ---------------------------------------------------------------------------
 // WAV round-trip
 // ---------------------------------------------------------------------------
@@ -87,9 +180,22 @@ fn sine_fixture_has_expected_properties() {
     assert_eq!(samples.len(), 16000);
     // RMS should be ~0.707 for a unit sine wave
     let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
+    assert!((rms - 0.707).abs() < 0.01, "RMS was {rms}, expected ~0.707");
+}
+
+#[test]
+fn committed_speech_fixture_has_expected_format() {
+    let path = repo_fixture_path();
+    let reader = hound::WavReader::open(&path).expect("open committed fixture");
+    let spec = reader.spec();
+
+    assert_eq!(spec.channels, 1);
+    assert_eq!(spec.sample_rate, 16_000);
+    assert_eq!(spec.bits_per_sample, 16);
+    assert_eq!(spec.sample_format, hound::SampleFormat::Int);
     assert!(
-        (rms - 0.707).abs() < 0.01,
-        "RMS was {rms}, expected ~0.707"
+        reader.duration() > 100_000,
+        "fixture should contain real speech"
     );
 }
 
@@ -99,16 +205,12 @@ fn sine_fixture_has_expected_properties() {
 
 #[test]
 fn word_match_score_exact() {
-    assert!(
-        (word_match_score(&["hello", "world"], "Hello World") - 1.0).abs() < f64::EPSILON
-    );
+    assert!((word_match_score(&["hello", "world"], "Hello World") - 1.0).abs() < f64::EPSILON);
 }
 
 #[test]
 fn word_match_score_partial() {
-    assert!(
-        (word_match_score(&["hello", "world"], "hello there") - 0.5).abs() < f64::EPSILON
-    );
+    assert!((word_match_score(&["hello", "world"], "hello there") - 0.5).abs() < f64::EPSILON);
 }
 
 #[test]
@@ -143,8 +245,7 @@ fn transcribe_silence_returns_empty_or_short() {
     let model_root = std::path::PathBuf::from(
         std::env::var("WARBLE_MODEL_ROOT").expect("set WARBLE_MODEL_ROOT"),
     );
-    let mut model =
-        warble_lib::parakeet::ParakeetTdt::load(&model_root).expect("load model");
+    let mut model = warble_lib::parakeet::ParakeetTdt::load(&model_root).expect("load model");
     let result = model
         .transcribe_wav_path(&path)
         .expect("transcribe silence");
@@ -165,13 +266,38 @@ fn transcribe_sine_wave_returns_empty_or_short() {
     let model_root = std::path::PathBuf::from(
         std::env::var("WARBLE_MODEL_ROOT").expect("set WARBLE_MODEL_ROOT"),
     );
-    let mut model =
-        warble_lib::parakeet::ParakeetTdt::load(&model_root).expect("load model");
-    let result = model
-        .transcribe_wav_path(&path)
-        .expect("transcribe sine");
+    let mut model = warble_lib::parakeet::ParakeetTdt::load(&model_root).expect("load model");
+    let result = model.transcribe_wav_path(&path).expect("transcribe sine");
     assert!(
         result.split_whitespace().count() <= 5,
         "Pure tone produced too many words: {result:?}"
     );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore]
+fn transcribe_macos_ci_fixture_cpu_matches_expected_words() {
+    run_macos_ci_fixture(MacosFixtureRuntime::Cpu);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore]
+fn transcribe_macos_ci_fixture_webgpu_matches_expected_words() {
+    run_macos_ci_fixture(MacosFixtureRuntime::Webgpu);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore]
+fn transcribe_macos_ci_fixture_coreml_matches_expected_words() {
+    if !coreml_fixture_enabled() {
+        eprintln!(
+            "fixture skipped: runtime=coreml reason=disabled set WARBLE_ENABLE_COREML_FIXTURE=1 to enable"
+        );
+        return;
+    }
+
+    run_macos_ci_fixture(MacosFixtureRuntime::Coreml);
 }

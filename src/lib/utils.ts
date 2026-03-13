@@ -234,6 +234,28 @@ export function formatInferenceProvider(provider: InferenceProvider) {
   }
 }
 
+const MACOS_RUNTIME_MODEL_IDS = [
+  "parakeet",
+  "parakeet-ctc",
+  "parakeet-eou",
+  "nemotron-streaming",
+] as const;
+
+function formatMacosRuntimePreferenceMap(snapshot: Snapshot) {
+  if (snapshot.platform !== "macos") {
+    return null;
+  }
+
+  const entries = MACOS_RUNTIME_MODEL_IDS.map((modelId) => [
+    modelId,
+    snapshot.settings.macosModelRuntimePreferences[modelId] ?? "cpu",
+  ] as const);
+
+  return entries
+    .map(([modelId, runtime]) => `${modelId}=${formatInferenceProvider(runtime)}`)
+    .join(", ");
+}
+
 export function formatCaptureInput(sampleRate: number, channels: number) {
   const parts: string[] = [];
   if (sampleRate > 0) {
@@ -247,6 +269,11 @@ export function formatCaptureInput(sampleRate: number, channels: number) {
 }
 
 export function buildSupportReport(snapshot: Snapshot) {
+  const selectedModelRuntime =
+    snapshot.platform === "macos"
+      ? snapshot.settings.macosModelRuntimePreferences[snapshot.settings.selectedModelId] ?? "cpu"
+      : null;
+  const macosRuntimePreferences = formatMacosRuntimePreferenceMap(snapshot);
   const selectedSource =
     snapshot.sources.find((source) => source.id === snapshot.settings.selectedSourceId) ?? null;
   const previewEvents =
@@ -278,6 +305,14 @@ export function buildSupportReport(snapshot: Snapshot) {
     }`,
     `Model: ${snapshot.settings.selectedModelId} (${snapshot.settings.selectedModelKind})`,
     `Live preview model: ${snapshot.settings.livePreviewModel}`,
+    `Supported acceleration providers: ${formatAccelerationProviders(
+      snapshot.systemProfile.supportedAccelerationProviders,
+      "None",
+    )}`,
+    `Selected batch runtime: ${
+      selectedModelRuntime ? formatInferenceProvider(selectedModelRuntime) : "Platform default"
+    }`,
+    `Configured macOS runtimes: ${macosRuntimePreferences ?? "Not applicable"}`,
     "",
     "Capture diagnostics",
     `Status: ${snapshot.captureDiagnostics.status}`,
