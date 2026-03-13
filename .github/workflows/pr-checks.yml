@@ -117,6 +117,22 @@ jobs:
             system_profiler SPHardwareDataType SPDisplaysDataType
           } | tee "$RUNNER_TEMP/warble-macos-fixture-environment.log"
 
+      - name: Detect macOS accelerator fixture support
+        if: runner.os == 'macOS'
+        id: macos_fixture_support
+        run: |
+          set -euxo pipefail
+          if system_profiler SPHardwareDataType SPDisplaysDataType | grep -qi "Virtual Machine"; then
+            echo "accelerator_fixtures_supported=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "accelerator_fixtures_supported=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Note macOS accelerator fixture skip
+        if: runner.os == 'macOS' && steps.macos_fixture_support.outputs.accelerator_fixtures_supported != 'true'
+        run: |
+          echo "Skipping macOS WebGPU/CoreML fixtures on GitHub-hosted Apple Virtual Machine hardware; CPU fixture remains required."
+
       - name: Run frontend tests
         run: pnpm test
 
@@ -124,7 +140,8 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Run macOS CPU fixture test
-        if: runner.os == 'macOS' && vars.WARBLE_ENABLE_CPU_FIXTURE == 'true'
+        if: runner.os == 'macOS'
+        id: macos_cpu_fixture
         timeout-minutes: 5
         env:
           WARBLE_MODEL_ROOT: ${{ runner.temp }}/warble-fixture-models
@@ -139,7 +156,9 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml --test fixture_transcription transcribe_macos_ci_fixture_cpu_matches_expected_words -- --ignored --exact --nocapture 2>&1 | tee "$RUNNER_TEMP/warble-macos-fixture-cpu.log"
 
       - name: Run macOS WebGPU fixture test
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.macos_fixture_support.outputs.accelerator_fixtures_supported == 'true'
+        id: macos_webgpu_fixture
+        continue-on-error: true
         timeout-minutes: 5
         env:
           WARBLE_MODEL_ROOT: ${{ runner.temp }}/warble-fixture-models
@@ -154,7 +173,8 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml --test fixture_transcription transcribe_macos_ci_fixture_webgpu_matches_expected_words -- --ignored --exact --nocapture 2>&1 | tee "$RUNNER_TEMP/warble-macos-fixture-webgpu.log"
 
       - name: Run macOS CoreML fixture test
-        if: runner.os == 'macOS' && vars.WARBLE_ENABLE_COREML_FIXTURE == 'true'
+        if: runner.os == 'macOS' && steps.macos_fixture_support.outputs.accelerator_fixtures_supported == 'true' && vars.WARBLE_ENABLE_COREML_FIXTURE == 'true'
+        id: macos_coreml_fixture
         timeout-minutes: 5
         continue-on-error: true
         env:
@@ -171,7 +191,7 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml --test fixture_transcription transcribe_macos_ci_fixture_coreml_matches_expected_words -- --ignored --exact --nocapture 2>&1 | tee "$RUNNER_TEMP/warble-macos-fixture-coreml.log"
 
       - name: Upload macOS fixture audio on failure
-        if: failure() && runner.os == 'macOS'
+        if: runner.os == 'macOS' && (failure() || steps.macos_webgpu_fixture.outcome == 'failure' || steps.macos_coreml_fixture.outcome == 'failure')
         uses: actions/upload-artifact@v4
         with:
           name: macos-transcription-fixture-debug

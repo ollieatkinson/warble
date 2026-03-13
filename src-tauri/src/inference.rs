@@ -299,6 +299,11 @@ where
         return result;
     };
 
+    #[cfg(target_os = "macos")]
+    if matches!(provider, InferenceProvider::Webgpu) {
+        return load_provider_with_inline_watchdog(provider, timeout, loader);
+    }
+
     let (sender, receiver) = mpsc::channel();
     let provider_name = provider.to_string();
     let provider_name_for_thread = provider_name.clone();
@@ -403,6 +408,100 @@ where
     }
 }
 
+#[cfg(target_os = "macos")]
+fn load_provider_with_inline_watchdog<T, F>(
+    provider: InferenceProvider,
+    timeout: Duration,
+    loader: F,
+) -> Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T> + Send + 'static,
+{
+    let (stop_sender, stop_receiver) = mpsc::channel::<()>();
+    let provider_name = provider.to_string();
+    let provider_name_for_watchdog = provider_name.clone();
+    let started_at = Instant::now();
+
+    runtime::append_runtime_diagnostic(
+        "Inference provider load inline watchdog armed",
+        format!(
+            "provider={} timeout_ms={} heartbeat_ms={} caller_thread={:?} reason=macos-webgpu-matches-upstream-threading",
+            provider,
+            timeout.as_millis(),
+            PROVIDER_LOAD_HEARTBEAT_INTERVAL.as_millis(),
+            thread::current().id()
+        ),
+    );
+
+    let watchdog = thread::spawn(move || {
+        let mut advisory_timeout_reported = false;
+        loop {
+            match stop_receiver.recv_timeout(PROVIDER_LOAD_HEARTBEAT_INTERVAL) {
+                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    let elapsed = started_at.elapsed();
+                    if elapsed >= timeout {
+                        runtime::append_runtime_diagnostic(
+                            if advisory_timeout_reported {
+                                "Inference provider load still waiting after advisory timeout"
+                            } else {
+                                "Inference provider load exceeded advisory timeout"
+                            },
+                            format!(
+                                "provider={} elapsed_ms={} timeout_ms={} waiting_for_inline_loader=true interruptible=false",
+                                provider_name_for_watchdog,
+                                elapsed.as_millis(),
+                                timeout.as_millis()
+                            ),
+                        );
+                        advisory_timeout_reported = true;
+                    } else {
+                        runtime::append_runtime_diagnostic(
+                            "Inference provider load heartbeat",
+                            format!(
+                                "provider={} elapsed_ms={} timeout_ms={} waiting_for_inline_loader=true interruptible=false",
+                                provider_name_for_watchdog,
+                                elapsed.as_millis(),
+                                timeout.as_millis()
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+    });
+
+    runtime::append_runtime_diagnostic(
+        "Inference provider load started",
+        format!(
+            "provider={} timeout_ms={} thread={:?} mode=inline-watchdog",
+            provider,
+            timeout.as_millis(),
+            thread::current().id()
+        ),
+    );
+    let result = loader();
+    let elapsed = started_at.elapsed();
+    let _ = stop_sender.send(());
+    let _ = watchdog.join();
+    runtime::append_runtime_diagnostic(
+        "Inference provider load finished",
+        format!(
+            "provider={} timeout_ms={} elapsed_ms={} mode=inline-watchdog result={}",
+            provider_name,
+            timeout.as_millis(),
+            elapsed.as_millis(),
+            match &result {
+                Ok(_) => "ok".to_string(),
+                Err(error) => format!("error={error}"),
+            }
+        ),
+    );
+
+    result
+}
+
 pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
     let profile = execution_config_profile(provider);
     let execution_provider = match provider {
@@ -443,7 +542,11 @@ pub(crate) fn execution_config(provider: InferenceProvider) -> ExecutionConfig {
         .with_intra_threads(profile.intra_threads)
         .with_inter_threads(profile.inter_threads);
 
-    config.with_custom_configure(move |builder| configure_session_builder(builder, provider))
+    if matches!(provider, InferenceProvider::Directml) {
+        return config.with_custom_configure(configure_session_builder);
+    }
+
+    config
 }
 
 pub(crate) fn execution_config_profile(provider: InferenceProvider) -> ExecutionConfigProfile {
@@ -452,13 +555,13 @@ pub(crate) fn execution_config_profile(provider: InferenceProvider) -> Execution
             intra_threads: 4,
             inter_threads: 1,
             custom_configure:
-                "session_logging + graph_optimization=level1, parallel_execution=false, memory_pattern=false",
+                "graph_optimization=level1, parallel_execution=false, memory_pattern=false",
         },
         InferenceProvider::Cpu | InferenceProvider::Coreml | InferenceProvider::Webgpu => {
             ExecutionConfigProfile {
                 intra_threads: 4,
                 inter_threads: 1,
-                custom_configure: "session_logging",
+                custom_configure: "none",
             }
         }
     }
@@ -485,7 +588,7 @@ pub(crate) fn provider_runtime_note(
             "parakeet-rs 0.3.4 does not include the issue #51 CoreML `.with_subgraphs(true)` patch and does not expose the MLProgram knob discussed in the ym2132 write-up, so Warble can only request the stock CoreML EP path.",
         ),
         (PlatformKind::Macos, InferenceProvider::Webgpu) => Some(
-            "Warble keeps macOS WebGPU aligned with parakeet-rs defaults for execution settings: WebGPU EP, intra_threads=4, inter_threads=1. The only extra SessionBuilder hooks are diagnostic logging and the app-side load-timeout guard so hangs produce useful bug reports.",
+            "Warble keeps macOS WebGPU aligned with parakeet-rs defaults for execution settings: WebGPU EP, intra_threads=4, inter_threads=1, no extra SessionBuilder hooks. The 20s threshold is only an advisory heartbeat on Apple because detached timeout threads can leave ONNX Runtime wedged after a partial WebGPU load.",
         ),
         _ if provider.is_accelerated() => Some(
             "parakeet-rs registers CPU after the requested accelerator, so unsupported nodes may still execute on CPU inside ONNX Runtime.",
@@ -503,7 +606,7 @@ pub(crate) fn provider_failure_hint(
             "CoreML is still unstable for Parakeet on Apple. parakeet-rs issue #51 reports excessive graph partitioning, high unsupported-node counts, and repeated 'Context leak detected, CoreAnalytics returned false' warnings. The linked ym2132 write-up also calls out MLProgram as relevant, but parakeet-rs 0.3.4 neither exposes that setting nor includes the unmerged `.with_subgraphs(true)` patch from PR #51.",
         ),
         (PlatformKind::Macos, InferenceProvider::Webgpu) => Some(
-            "WebGPU on Apple goes through ONNX Runtime's Dawn/Metal path. If this times out or hangs, capture the timeout, GPU model, and whether any provider-finished event appeared.",
+            "WebGPU on Apple goes through ONNX Runtime's Dawn/Metal path. Capture the GPU model, whether the advisory timeout was exceeded, and whether any provider-finished event appeared. GitHub-hosted macOS runners currently expose an Apple Virtual Machine GPU, so accelerator fixture results there are not representative of bare-metal Macs.",
         ),
         (PlatformKind::Linux, InferenceProvider::Webgpu) => Some(
             "WebGPU is still experimental for Parakeet. Capture the adapter/runtime error and whether CPU fallback succeeded.",
@@ -514,22 +617,12 @@ pub(crate) fn provider_failure_hint(
 
 fn configure_session_builder(
     builder: ort::session::builder::SessionBuilder,
-    provider: InferenceProvider,
 ) -> ort::Result<ort::session::builder::SessionBuilder> {
-    let builder = builder
-        .with_logger(runtime::ort_logger())?
-        .with_log_level(runtime::ort_log_level())?
-        .with_log_verbosity(runtime::ort_log_verbosity())?;
-
-    if matches!(provider, InferenceProvider::Directml) {
-        let builder = builder
-            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
-        return Ok(builder
-            .with_parallel_execution(false)?
-            .with_memory_pattern(false)?);
-    }
-
-    Ok(builder)
+    let builder =
+        builder.with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level1)?;
+    Ok(builder
+        .with_parallel_execution(false)?
+        .with_memory_pattern(false)?)
 }
 
 #[cfg(test)]
@@ -666,7 +759,7 @@ mod tests {
     #[test]
     fn load_provider_with_optional_timeout_times_out() {
         let result = super::load_provider_with_optional_timeout(
-            InferenceProvider::Webgpu,
+            InferenceProvider::Cpu,
             Some(Duration::from_millis(10)),
             || {
                 std::thread::sleep(Duration::from_millis(250));
@@ -676,6 +769,22 @@ mod tests {
 
         let error = result.expect_err("expected timeout");
         assert!(error.to_string().contains("timed out"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn load_provider_with_optional_timeout_keeps_macos_webgpu_inline() {
+        let result = super::load_provider_with_optional_timeout(
+            InferenceProvider::Webgpu,
+            Some(Duration::from_millis(5)),
+            || {
+                std::thread::sleep(Duration::from_millis(25));
+                Ok::<_, anyhow::Error>("ok")
+            },
+        )
+        .expect("macOS WebGPU uses inline watchdog instead of timing out");
+
+        assert_eq!(result, "ok");
     }
 
     #[test]
@@ -789,7 +898,7 @@ mod tests {
         let profile = super::execution_config_profile(InferenceProvider::Webgpu);
         assert_eq!(config.intra_threads, 4);
         assert_eq!(config.inter_threads, 1);
-        assert_eq!(profile.custom_configure, "session_logging");
-        assert!(config.configure.is_some());
+        assert_eq!(profile.custom_configure, "none");
+        assert!(config.configure.is_none());
     }
 }
