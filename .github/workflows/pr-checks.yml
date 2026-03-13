@@ -160,7 +160,7 @@ jobs:
           WARBLE_ORT_MEMORY_PATTERN: 0
           RUST_BACKTRACE: 1
         run: |
-          ./.github/scripts/run_macos_fixture_with_diagnostics.sh \
+          bash ./.github/scripts/run_macos_fixture_with_diagnostics.sh \
             "$RUNNER_TEMP/warble-macos-fixture-cpu.log" \
             "$RUNNER_TEMP/warble-macos-fixture-diagnostics" \
             "cpu-fixture" \
@@ -180,7 +180,7 @@ jobs:
           WARBLE_ECHO_ORT_LOGS: 1
           RUST_BACKTRACE: 1
         run: |
-          ./.github/scripts/run_macos_fixture_with_diagnostics.sh \
+          bash ./.github/scripts/run_macos_fixture_with_diagnostics.sh \
             "$RUNNER_TEMP/warble-macos-fixture-webgpu.log" \
             "$RUNNER_TEMP/warble-macos-fixture-diagnostics" \
             "webgpu-fixture" \
@@ -201,7 +201,7 @@ jobs:
           WARBLE_ECHO_ORT_LOGS: 1
           RUST_BACKTRACE: 1
         run: |
-          ./.github/scripts/run_macos_fixture_with_diagnostics.sh \
+          bash ./.github/scripts/run_macos_fixture_with_diagnostics.sh \
             "$RUNNER_TEMP/warble-macos-fixture-coreml.log" \
             "$RUNNER_TEMP/warble-macos-fixture-diagnostics" \
             "coreml-fixture" \
