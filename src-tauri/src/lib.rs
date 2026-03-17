@@ -28,8 +28,7 @@ use models::{built_in_parakeet_status, current_model_status};
 #[cfg(target_os = "macos")]
 use shell::{build_app_menu, handle_menu_event};
 use shell::{
-    create_indicator_window, create_tray_icon, hide_main_window, register_shortcuts,
-    show_main_window,
+    create_indicator_window, create_tray_icon, register_shortcuts, show_main_window,
 };
 use state::*;
 use storage::*;
@@ -221,10 +220,16 @@ pub fn run() {
 
             modifier_monitor::start_modifier_monitor(app.handle().clone(), shared.clone());
 
-            if launched_in_background() {
-                hide_main_window(app.handle());
-            } else {
-                show_main_window(app.handle());
+            if !launched_in_background() {
+                let handle = app.handle().clone();
+                // Defer show until the event loop is running and the window is
+                // fully realised by the native window manager. Calling
+                // makeKeyAndOrderFront: during setup crashes because the
+                // backing store hasn't been committed yet.
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    show_main_window(&handle);
+                });
             }
 
             emit_snapshot(app.handle(), &shared);
