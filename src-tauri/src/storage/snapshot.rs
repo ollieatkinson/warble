@@ -88,7 +88,6 @@ pub(crate) fn read_capture_log(app: &AppHandle) -> String {
 }
 
 pub(crate) fn build_snapshot(app: &AppHandle, shared: &SharedState) -> Snapshot {
-    let dynamic_island_metrics = platform::dynamic_island_metrics(app);
     let core = shared.lock();
     let mut preview_diagnostics = core.preview_diagnostics.clone();
     let mut capture_diagnostics = core.capture_diagnostics.clone();
@@ -102,8 +101,6 @@ pub(crate) fn build_snapshot(app: &AppHandle, shared: &SharedState) -> Snapshot 
         phase: core.phase.clone(),
         platform: platform::current_platform(),
         auto_paste_support: platform::auto_paste_support(),
-        dynamic_island_available: core.dynamic_island_available,
-        dynamic_island_metrics,
         settings: core.settings.clone(),
         last_transcript_available: core.last_transcript_text.is_some(),
         sources: core.sources.clone(),

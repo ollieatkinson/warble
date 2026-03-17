@@ -1,7 +1,7 @@
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useEffect } from "react";
 
-import { sections, utilitySections, settingsPanes, SHELL_ACTION_EVENT } from "./constants";
+import { sections, utilitySections, SHELL_ACTION_EVENT } from "./constants";
 import { NoticeBanner, StatusChip } from "./components/common";
 import { CheckIcon, SectionIcon } from "./components/icons";
 import { useControlApp } from "./hooks/useControlApp";
@@ -130,8 +130,6 @@ export function ControlApp({
     sidebarCollapsed,
     setSidebarCollapsed,
     activeDialog,
-    activeSettingsPane,
-    setActiveSettingsPane,
     message,
     setMessage,
     buttonFeedback,
@@ -187,9 +185,6 @@ export function ControlApp({
     cleanupTerms,
     replacementRules,
   } = control;
-
-  const activePaneMeta =
-    settingsPanes.find((pane) => pane.id === activeSettingsPane) ?? settingsPanes[0];
 
   return (
     <main
@@ -337,50 +332,24 @@ export function ControlApp({
           ) : null}
 
           {activeSection === "settings" ? (
-            <div className="settings-shell">
-              <aside className="settings-nav">
-                {settingsPanes.map((pane) => (
-                  <button
-                    key={pane.id}
-                    type="button"
-                    className={`settings-nav-button ${pane.id === activeSettingsPane ? "settings-nav-button-active" : ""}`}
-                    onClick={() => setActiveSettingsPane(pane.id)}
-                  >
-                    <strong>{pane.label}</strong>
-                    <span>{pane.description}</span>
-                  </button>
-                ))}
-              </aside>
+            <>
+              <GeneralSettingsPane
+                snapshot={currentSnapshot}
+                draft={draft}
+                onApplySettings={applySettings}
+              />
+              <KeybindingsSection
+                snapshot={currentSnapshot}
+                draft={draft}
+                capturing={capturing}
+                onSetCapturing={setCapturing}
+                onApplySettings={applySettings}
+              />
+            </>
+          ) : null}
 
-              <div className="settings-pane">
-                <div className="settings-pane-intro">
-                  <strong>{activePaneMeta.label}</strong>
-                  <span>{activePaneMeta.description}</span>
-                </div>
-
-                {activeSettingsPane === "general" ? (
-                  <GeneralSettingsPane
-                    snapshot={currentSnapshot}
-                    draft={draft}
-                    onApplySettings={applySettings}
-                  />
-                ) : null}
-
-                {activeSettingsPane === "shortcuts" ? (
-                  <KeybindingsSection
-                    snapshot={currentSnapshot}
-                    draft={draft}
-                    capturing={capturing}
-                    onSetCapturing={setCapturing}
-                    onApplySettings={applySettings}
-                  />
-                ) : null}
-
-                {activeSettingsPane === "appearance" ? (
-                  <InterfaceSection snapshot={currentSnapshot} draft={draft} onApplySettings={applySettings} />
-                ) : null}
-              </div>
-            </div>
+          {activeSection === "appearance" ? (
+            <InterfaceSection snapshot={currentSnapshot} draft={draft} onApplySettings={applySettings} />
           ) : null}
 
           {activeSection === "help" ? (

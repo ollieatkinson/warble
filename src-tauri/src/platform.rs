@@ -1,24 +1,14 @@
 use anyhow::{bail, Result};
 use arboard::Clipboard;
 use serde::Serialize;
-#[cfg(target_os = "macos")]
-use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct CaretAnchor {
     pub x: i32,
     pub y: i32,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
-pub struct DynamicIslandMetrics {
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -75,97 +65,6 @@ pub fn auto_paste_support() -> AutoPasteSupport {
     AutoPasteSupport::ClipboardOnly
 }
 
-#[cfg(target_os = "macos")]
-pub fn dynamic_island_metrics(app: &AppHandle) -> Option<DynamicIslandMetrics> {
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::NSScreen;
-
-    let (width, height) = run_on_main_thread_and_wait(app, move || {
-        let Some(mtm) = MainThreadMarker::new() else {
-            return None;
-        };
-        let Some(screen) = NSScreen::mainScreen(mtm) else {
-            return None;
-        };
-
-        let frame = screen.convertRectToBacking(screen.frame());
-        let left_area = screen.convertRectToBacking(screen.auxiliaryTopLeftArea());
-        let right_area = screen.convertRectToBacking(screen.auxiliaryTopRightArea());
-        let top_edge = frame.origin.y + frame.size.height;
-        let notch_bottom = if left_area.size.width > 0.0 {
-            left_area.origin.y
-        } else if right_area.size.width > 0.0 {
-            right_area.origin.y
-        } else {
-            return None;
-        };
-        let gap_start = left_area.origin.x + left_area.size.width;
-        let gap_end = right_area.origin.x;
-        let width = (gap_end - gap_start).round() as i32;
-        let height = (top_edge - notch_bottom).round() as i32;
-
-        if width <= 0 || height <= 0 {
-            return None;
-        }
-
-        Some((width, height))
-    })
-    .ok()
-    .flatten()?;
-
-    let window = app
-        .get_webview_window("indicator")
-        .or_else(|| app.get_webview_window("main"))?;
-    let monitor = window
-        .current_monitor()
-        .ok()
-        .flatten()
-        .or_else(|| window.primary_monitor().ok().flatten())?;
-    let position = monitor.position();
-    let size = monitor.size();
-
-    Some(DynamicIslandMetrics {
-        x: position.x + (size.width as i32 - width) / 2,
-        y: position.y,
-        width,
-        height,
-    })
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn dynamic_island_metrics(_app: &AppHandle) -> Option<DynamicIslandMetrics> {
-    None
-}
-
-#[cfg(target_os = "macos")]
-pub fn supports_dynamic_island(app: &AppHandle) -> bool {
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::NSScreen;
-
-    run_on_main_thread_and_wait(app, move || {
-        let Some(mtm) = MainThreadMarker::new() else {
-            return false;
-        };
-        let Some(screen) = NSScreen::mainScreen(mtm) else {
-            return false;
-        };
-
-        let safe_area = screen.safeAreaInsets();
-        if safe_area.top > 0.0 {
-            return true;
-        }
-
-        let left_area = screen.auxiliaryTopLeftArea();
-        let right_area = screen.auxiliaryTopRightArea();
-        left_area.size.width > 0.0 || right_area.size.width > 0.0
-    })
-    .unwrap_or(false)
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn supports_dynamic_island(_app: &AppHandle) -> bool {
-    false
-}
 
 #[cfg(target_os = "windows")]
 pub fn detect_caret_anchor() -> Option<CaretAnchor> {
@@ -366,23 +265,6 @@ pub fn detect_caret_anchor() -> Option<CaretAnchor> {
     None
 }
 
-#[cfg(target_os = "macos")]
-fn run_on_main_thread_and_wait<T, F>(app: &AppHandle, task: F) -> Result<T>
-where
-    T: Send + 'static,
-    F: FnOnce() -> T + Send + 'static,
-{
-    if unsafe { libc::pthread_main_np() == 1 } {
-        return Ok(task());
-    }
-
-    let (sender, receiver) = mpsc::channel();
-    app.run_on_main_thread(move || {
-        let _ = sender.send(task());
-    })?;
-
-    receiver.recv().map_err(Into::into)
-}
 
 pub fn paste_text(_app: &AppHandle, text: &str) -> Result<PasteOutcome> {
     #[cfg(target_os = "windows")]

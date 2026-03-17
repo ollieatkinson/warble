@@ -10,6 +10,7 @@ pub(crate) const DEFAULT_PASTE_LAST_SHORTCUT: &str = "F10";
 pub(crate) const DEFAULT_CLEANUP_TERMS: &[&str] = &["um", "uh", "erm", "uhm", "hmm"];
 pub(crate) const CANCEL_SHORTCUT: &str = "Escape";
 pub(crate) const INDICATOR_MARGIN: i32 = 24;
+pub(crate) const INDICATOR_MARGIN_BOTTOM: i32 = 0;
 pub(crate) const LIVE_PREVIEW_INTERVAL_MS: u64 = 1_500;
 pub(crate) const LIVE_STREAM_PREVIEW_INTERVAL_MS: u64 = 220;
 pub(crate) const LIVE_STREAM_PREVIEW_FALLBACK_MS: u64 = 4_000;

@@ -424,5 +424,6 @@ pub(crate) fn create_indicator_window(app: &AppHandle) -> Result<()> {
     let _ = window.set_focusable(true);
     let _ = window.set_ignore_cursor_events(false);
     let _ = window.set_shadow(false);
+
     Ok(())
 }

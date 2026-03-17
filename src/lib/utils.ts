@@ -53,8 +53,6 @@ export function formatPhaseLabel(phase: AppPhase) {
 
 export function formatOverlayPosition(position: OverlayPosition) {
   switch (position) {
-    case "dynamic-island":
-      return "Dynamic Island";
     case "top-left":
       return "Top left";
     case "top-right":
@@ -351,11 +349,8 @@ export function toneForPhase(phase: AppPhase): StatusTone {
 
 export function normalizeEditableOverlayPosition(
   position: OverlayPosition,
-  dynamicIslandAvailable = true,
 ): EditableOverlayPosition {
   switch (position) {
-    case "dynamic-island":
-      return dynamicIslandAvailable ? position : "top-center";
     case "top-center":
     case "top-left":
     case "top-right":

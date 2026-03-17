@@ -12,7 +12,6 @@ export type CaptureSourceKind = "microphone" | "file";
 export type PlatformKind = "windows" | "macos" | "linux";
 export type AutoPasteSupport = "active-app" | "clipboard-only";
 export type OverlayPosition =
-  | "dynamic-island"
   | "top-center"
   | "top-left"
   | "top-right"
@@ -31,11 +30,7 @@ export type ShortcutFieldName =
   | "holdShortcut"
   | "toggleShortcut"
   | "pasteLastShortcut";
-export type SectionId = "capture" | "models" | "vocabulary" | "history" | "settings" | "help";
-export type SettingsPaneId =
-  | "general"
-  | "shortcuts"
-  | "appearance";
+export type SectionId = "capture" | "models" | "vocabulary" | "history" | "settings" | "appearance" | "help";
 export type ShellDialogId = "settings" | "troubleshooting" | "about";
 export type ShellActionId =
   | "open-settings"
@@ -102,13 +97,6 @@ export type SourceInfo = {
   isDefault: boolean;
 };
 
-export type DynamicIslandMetrics = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
 export type HistoryItem = {
   id: string;
   text: string;
@@ -159,8 +147,6 @@ export type Snapshot = {
   phase: AppPhase;
   platform: PlatformKind;
   autoPasteSupport: AutoPasteSupport;
-  dynamicIslandAvailable: boolean;
-  dynamicIslandMetrics: DynamicIslandMetrics | null;
   settings: Settings;
   lastTranscriptAvailable: boolean;
   sources: SourceInfo[];

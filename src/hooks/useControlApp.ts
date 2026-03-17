@@ -17,7 +17,6 @@ import type {
   FlashMessage,
   SectionId,
   SettingsDraft,
-  SettingsPaneId,
   ShellDialogId,
   ShortcutFieldName,
   Snapshot,
@@ -52,8 +51,6 @@ export function useControlApp({
     loadSidebarCollapsedPreference,
   );
   const [activeDialog, setActiveDialog] = useState<ShellDialogId | null>(null);
-  const [activeSettingsPane, setActiveSettingsPane] =
-    useState<SettingsPaneId>("general");
   const [message, setMessage] = useState<FlashMessage>(null);
   const [capturing, setCapturing] = useState<ShortcutFieldName | null>(null);
   const {
@@ -216,8 +213,6 @@ export function useControlApp({
     setSidebarCollapsed,
     activeDialog,
     setActiveDialog,
-    activeSettingsPane,
-    setActiveSettingsPane,
     message,
     setMessage,
     capturing,

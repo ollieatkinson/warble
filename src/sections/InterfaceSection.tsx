@@ -18,7 +18,6 @@ import {
 } from "../lib/utils";
 import {
   deriveOverlayPositionOptions,
-  supportsDynamicIsland,
 } from "../lib/controlAppModel";
 import type { SettingsDraft, Snapshot } from "../types";
 
@@ -31,14 +30,8 @@ export function InterfaceSection({
   draft: SettingsDraft;
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
 }) {
-  const dynamicIslandAvailable = supportsDynamicIsland(snapshot);
-  const usesDynamicIslandLayout = draft.overlayPosition === "dynamic-island";
   const overlayOptions = deriveOverlayPositionOptions(snapshot);
-  const hudPositionDescription = dynamicIslandAvailable
-    ? "Choose a screen edge or the menu-bar-integrated Dynamic Island anchor."
-    : snapshot.platform === "macos"
-      ? "Choose a screen edge. Dynamic Island placement appears on supported MacBook displays."
-      : "Choose a screen edge for the HUD.";
+  const hudPositionDescription = "Choose a screen edge for the HUD.";
   return (
     <>
       <article className="surface preference-surface">
@@ -160,18 +153,13 @@ export function InterfaceSection({
                 <div className="setting-row">
                   <div className="setting-copy">
                     <strong>Transcript width</strong>
-                    <span>
-                      {usesDynamicIslandLayout
-                        ? "Dynamic Island mode sizes this to the island automatically."
-                        : "Reserve more room for the newest words in the pill."}
-                    </span>
+                    <span>Reserve more room for the newest words in the pill.</span>
                   </div>
                   <div className="setting-control">
                     <ChoiceDropdown
                       label="Width"
                       value={draft.liveTranscriptWidth}
                       options={liveTranscriptWidthOptions}
-                      disabled={usesDynamicIslandLayout}
                       onChange={(value) =>
                         void onApplySettings({
                           liveTranscriptWidth: value as typeof draft.liveTranscriptWidth,
@@ -211,9 +199,7 @@ export function InterfaceSection({
             {draft.showLiveTranscription ? (
               <>
                 <span>
-                  {usesDynamicIslandLayout
-                    ? "Automatic width"
-                    : formatLiveTranscriptWidth(draft.liveTranscriptWidth)}
+                  {formatLiveTranscriptWidth(draft.liveTranscriptWidth)}
                 </span>
                 <span>{formatLiveTranscriptLines(draft.liveTranscriptLines)}</span>
               </>
@@ -235,7 +221,6 @@ export function InterfaceSection({
             showLiveTranscription={draft.showLiveTranscription}
             liveTranscriptWidth={draft.liveTranscriptWidth}
             liveTranscriptLines={draft.liveTranscriptLines}
-            dynamicIslandMetrics={snapshot.dynamicIslandMetrics}
           />
 
           <div className="interface-preview-grid">

@@ -92,29 +92,6 @@ describe("buildDraftFromSnapshot", () => {
     expect(draft.overlayPosition).toBe("bottom-center");
   });
 
-  it("preserves dynamic island overlay position", () => {
-    const snapshot = createSnapshot({
-      platform: "macos",
-      dynamicIslandAvailable: true,
-      settings: createSettings({ overlayPosition: "dynamic-island" }),
-    });
-
-    const draft = buildDraftFromSnapshot(snapshot);
-
-    expect(draft.overlayPosition).toBe("dynamic-island");
-  });
-
-  it("falls back from dynamic island when the hardware is unavailable", () => {
-    const snapshot = createSnapshot({
-      platform: "macos",
-      dynamicIslandAvailable: false,
-      settings: createSettings({ overlayPosition: "dynamic-island" }),
-    });
-
-    const draft = buildDraftFromSnapshot(snapshot);
-
-    expect(draft.overlayPosition).toBe("top-center");
-  });
 });
 
 describe("deriveSourceState", () => {
@@ -178,25 +155,12 @@ describe("deriveSourceState", () => {
 });
 
 describe("deriveOverlayPositionOptions", () => {
-  it("includes dynamic island when supported", () => {
-    const snapshot = createSnapshot({
-      platform: "macos",
-      dynamicIslandAvailable: true,
-    });
+  it("returns all overlay position options", () => {
+    const snapshot = createSnapshot();
 
     const options = deriveOverlayPositionOptions(snapshot);
 
-    expect(options.some((option) => option.id === "dynamic-island")).toBe(true);
-  });
-
-  it("removes dynamic island when unsupported", () => {
-    const snapshot = createSnapshot({
-      platform: "windows",
-      dynamicIslandAvailable: false,
-    });
-
-    const options = deriveOverlayPositionOptions(snapshot);
-
+    expect(options.length).toBeGreaterThan(0);
     expect(options.some((option) => option.id === "dynamic-island")).toBe(false);
   });
 });

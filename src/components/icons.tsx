@@ -344,6 +344,8 @@ export function SectionIcon({
       return <HistoryIcon className={className} />;
     case "settings":
       return <SettingsIcon className={className} />;
+    case "appearance":
+      return <InterfaceIcon className={className} />;
     case "help":
       return <HelpIcon className={className} />;
     default:
