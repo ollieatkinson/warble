@@ -11,6 +11,13 @@
 > [!WARNING]
 > Warble is still alpha. Development and active testing have mostly been on Windows so far, so that is the path that currently gets the most attention. Other platforms may build, but expect rough edges.
 
+<p align="center">
+<img width="1167" height="913" alt="image" src="https://github.com/user-attachments/assets/00097187-79d0-4bea-a452-76c98040a981" />
+<img width="1292" height="972" alt="image" src="https://github.com/user-attachments/assets/f390bf21-3d92-4ccc-9e02-dc4bd88d3eb4" />
+<img width="1292" height="972" alt="image" src="https://github.com/user-attachments/assets/22f91b57-352d-4881-94a6-b52136b281e6" />
+
+</p>
+
 Warble is built for fast speech-to-text without sending your audio to a cloud service. Pick a mic, choose a local model, dictate with a hotkey, and drop the result straight into the app you are already using.
 
 ## Highlights
