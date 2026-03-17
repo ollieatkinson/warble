@@ -6,6 +6,7 @@ mod live_preview;
 mod media;
 mod model_catalog;
 mod models;
+mod modifier_monitor;
 mod overlay;
 pub mod parakeet;
 mod permissions;
@@ -210,6 +211,8 @@ pub fn run() {
                     }
                 }
             }
+
+            modifier_monitor::start_modifier_monitor(app.handle().clone(), shared.clone());
 
             if launched_in_background() {
                 hide_main_window(app.handle());

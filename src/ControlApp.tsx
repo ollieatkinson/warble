@@ -1,20 +1,24 @@
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useEffect } from "react";
 
-import { sections, SHELL_ACTION_EVENT } from "./constants";
+import { sections, utilitySections, settingsPanes, SHELL_ACTION_EVENT } from "./constants";
 import { NoticeBanner, StatusChip } from "./components/common";
-import { CheckIcon, HelpIcon, SectionIcon, SettingsIcon } from "./components/icons";
+import { CheckIcon, SectionIcon } from "./components/icons";
 import { useControlApp } from "./hooks/useControlApp";
 import { AboutSection } from "./sections/AboutSection";
 import { CaptureSection } from "./sections/CaptureSection";
 import { DebugSection } from "./sections/DebugSection";
+import { GeneralSettingsPane } from "./sections/GeneralSettingsPane";
 import { HistorySection } from "./sections/HistorySection";
+import { InterfaceSection } from "./sections/InterfaceSection";
+import { KeybindingsSection } from "./sections/KeybindingsSection";
 import { ModelsSection } from "./sections/ModelsSection";
-import { SettingsSheet } from "./sections/SettingsSheet";
 import { Sidebar } from "./sections/Sidebar";
 import { ShellDialog } from "./components/ShellDialog";
 import { VocabularySection } from "./sections/VocabularySection";
 import type { ShellActionId, Snapshot } from "./types";
+
+const allSections = [...sections, ...utilitySections];
 
 export function ControlApp({
   snapshot,
@@ -27,10 +31,6 @@ export function ControlApp({
 }) {
   const control = useControlApp({ snapshot, setSnapshot });
   const shellOpenAboutDialog = control.ready ? control.openAboutDialog : null;
-  const shellOpenSettingsDialog = control.ready ? control.openSettingsDialog : null;
-  const shellOpenTroubleshootingDialog = control.ready
-    ? control.openTroubleshootingDialog
-    : null;
   const shellCloseDialog = control.ready ? control.closeDialog : null;
   const shellSetActiveSection = control.ready ? control.setActiveSection : null;
   const shellTranscribeFile = control.ready ? control.transcribeFile : null;
@@ -40,8 +40,6 @@ export function ControlApp({
       !control.ready ||
       !shellCloseDialog ||
       !shellOpenAboutDialog ||
-      !shellOpenSettingsDialog ||
-      !shellOpenTroubleshootingDialog ||
       !shellSetActiveSection ||
       !shellTranscribeFile
     ) {
@@ -53,10 +51,10 @@ export function ControlApp({
     const handleShellAction = (action: ShellActionId) => {
       switch (action) {
         case "open-settings":
-          shellOpenSettingsDialog();
+          shellSetActiveSection("settings");
           break;
         case "open-troubleshooting":
-          shellOpenTroubleshootingDialog();
+          shellSetActiveSection("help");
           break;
         case "open-about":
           shellOpenAboutDialog();
@@ -109,8 +107,6 @@ export function ControlApp({
   }, [
     shellCloseDialog,
     shellOpenAboutDialog,
-    shellOpenSettingsDialog,
-    shellOpenTroubleshootingDialog,
     shellSetActiveSection,
     shellTranscribeFile,
     control.ready,
@@ -172,8 +168,6 @@ export function ControlApp({
     restoreCleanupDefaults,
     addReplacementRule,
     removeReplacementRule,
-    openSettingsDialog,
-    openTroubleshootingDialog,
     closeDialog,
     activeSource,
     sourceOptions,
@@ -193,6 +187,9 @@ export function ControlApp({
     replacementRules,
   } = control;
 
+  const activePaneMeta =
+    settingsPanes.find((pane) => pane.id === activeSettingsPane) ?? settingsPanes[0];
+
   return (
     <main
       className={`workspace-shell ${sidebarCollapsed ? "workspace-shell-collapsed" : ""}`}
@@ -209,7 +206,7 @@ export function ControlApp({
         <header className="workspace-header">
           <div className="workspace-title">
             <SectionIcon section={activeSection} className="workspace-title-icon" />
-            <h1>{sections.find((section) => section.id === activeSection)?.label}</h1>
+            <h1>{allSections.find((section) => section.id === activeSection)?.label}</h1>
           </div>
 
           <div className="header-actions">
@@ -226,22 +223,6 @@ export function ControlApp({
               label={currentSnapshot.shortcutsActive ? "Keys active" : "Keys off"}
               tone={currentSnapshot.shortcutsActive ? "accent" : "warning"}
             />
-            <button
-              type="button"
-              className="secondary small icon-button"
-              onClick={() => openSettingsDialog()}
-            >
-              <SettingsIcon className="small-icon" />
-              <span>Settings</span>
-            </button>
-            <button
-              type="button"
-              className="secondary small icon-button"
-              onClick={openTroubleshootingDialog}
-            >
-              <HelpIcon className="small-icon" />
-              <span>Help</span>
-            </button>
           </div>
         </header>
 
@@ -289,6 +270,7 @@ export function ControlApp({
               onTranscribeFile={() => {
                 void transcribeFile();
               }}
+              onNavigateToModels={() => setActiveSection("models")}
             />
           ) : null}
 
@@ -349,32 +331,59 @@ export function ControlApp({
               onClearHistory={clearHistory}
             />
           ) : null}
+
+          {activeSection === "settings" ? (
+            <div className="settings-shell">
+              <aside className="settings-nav">
+                {settingsPanes.map((pane) => (
+                  <button
+                    key={pane.id}
+                    type="button"
+                    className={`settings-nav-button ${pane.id === activeSettingsPane ? "settings-nav-button-active" : ""}`}
+                    onClick={() => setActiveSettingsPane(pane.id)}
+                  >
+                    <strong>{pane.label}</strong>
+                    <span>{pane.description}</span>
+                  </button>
+                ))}
+              </aside>
+
+              <div className="settings-pane">
+                <div className="settings-pane-intro">
+                  <strong>{activePaneMeta.label}</strong>
+                  <span>{activePaneMeta.description}</span>
+                </div>
+
+                {activeSettingsPane === "general" ? (
+                  <GeneralSettingsPane
+                    snapshot={currentSnapshot}
+                    draft={draft}
+                    onApplySettings={applySettings}
+                  />
+                ) : null}
+
+                {activeSettingsPane === "shortcuts" ? (
+                  <KeybindingsSection
+                    snapshot={currentSnapshot}
+                    draft={draft}
+                    capturing={capturing}
+                    onSetCapturing={setCapturing}
+                    onApplySettings={applySettings}
+                  />
+                ) : null}
+
+                {activeSettingsPane === "appearance" ? (
+                  <InterfaceSection draft={draft} onApplySettings={applySettings} platform={currentSnapshot.platform} />
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {activeSection === "help" ? (
+            <DebugSection snapshot={currentSnapshot} />
+          ) : null}
         </div>
       </section>
-
-      {activeDialog === "settings" ? (
-        <SettingsSheet
-          snapshot={currentSnapshot}
-          draft={draft}
-          activePane={activeSettingsPane}
-          capturing={capturing}
-          onClose={closeDialog}
-          onSetActivePane={setActiveSettingsPane}
-          onSetCapturing={setCapturing}
-          onApplySettings={applySettings}
-        />
-      ) : null}
-
-      {activeDialog === "troubleshooting" ? (
-        <ShellDialog
-          title="Troubleshooting"
-          description="Capture and live preview diagnostics stay here so the main IA stays focused on everyday use."
-          size="wide"
-          onClose={closeDialog}
-        >
-          <DebugSection snapshot={currentSnapshot} />
-        </ShellDialog>
-      ) : null}
 
       {activeDialog === "about" ? (
         <ShellDialog

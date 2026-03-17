@@ -7,7 +7,7 @@ import type {
   SectionId,
   StatusTone,
 } from "../types";
-import { captureShortcut } from "../lib/utils";
+import { captureShortcut, captureModifierShortcut, isModifierOnlyShortcut, formatModifierShortcutLabel } from "../lib/utils";
 import {
   BoltIcon,
   CheckIcon,
@@ -153,9 +153,13 @@ export function ShortcutField({
   onCancel: () => void;
 }) {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const nonModifierPressedRef = useRef(false);
+  const lastModifierCodeRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!armed) {
+      nonModifierPressedRef.current = false;
+      lastModifierCodeRef.current = null;
       return;
     }
 
@@ -169,9 +173,41 @@ export function ShortcutField({
       event.preventDefault();
       event.stopPropagation();
 
+      const modifiers = new Set(["Control", "Shift", "Alt", "Meta"]);
+      if (modifiers.has(event.key)) {
+        lastModifierCodeRef.current = event.code;
+        nonModifierPressedRef.current = false;
+        return;
+      }
+
+      nonModifierPressedRef.current = true;
+      lastModifierCodeRef.current = null;
+
       const captured = captureShortcut(event);
       if (captured) {
         onCapture(captured);
+      }
+    }
+
+    function handleKeyUp(event: KeyboardEvent) {
+      const modifiers = new Set(["Control", "Shift", "Alt", "Meta"]);
+      if (!modifiers.has(event.key)) {
+        return;
+      }
+
+      if (nonModifierPressedRef.current) {
+        lastModifierCodeRef.current = null;
+        return;
+      }
+
+      if (lastModifierCodeRef.current === event.code) {
+        const captured = captureModifierShortcut(event.code);
+        if (captured) {
+          event.preventDefault();
+          event.stopPropagation();
+          onCapture(captured);
+        }
+        lastModifierCodeRef.current = null;
       }
     }
 
@@ -186,13 +222,19 @@ export function ShortcutField({
     }
 
     window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keyup", handleKeyUp, true);
     window.addEventListener("pointerdown", handlePointerDown);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyUp, true);
       window.removeEventListener("pointerdown", handlePointerDown);
     };
   }, [armed, onCancel, onCapture]);
+
+  const displayValue = isModifierOnlyShortcut(value)
+    ? formatModifierShortcutLabel(value)
+    : value;
 
   return (
     <label className="field">
@@ -208,14 +250,10 @@ export function ShortcutField({
           }
 
           event.preventDefault();
-          const captured = captureShortcut(event);
-          if (captured) {
-            onCapture(captured);
-          }
         }}
         onBlur={onCancel}
       >
-        {armed ? "Press shortcut..." : value || "Set shortcut"}
+        {armed ? "Press shortcut..." : displayValue || "Set shortcut"}
       </button>
     </label>
   );

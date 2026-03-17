@@ -361,11 +361,18 @@ pub(crate) fn register_shortcuts(app: &AppHandle, shared: &SharedState) -> Resul
         }
 
         app.global_shortcut().unregister_all()?;
-        app.global_shortcut()
-            .register(settings.hold_shortcut.as_str())?;
-        app.global_shortcut()
-            .register(settings.toggle_shortcut.as_str())?;
-        if !paste_last_shortcut.is_empty() {
+
+        let is_mod_only = crate::modifier_monitor::is_modifier_only_shortcut;
+
+        if !is_mod_only(&settings.hold_shortcut) {
+            app.global_shortcut()
+                .register(settings.hold_shortcut.as_str())?;
+        }
+        if !is_mod_only(&settings.toggle_shortcut) {
+            app.global_shortcut()
+                .register(settings.toggle_shortcut.as_str())?;
+        }
+        if !paste_last_shortcut.is_empty() && !is_mod_only(&settings.paste_last_shortcut) {
             app.global_shortcut()
                 .register(settings.paste_last_shortcut.as_str())?;
         }
@@ -401,9 +408,8 @@ pub(crate) fn create_indicator_window(app: &AppHandle) -> Result<()> {
         "indicator",
         WebviewUrl::App("index.html?indicator=1".into()),
     )
-    .title("Warble Indicator");
-    #[cfg(not(target_os = "macos"))]
-    let builder = builder.transparent(true);
+    .title("Warble Indicator")
+    .transparent(true);
     let window = builder
         .decorations(false)
         .shadow(false)

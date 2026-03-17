@@ -51,6 +51,7 @@ export function CaptureSection({
   onStopRecording,
   onCancel,
   onTranscribeFile,
+  onNavigateToModels,
 }: {
   snapshot: Snapshot;
   draft: SettingsDraft;
@@ -70,6 +71,7 @@ export function CaptureSection({
   onStopRecording: () => void;
   onCancel: () => void;
   onTranscribeFile: () => void | Promise<void>;
+  onNavigateToModels?: () => void;
 }) {
   const previewPhase = snapshot.phase === "idle" ? "recording" : snapshot.phase;
   const previewElapsedMs = snapshot.phase === "idle" ? 17_000 : snapshot.overlay.elapsedMs;
@@ -81,6 +83,22 @@ export function CaptureSection({
 
   return (
     <>
+      {snapshot.modelStatus === "missing" && onNavigateToModels ? (
+        <section className="surface model-missing-banner">
+          <div className="surface-bar">
+            <div className="surface-title">
+              <span className="surface-title-label">No transcription model installed</span>
+            </div>
+          </div>
+          <p className="model-missing-copy">
+            Warble needs a speech model to transcribe audio. Browse the model catalog to download one.
+          </p>
+          <button className="secondary" onClick={onNavigateToModels}>
+            Browse models
+          </button>
+        </section>
+      ) : null}
+
       <section className="tile-grid">
         <StatTile
           icon={<CheckIcon className="tile-icon-svg" />}

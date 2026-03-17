@@ -342,6 +342,10 @@ export function SectionIcon({
       return <CleanupIcon className={className} />;
     case "history":
       return <HistoryIcon className={className} />;
+    case "settings":
+      return <SettingsIcon className={className} />;
+    case "help":
+      return <HelpIcon className={className} />;
     default:
       return <CaptureIcon className={className} />;
   }

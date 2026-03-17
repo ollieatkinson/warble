@@ -411,6 +411,41 @@ export function captureShortcut(event: ShortcutCaptureEvent) {
   return parts.join("+");
 }
 
+const MODIFIER_CODE_MAP: Record<string, string> = {
+  MetaRight: "RightMeta",
+  MetaLeft: "LeftMeta",
+  ControlRight: "RightControl",
+  ControlLeft: "LeftControl",
+  ShiftRight: "RightShift",
+  ShiftLeft: "LeftShift",
+  AltRight: "RightAlt",
+  AltLeft: "LeftAlt",
+};
+
+export function captureModifierShortcut(code: string): string | null {
+  return MODIFIER_CODE_MAP[code] ?? null;
+}
+
+export function isModifierOnlyShortcut(shortcut: string): boolean {
+  return shortcut in Object.fromEntries(
+    Object.values(MODIFIER_CODE_MAP).map((v) => [v, true]),
+  );
+}
+
+export function formatModifierShortcutLabel(shortcut: string): string {
+  switch (shortcut) {
+    case "RightMeta": return "Right \u2318";
+    case "LeftMeta": return "Left \u2318";
+    case "RightControl": return "Right Ctrl";
+    case "LeftControl": return "Left Ctrl";
+    case "RightShift": return "Right Shift";
+    case "LeftShift": return "Left Shift";
+    case "RightAlt": return "Right Alt";
+    case "LeftAlt": return "Left Alt";
+    default: return shortcut;
+  }
+}
+
 export function matchesHistory(item: HistoryItem, query: string) {
   const terms = query
     .trim()

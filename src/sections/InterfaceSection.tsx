@@ -17,15 +17,20 @@ import {
   formatOverlayAnimationStyle,
   formatOverlayPosition,
 } from "../lib/utils";
-import type { SettingsDraft } from "../types";
+import type { PlatformKind, SettingsDraft } from "../types";
 
 export function InterfaceSection({
   draft,
   onApplySettings,
+  platform,
 }: {
   draft: SettingsDraft;
   onApplySettings: (update: Partial<SettingsDraft>) => void | Promise<void>;
+  platform?: PlatformKind;
 }) {
+  const filteredPositionOptions = platform === "macos"
+    ? overlayPositionOptions
+    : overlayPositionOptions.filter((option) => !option.macOnly);
   return (
     <>
       <article className="surface preference-surface">
@@ -75,7 +80,7 @@ export function InterfaceSection({
                 <ChoiceDropdown
                   label="Position"
                   value={draft.overlayPosition}
-                  options={overlayPositionOptions}
+                  options={filteredPositionOptions}
                   renderPreview={(value) => (
                     <OverlayPositionPreview position={value as typeof draft.overlayPosition} />
                   )}

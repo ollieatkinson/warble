@@ -80,7 +80,7 @@ export function SettingsSheet({
           ) : null}
 
           {activePane === "appearance" ? (
-            <InterfaceSection draft={draft} onApplySettings={onApplySettings} />
+            <InterfaceSection draft={draft} onApplySettings={onApplySettings} platform={snapshot.platform} />
           ) : null}
         </div>
       </div>
