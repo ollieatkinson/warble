@@ -60,9 +60,13 @@ mod imp {
     use chrono::Utc;
     use objc2::runtime::Bool;
     use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
-    use objc2_core_graphics::{CGPreflightPostEventAccess, CGRequestPostEventAccess};
+    use objc2_core_graphics::CGRequestPostEventAccess;
     use std::sync::mpsc;
     use tauri::AppHandle;
+
+    extern "C" {
+        fn AXIsProcessTrusted() -> bool;
+    }
 
     use crate::storage::append_capture_log;
 
@@ -89,7 +93,10 @@ mod imp {
     }
 
     pub(super) fn request_post_event_access(app: &AppHandle) -> Result<bool> {
-        if CGPreflightPostEventAccess() {
+        // AXIsProcessTrusted checks the Accessibility TCC entry directly and
+        // is reliable for ad-hoc signed apps. CGPreflightPostEventAccess can
+        // return false even when the Accessibility toggle is enabled.
+        if unsafe { AXIsProcessTrusted() } {
             return Ok(true);
         }
 
