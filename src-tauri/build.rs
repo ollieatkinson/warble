@@ -173,12 +173,21 @@ fn stage_macos_dawn_dylib() {
                 MACOS_DAWN_DYLIB, error
             );
         } else {
-            // Strip any existing signature so it doesn't clash with the app's
-            // team ID. The Tauri bundler re-signs all frameworks with the real
-            // APPLE_CERTIFICATE identity during `tauri build`.
+            let dest = destination.to_str().unwrap_or("");
+            // Strip the foreign signature that ships with the ort-sys build so
+            // it doesn't conflict with the app's signing identity.
             let _ = std::process::Command::new("codesign")
-                .args(["--remove-signature", destination.to_str().unwrap_or("")])
+                .args(["--remove-signature", dest])
                 .status();
+            // Re-sign with an ad-hoc signature. Apple Silicon requires all
+            // executable code to carry at least an ad-hoc signature with valid
+            // page hashes — the Tauri bundler does not sign framework dylibs.
+            let resign = std::process::Command::new("codesign")
+                .args(["--force", "--sign", "-", "--timestamp=none", dest])
+                .status();
+            if let Err(error) = resign {
+                println!("cargo:warning=ad-hoc codesign of {} failed: {}", MACOS_DAWN_DYLIB, error);
+            }
         }
     } else {
         println!(
