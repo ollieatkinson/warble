@@ -377,7 +377,7 @@ export function ControlApp({
                 ) : null}
 
                 {activeSettingsPane === "appearance" ? (
-                  <InterfaceSection draft={draft} onApplySettings={applySettings} platform={currentSnapshot.platform} />
+                  <InterfaceSection snapshot={currentSnapshot} draft={draft} onApplySettings={applySettings} />
                 ) : null}
               </div>
             </div>
