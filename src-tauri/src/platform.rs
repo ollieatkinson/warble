@@ -115,7 +115,151 @@ pub fn detect_caret_anchor() -> Option<CaretAnchor> {
     None
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
+pub fn detect_caret_anchor() -> Option<CaretAnchor> {
+    use std::ffi::c_void;
+    use std::ptr;
+
+    type AXUIElementRef = *mut c_void;
+    type AXValueRef = *mut c_void;
+    type AXError = i32;
+    type CFTypeRef = *const c_void;
+    type CFStringRef = *const c_void;
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct CFRange {
+        location: i64,
+        length: i64,
+    }
+
+    const K_AX_ERROR_SUCCESS: AXError = 0;
+
+    extern "C" {
+        fn AXUIElementCreateSystemWide() -> AXUIElementRef;
+        fn AXUIElementCopyAttributeValue(
+            element: AXUIElementRef,
+            attribute: CFStringRef,
+            value: *mut CFTypeRef,
+        ) -> AXError;
+        fn AXUIElementCopyParameterizedAttributeValue(
+            element: AXUIElementRef,
+            attribute: CFStringRef,
+            parameter: CFTypeRef,
+            result: *mut CFTypeRef,
+        ) -> AXError;
+        fn AXValueCreate(value_type: u32, value: *const c_void) -> AXValueRef;
+        fn AXValueGetValue(value: AXValueRef, value_type: u32, value_out: *mut c_void) -> bool;
+        fn CFRelease(cf: *const c_void);
+    }
+
+    #[allow(non_upper_case_globals)]
+    const kAXValueTypeCGRect: u32 = 3;
+    #[allow(non_upper_case_globals)]
+    const kAXValueTypeCFRange: u32 = 4;
+
+    macro_rules! cfstr {
+        ($s:expr) => {{
+            use std::sync::Once;
+            static mut PTR: *const c_void = ptr::null();
+            static INIT: Once = Once::new();
+            #[allow(unused_unsafe)]
+            INIT.call_once(|| unsafe {
+                let cstr = std::ffi::CString::new($s).unwrap();
+                extern "C" {
+                    fn CFStringCreateWithCString(
+                        alloc: *const c_void,
+                        cstr: *const i8,
+                        encoding: u32,
+                    ) -> *const c_void;
+                }
+                PTR = CFStringCreateWithCString(ptr::null(), cstr.as_ptr(), 0x08000100);
+            });
+            #[allow(unused_unsafe)]
+            unsafe { PTR }
+        }};
+    }
+
+    unsafe {
+        let system_wide = AXUIElementCreateSystemWide();
+        if system_wide.is_null() {
+            return None;
+        }
+
+        let mut focused_element: CFTypeRef = ptr::null();
+        let err = AXUIElementCopyAttributeValue(
+            system_wide,
+            cfstr!("AXFocusedUIElement"),
+            &mut focused_element,
+        );
+        CFRelease(system_wide as *const c_void);
+        if err != K_AX_ERROR_SUCCESS || focused_element.is_null() {
+            return None;
+        }
+
+        let mut range_value: CFTypeRef = ptr::null();
+        let err = AXUIElementCopyAttributeValue(
+            focused_element as AXUIElementRef,
+            cfstr!("AXSelectedTextRange"),
+            &mut range_value,
+        );
+        if err != K_AX_ERROR_SUCCESS || range_value.is_null() {
+            CFRelease(focused_element);
+            return None;
+        }
+
+        let mut range = CFRange { location: 0, length: 0 };
+        let ok = AXValueGetValue(range_value as AXValueRef, kAXValueTypeCFRange, &mut range as *mut CFRange as *mut c_void);
+        CFRelease(range_value);
+        if !ok {
+            CFRelease(focused_element);
+            return None;
+        }
+
+        let range_param = AXValueCreate(kAXValueTypeCFRange, &range as *const CFRange as *const c_void);
+        if range_param.is_null() {
+            CFRelease(focused_element);
+            return None;
+        }
+
+        let mut bounds_value: CFTypeRef = ptr::null();
+        let err = AXUIElementCopyParameterizedAttributeValue(
+            focused_element as AXUIElementRef,
+            cfstr!("AXBoundsForRange"),
+            range_param as CFTypeRef,
+            &mut bounds_value,
+        );
+        CFRelease(range_param as *const c_void);
+        CFRelease(focused_element);
+
+        if err != K_AX_ERROR_SUCCESS || bounds_value.is_null() {
+            return None;
+        }
+
+        #[repr(C)]
+        #[derive(Default)]
+        struct CGRect {
+            x: f64,
+            y: f64,
+            w: f64,
+            h: f64,
+        }
+
+        let mut rect = CGRect::default();
+        let ok = AXValueGetValue(bounds_value as AXValueRef, kAXValueTypeCGRect, &mut rect as *mut CGRect as *mut c_void);
+        CFRelease(bounds_value);
+        if !ok {
+            return None;
+        }
+
+        Some(CaretAnchor {
+            x: rect.x as i32 + 16,
+            y: (rect.y + rect.h) as i32 + 14,
+        })
+    }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub fn detect_caret_anchor() -> Option<CaretAnchor> {
     None
 }

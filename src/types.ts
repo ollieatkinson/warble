@@ -31,7 +31,7 @@ export type ShortcutFieldName =
   | "holdShortcut"
   | "toggleShortcut"
   | "pasteLastShortcut";
-export type SectionId = "capture" | "models" | "vocabulary" | "history";
+export type SectionId = "capture" | "models" | "vocabulary" | "history" | "settings" | "help";
 export type SettingsPaneId =
   | "general"
   | "shortcuts"
@@ -48,7 +48,7 @@ export type ShellActionId =
   | "transcribe-file"
   | "open-project-page";
 export type ModelFilter = "all" | "available" | "streaming";
-export type EditableOverlayPosition = Exclude<OverlayPosition, "caret">;
+export type EditableOverlayPosition = Exclude<OverlayPosition, "caret"> | "caret";
 export type AudioRetentionPolicy = "one-day" | "seven-days" | "thirty-days";
 export type ColorTheme = "system" | "light" | "dark";
 export type ModelFeatureIcon =

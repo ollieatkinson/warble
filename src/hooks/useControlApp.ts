@@ -259,15 +259,6 @@ export function useControlApp({
     restoreCleanupDefaults,
     addReplacementRule,
     removeReplacementRule,
-    openSettingsDialog: (pane: SettingsPaneId = "general") => {
-      setCapturing(null);
-      setActiveSettingsPane(pane);
-      setActiveDialog("settings");
-    },
-    openTroubleshootingDialog: () => {
-      setCapturing(null);
-      setActiveDialog("troubleshooting");
-    },
     openAboutDialog: () => {
       setCapturing(null);
       setActiveDialog("about");

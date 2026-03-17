@@ -1,12 +1,12 @@
 import type {
   AudioRetentionPolicy,
   ColorTheme,
-  EditableOverlayPosition,
   LivePreviewModel,
   LiveTranscriptLines,
   LiveTranscriptWidth,
   ModelFilter,
   OverlayAnimationStyle,
+  OverlayPosition,
   SectionId,
   SettingsPaneId,
 } from "./types";
@@ -45,6 +45,14 @@ export const sections: Array<{
   { id: "history", label: "History" },
 ];
 
+export const utilitySections: Array<{
+  id: SectionId;
+  label: string;
+}> = [
+  { id: "settings", label: "Settings" },
+  { id: "help", label: "Help" },
+];
+
 export const settingsPanes: Array<{
   id: SettingsPaneId;
   label: string;
@@ -77,9 +85,10 @@ export const modelFilters: Array<{
 ];
 
 export const overlayPositionOptions: Array<{
-  id: EditableOverlayPosition;
+  id: OverlayPosition;
   label: string;
   description: string;
+  macOnly?: boolean;
 }> = [
   {
     id: "dynamic-island",
@@ -115,6 +124,12 @@ export const overlayPositionOptions: Array<{
     id: "bottom-right",
     label: "Bottom right",
     description: "Keep the HUD tucked into the bottom-right corner.",
+  },
+  {
+    id: "caret",
+    label: "Follow caret",
+    description: "Position the HUD near the active text field (macOS only).",
+    macOnly: true,
   },
 ];
 

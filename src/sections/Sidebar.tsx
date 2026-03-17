@@ -1,4 +1,4 @@
-import { sections } from "../constants";
+import { sections, utilitySections } from "../constants";
 import { formatPhaseLabel, toneForPhase } from "../lib/utils";
 import type { AppPhase, SectionId } from "../types";
 import { WarbleIcon } from "../components/icons";
@@ -42,6 +42,19 @@ export function Sidebar({
 
       <nav className="sidebar-nav">
         {sections.map((section) => (
+          <SidebarButton
+            key={section.id}
+            active={activeSection === section.id}
+            label={section.label}
+            section={section.id}
+            collapsed={collapsed}
+            onClick={() => onSelect(section.id)}
+          />
+        ))}
+
+        <div className="sidebar-divider" />
+
+        {utilitySections.map((section) => (
           <SidebarButton
             key={section.id}
             active={activeSection === section.id}
