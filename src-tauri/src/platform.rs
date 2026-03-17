@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct CaretAnchor {
