@@ -8,7 +8,6 @@ import type {
   OverlayAnimationStyle,
   OverlayPosition,
   SectionId,
-  SettingsPaneId,
 } from "./types";
 
 export const SNAPSHOT_EVENT = "warble://snapshot";
@@ -50,29 +49,8 @@ export const utilitySections: Array<{
   label: string;
 }> = [
   { id: "settings", label: "Settings" },
+  { id: "appearance", label: "Appearance" },
   { id: "help", label: "Help" },
-];
-
-export const settingsPanes: Array<{
-  id: SettingsPaneId;
-  label: string;
-  description: string;
-}> = [
-  {
-    id: "general",
-    label: "General",
-    description: "Output and storage preferences.",
-  },
-  {
-    id: "shortcuts",
-    label: "Shortcuts",
-    description: "Global recording hotkeys.",
-  },
-  {
-    id: "appearance",
-    label: "Appearance",
-    description: "Indicator and theme options.",
-  },
 ];
 
 export const modelFilters: Array<{
@@ -90,11 +68,6 @@ export const overlayPositionOptions: Array<{
   description: string;
   macOnly?: boolean;
 }> = [
-  {
-    id: "dynamic-island",
-    label: "Dynamic Island",
-    description: "Menu-bar-integrated HUD that blends into a MacBook camera housing.",
-  },
   {
     id: "top-center",
     label: "Top center",

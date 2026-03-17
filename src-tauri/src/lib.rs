@@ -88,14 +88,12 @@ pub fn run() {
             runtime::configure_ort_diagnostics(app.handle());
             let runtime_error = runtime::ensure_ort_initialized().err();
             let persisted = load_persisted_state(app.handle());
-            let dynamic_island_available = platform::supports_dynamic_island(app.handle());
             let settings_sanitized = {
                 let mut core = shared.lock();
-                core.dynamic_island_available = dynamic_island_available;
                 core.settings = persisted.settings;
                 let settings_sanitized = core
                     .settings
-                    .sanitize_overlay_position(dynamic_island_available);
+                    .sanitize_overlay_position();
                 core.history = persisted.history;
                 core.sources = enumerate_sources();
                 core.model_status = current_model_status(app.handle(), &core.settings);

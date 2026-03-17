@@ -83,7 +83,6 @@ describe("formatPhaseLabel", () => {
 
 describe("formatOverlayPosition", () => {
   it.each([
-    ["dynamic-island", "Dynamic Island"],
     ["top-left", "Top left"],
     ["top-right", "Top right"],
     ["top-center", "Top center"],
@@ -397,7 +396,6 @@ describe("toneForPhase", () => {
 
 describe("normalizeEditableOverlayPosition", () => {
   it.each([
-    "dynamic-island",
     "top-center",
     "top-left",
     "top-right",
@@ -410,10 +408,6 @@ describe("normalizeEditableOverlayPosition", () => {
 
   it("normalizes caret to bottom-center", () => {
     expect(normalizeEditableOverlayPosition("caret")).toBe("bottom-center");
-  });
-
-  it("falls back from dynamic island when unavailable", () => {
-    expect(normalizeEditableOverlayPosition("dynamic-island", false)).toBe("top-center");
   });
 });
 

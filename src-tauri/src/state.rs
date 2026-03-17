@@ -113,7 +113,6 @@ impl Default for TranscriptionModelKind {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum OverlayPosition {
-    DynamicIsland,
     TopCenter,
     TopLeft,
     TopRight,
@@ -280,34 +279,13 @@ impl Settings {
             .unwrap_or_default()
     }
 
-    pub(crate) fn sanitize_overlay_position(&mut self, dynamic_island_available: bool) -> bool {
-        let next_position = Self::normalize_overlay_position(
-            self.overlay_position.clone(),
-            dynamic_island_available,
-        );
-        if self.overlay_position == next_position {
-            return false;
-        }
-
-        self.overlay_position = next_position;
-        true
-    }
-
-    fn normalize_overlay_position(
-        position: OverlayPosition,
-        dynamic_island_available: bool,
-    ) -> OverlayPosition {
-        if matches!(position, OverlayPosition::DynamicIsland) && !dynamic_island_available {
-            OverlayPosition::TopCenter
-        } else {
-            position
-        }
+    pub(crate) fn sanitize_overlay_position(&mut self) -> bool {
+        false
     }
 
     pub(crate) fn apply_update(
         &mut self,
         update: &SettingsUpdate,
-        dynamic_island_available: bool,
     ) -> bool {
         let hold_shortcut = update
             .hold_shortcut
@@ -367,10 +345,7 @@ impl Settings {
             self.audio_retention_policy = audio_retention_policy.clone();
         }
         if let Some(overlay_position) = update.overlay_position.as_ref() {
-            self.overlay_position = Self::normalize_overlay_position(
-                overlay_position.clone(),
-                dynamic_island_available,
-            );
+            self.overlay_position = overlay_position.clone();
         }
         if let Some(overlay_animation_style) = update.overlay_animation_style.as_ref() {
             self.overlay_animation_style = overlay_animation_style.clone();
@@ -573,8 +548,6 @@ pub(crate) struct Snapshot {
     pub(crate) phase: AppPhase,
     pub(crate) platform: platform::PlatformKind,
     pub(crate) auto_paste_support: platform::AutoPasteSupport,
-    pub(crate) dynamic_island_available: bool,
-    pub(crate) dynamic_island_metrics: Option<platform::DynamicIslandMetrics>,
     pub(crate) settings: Settings,
     pub(crate) last_transcript_available: bool,
     pub(crate) sources: Vec<SourceInfo>,
@@ -660,7 +633,6 @@ pub(crate) struct AppCore {
     pub(crate) last_transcript_text: Option<String>,
     pub(crate) sources: Vec<SourceInfo>,
     pub(crate) system_profile: SystemProfile,
-    pub(crate) dynamic_island_available: bool,
     pub(crate) phase: AppPhase,
     pub(crate) status_message: String,
     pub(crate) shortcuts_active: bool,
@@ -685,7 +657,6 @@ impl AppCore {
             last_transcript_text,
             sources: Vec::new(),
             system_profile: detect_system_profile(),
-            dynamic_island_available: false,
             phase: AppPhase::Idle,
             status_message: "Ready".to_string(),
             shortcuts_active: false,
@@ -843,24 +814,6 @@ mod tests {
             deserialized.macos_model_runtime_preferences,
             settings.macos_model_runtime_preferences
         );
-    }
-
-    #[test]
-    fn settings_sanitize_dynamic_island_when_unavailable() {
-        let mut settings = Settings::default();
-        settings.overlay_position = OverlayPosition::DynamicIsland;
-
-        assert!(settings.sanitize_overlay_position(false));
-        assert_eq!(settings.overlay_position, OverlayPosition::TopCenter);
-    }
-
-    #[test]
-    fn settings_keep_dynamic_island_when_available() {
-        let mut settings = Settings::default();
-        settings.overlay_position = OverlayPosition::DynamicIsland;
-
-        assert!(!settings.sanitize_overlay_position(true));
-        assert_eq!(settings.overlay_position, OverlayPosition::DynamicIsland);
     }
 
     #[test]

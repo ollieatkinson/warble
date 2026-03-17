@@ -97,7 +97,9 @@ body {
 html.indicator-window,
 body.indicator-window,
 body.indicator-window #root {
-  background: transparent;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 button,
@@ -1646,16 +1648,14 @@ input::placeholder {
 
 .position-preview-screen-top-left .position-preview-pill,
 .position-preview-screen-top-center .position-preview-pill,
-.position-preview-screen-top-right .position-preview-pill,
-.position-preview-screen-dynamic-island .position-preview-pill {
+.position-preview-screen-top-right .position-preview-pill {
   top: 4px;
   bottom: auto;
 }
 
 .position-preview-large .position-preview-screen-top-left .position-preview-pill,
 .position-preview-large .position-preview-screen-top-center .position-preview-pill,
-.position-preview-large .position-preview-screen-top-right .position-preview-pill,
-.position-preview-large .position-preview-screen-dynamic-island .position-preview-pill {
+.position-preview-large .position-preview-screen-top-right .position-preview-pill {
   top: 6px;
   bottom: auto;
 }
@@ -1673,8 +1673,7 @@ input::placeholder {
   transform: translateX(-50%);
 }
 
-.position-preview-screen-top-center .position-preview-pill,
-.position-preview-screen-dynamic-island .position-preview-pill {
+.position-preview-screen-top-center .position-preview-pill {
   left: 50%;
   transform: translateX(-50%);
 }
@@ -1685,40 +1684,6 @@ input::placeholder {
 
 .position-preview-screen-top-right .position-preview-pill {
   right: 4px;
-}
-
-.position-preview-screen-dynamic-island .position-preview-pill {
-  top: 8px;
-  width: 24px;
-  height: 8px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(3, 4, 6, 0.99), rgba(8, 11, 18, 0.96));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-.position-preview-screen-dynamic-island::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 34px;
-  height: 9px;
-  transform: translateX(-50%);
-  border-radius: 0 0 8px 8px;
-  background: rgba(4, 5, 7, 0.98);
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
-}
-
-.position-preview-large .position-preview-screen-dynamic-island .position-preview-pill {
-  top: 10px;
-  width: 38px;
-  height: 10px;
-}
-
-.position-preview-large .position-preview-screen-dynamic-island::after {
-  width: 52px;
-  height: 12px;
-  border-radius: 0 0 10px 10px;
 }
 
 .animation-choice-preview {
@@ -1856,8 +1821,7 @@ input::placeholder {
 
 .interface-demo-screen-top-left,
 .interface-demo-screen-top-center,
-.interface-demo-screen-top-right,
-.interface-demo-screen-dynamic-island {
+.interface-demo-screen-top-right {
   align-items: flex-start;
 }
 
@@ -1873,47 +1837,9 @@ input::placeholder {
   justify-content: flex-end;
 }
 
-.interface-demo-screen-dynamic-island {
-  --indicator-dynamic-island-gap-width: 118px;
-  --indicator-dynamic-island-gap-height: 32px;
-  justify-content: center;
-  padding-top: 0.55rem;
-}
-
-.interface-demo-screen-dynamic-island::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: var(--indicator-dynamic-island-gap-width);
-  height: var(--indicator-dynamic-island-gap-height);
-  transform: translateX(-50%);
-  border-radius: 0 0 16px 16px;
-  background: rgba(4, 5, 7, 0.98);
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
-  z-index: 1;
-}
-
 .interface-demo-pill {
   position: relative;
   z-index: 2;
-}
-
-.interface-demo-pill-dynamic-island {
-  padding-top: 0.75rem;
-}
-
-.interface-demo-pill-dynamic-island::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: clamp(78px, 40%, 148px);
-  height: 0.95rem;
-  transform: translateX(-50%);
-  border-radius: 0 0 16px 16px;
-  background: linear-gradient(180deg, rgba(3, 4, 6, 0.98), rgba(8, 11, 18, 0.94));
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .interface-preview-grid {
@@ -2337,11 +2263,6 @@ input::placeholder {
   background: transparent;
 }
 
-.indicator-root-dynamic-island {
-  align-items: start;
-  padding: 0 12px 12px;
-}
-
 .indicator-root-hidden {
   opacity: 0;
 }
@@ -2352,31 +2273,13 @@ input::placeholder {
   max-width: 100%;
 }
 
-.indicator-measure-dynamic-island {
-  position: relative;
-  padding-top: 14px;
-}
-
-.indicator-measure-dynamic-island::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: clamp(84px, calc(100% - 52px), 196px);
-  height: 18px;
-  transform: translateX(-50%);
-  border-radius: 0 0 18px 18px;
-  background: linear-gradient(180deg, rgba(3, 4, 6, 0.98), rgba(8, 11, 18, 0.95));
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
-}
-
 .indicator-shell {
   display: inline-flex;
   align-items: center;
   width: fit-content;
   min-width: 0;
   max-width: min(100%, 260px);
-  padding: 0.62rem 0.9rem;
+  padding: 0.46rem 0.9rem;
   border-radius: 999px;
   background: rgba(8, 11, 18, 0.92);
   border: none;
@@ -2391,37 +2294,13 @@ input::placeholder {
   max-width: 100%;
 }
 
-.indicator-shell-dynamic-island {
-  --indicator-dynamic-island-gap-width: 118px;
-  --indicator-dynamic-island-gap-height: 32px;
-  --indicator-dynamic-island-left-width: 116px;
-  --indicator-dynamic-island-right-width: 84px;
-  display: grid;
-  gap: 0.5rem;
-  align-items: start;
-  justify-items: start;
-  padding: 0;
-  min-width: 0;
-  max-width: none;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  overflow: visible;
-  isolation: isolate;
-  box-shadow: none;
-}
-
 .indicator-shell-compact {
-  padding: 0.62rem 0.94rem;
+  padding: 0.46rem 0.94rem;
   max-width: none;
-}
-
-.indicator-shell-dynamic-island.indicator-shell-compact {
-  padding: 0;
 }
 
 .indicator-shell-radial.indicator-shell-compact {
-  padding: 0.56rem 0.82rem;
+  padding: 0.42rem 0.82rem;
 }
 
 .indicator-shell-detail {
@@ -2435,11 +2314,6 @@ input::placeholder {
   padding: 0.78rem 1.04rem 0.9rem;
   border-radius: 18px;
   min-width: calc(var(--indicator-live-width) + 2.08rem);
-}
-
-.indicator-shell-dynamic-island.indicator-shell-detail {
-  padding: 0;
-  min-width: 0;
 }
 
 .indicator-shell-detail-width-compact {
@@ -2467,67 +2341,6 @@ input::placeholder {
 
 .indicator-row-detail {
   width: max-content;
-}
-
-.indicator-dynamic-island-row {
-  display: grid;
-  grid-template-columns:
-    var(--indicator-dynamic-island-left-width)
-    var(--indicator-dynamic-island-gap-width)
-    var(--indicator-dynamic-island-right-width);
-  align-items: start;
-  width: max-content;
-  min-width: 0;
-}
-
-.indicator-dynamic-island-row-no-timer {
-  grid-template-columns:
-    var(--indicator-dynamic-island-left-width)
-    var(--indicator-dynamic-island-gap-width);
-}
-
-.indicator-dynamic-island-pod {
-  min-height: var(--indicator-dynamic-island-gap-height);
-  border-radius: 999px;
-  background: rgba(2, 2, 3, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 12px 28px rgba(0, 0, 0, 0.32);
-}
-
-.indicator-dynamic-island-pod-left {
-  width: var(--indicator-dynamic-island-left-width);
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 0.62rem;
-  padding: 0.42rem 0.82rem;
-}
-
-.indicator-dynamic-island-pod-right {
-  width: var(--indicator-dynamic-island-right-width);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.42rem 0.72rem;
-}
-
-.indicator-dynamic-island-gap {
-  width: var(--indicator-dynamic-island-gap-width);
-  min-height: var(--indicator-dynamic-island-gap-height);
-}
-
-.indicator-dynamic-island-tray {
-  width: 100%;
-  min-width: 0;
-  padding: 0.62rem 0.9rem 0.68rem;
-  border-radius: 18px;
-  background: rgba(2, 2, 3, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 12px 28px rgba(0, 0, 0, 0.32);
 }
 
 .indicator-signal {
@@ -3200,12 +3013,6 @@ input::placeholder {
 [data-theme="light"] .indicator-shell-detail {
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--border);
-}
-
-[data-theme="light"] .indicator-dynamic-island-pod,
-[data-theme="light"] .indicator-dynamic-island-tray {
-  background: rgba(2, 2, 3, 0.98);
-  border-color: rgba(255, 255, 255, 0.05);
 }
 
 [data-theme="light"] .toggle-row-card {
